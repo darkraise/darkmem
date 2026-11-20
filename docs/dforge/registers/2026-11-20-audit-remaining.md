@@ -101,9 +101,9 @@
 | 94 | B4-25: doc and comment drift in code_pipeline and repo_allowlist; CodeFile.last_commit_sha is served but never written | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 32 contracts | done | e48b9f1 |
 | 95 | B4 removals 3, 4, 6, 7: TaskRegistry.get_all_running and cleanup_completed, the CallResolver named_imports/wildcard_imports arguments, RepoManager.get_auth_token, _implements_split's discarded return value | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 32 contracts | done | e48b9f1 |
 | 96 | B4 removal 8: the CodeFile.last_commit_sha column | docs/dforge/plans/2026-11-20-audit-remaining.md | A47 (Task 32) | done | e48b9f1 |
-| 97 | B5-2: a document block edit drops no vectors, so a failed embed after commit leaves the old-text vector forever and the route answers 500 for a write that landed | docs/dforge/plans/2026-11-20-audit-remaining.md | A25 (Task 33) | doing | - |
+| 97 | B5-2: a document block edit drops no vectors, so a failed embed after commit leaves the old-text vector forever and the route answers 500 for a write that landed | docs/dforge/plans/2026-11-20-audit-remaining.md | A25 (Task 33) | done | 6877a10 |
 | 98 | B5-3: upload streams up to 50 MB inside the global attachment lock and an open transaction; the Notion import holds the same lock for up to 900 s | docs/dforge/plans/2026-11-20-audit-remaining.md | A26 (Task 34) | doing | - |
-| 99 | B5-4: any content change re-embeds every block inline, and every unchanged re-push spends a real embed call | docs/dforge/plans/2026-11-20-audit-remaining.md | A28 (Task 33) | doing | - |
+| 99 | B5-4: any content change re-embeds every block inline, and every unchanged re-push spends a real embed call | docs/dforge/plans/2026-11-20-audit-remaining.md | A28 (Task 33) | done | 6877a10 |
 | 100 | B5-5: _PLACE rewrites every block row of the tree on every verb | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 36 contracts | doing | - |
 | 101 | B5-6: blocks.search_vector and ix_blocks_search_vector have no reader (owner ruling 2026-11-20: drop) | docs/dforge/plans/2026-11-20-audit-remaining.md | A46 (Task 48) | doing | - |
 | 102 | B5-7: document_revisions stores a full content copy on every hash-changing put, with no prune | docs/dforge/plans/2026-11-20-audit-remaining.md | A27 (Task 35) | doing | - |
@@ -115,8 +115,8 @@
 | 108 | B5-13: parent_id, after_block_id and new_parent_id are typed str on the document block routes, so a malformed id gets a 500 | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 37 contracts | doing | - |
 | 109 | B5-14: document connections run one uncached ANN probe per block on every document view | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 36 contracts | doing | - |
 | 110 | B5-15: the document list joins and groups every block of every document before LIMIT/OFFSET | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 36 contracts | doing | - |
-| 111 | B5-16: an unembeddable block stays in the first batch and costs a failed batch call plus up to 500 single-row embeds on every tick | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 33 contracts | doing | - |
-| 112 | B5-17: four copies of the same register-the-fingerprint helper | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 33 contracts | doing | - |
+| 111 | B5-16: an unembeddable block stays in the first batch and costs a failed batch call plus up to 500 single-row embeds on every tick | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 33 contracts | done | 6877a10 |
+| 112 | B5-17: four copies of the same register-the-fingerprint helper | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 33 contracts | done | 6877a10 |
 | 113 | B6-2: login runs bcrypt on the event loop, and the lockout check happens before an await, so concurrent attempts exceed five guesses | docs/dforge/plans/2026-11-20-audit-remaining.md | A7 (Task 1) | done | 1d02a7c |
 | 114 | B6-3: MCP memory_reason, memory_overview and document_search call the LLM or embedder on the read-only backup worker | docs/dforge/plans/2026-11-20-audit-remaining.md | A12 (Task 5) | done | 7d6e56b |
 | 115 | B6-5: get_session commits after the response is sent, so routes without an explicit commit return 200 before the write is durable | docs/dforge/plans/2026-11-20-audit-remaining.md | A29 (Task 38) | doing | - |
