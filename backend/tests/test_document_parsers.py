@@ -162,6 +162,29 @@ def test_markdown_fence_becomes_a_code_block_with_language():
     assert code[0].properties == {"language": "python"}
 
 
+def test_markdown_char_spans_survive_separators_that_are_not_line_breaks():
+    """markdown-it ends a line on a newline or carriage return and nothing else.
+
+    ``str.splitlines`` also breaks on form feed, vertical tab, U+0085 and the
+    Unicode line and paragraph separators, so counting lines with it shifts
+    the span of every block after one of those characters onto its neighbour.
+    """
+    source = (
+        "first\x0cstill first\n\n"
+        "second\u2028still second\n\n"
+        "third\x0bstill third\x85end\n\n"
+        "fourth\n"
+    )
+    drafts = parse_markdown(source)
+
+    assert [source[d.char_span[0]:d.char_span[1]] for d in drafts] == [
+        "first\x0cstill first",
+        "second\u2028still second",
+        "third\x0bstill third\x85end",
+        "fourth",
+    ]
+
+
 def test_markdown_char_spans_index_into_the_source():
     drafts = parse_markdown(_MARKDOWN_SAMPLE)
     for draft in drafts:

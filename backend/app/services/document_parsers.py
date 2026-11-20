@@ -432,11 +432,18 @@ def _list_item_properties(list_stack: list[dict], tok) -> dict:
     return {"ordered": True, "marker": f"{number}{delimiter}", "number": number}
 
 
+# markdown-it's own line terminators. `str.splitlines` also breaks on form
+# feed, vertical tab, U+0085, U+2028 and others, which numbers lines
+# differently from the token map and shifts every later block's span.
+_LINE_END_RE = re.compile(r"\r\n|\r|\n")
+
+
 def _line_offsets(text: str) -> list[int]:
     """Cumulative char offset of the start of each source line, index 0 first."""
     offsets = [0]
-    for line in text.splitlines(keepends=True):
-        offsets.append(offsets[-1] + len(line))
+    offsets.extend(match.end() for match in _LINE_END_RE.finditer(text))
+    if offsets[-1] != len(text):
+        offsets.append(len(text))
     return offsets
 
 
