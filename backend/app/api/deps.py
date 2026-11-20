@@ -99,6 +99,19 @@ async def get_tag_repository(session: AsyncSession = Depends(get_session)) -> Po
     return PostgresTagRepository(session)
 
 
+READ_ONLY_REASON = (
+    "read-only instance: this needs an external service or writes "
+    "a file, and a backup worker is for viewing and backup/restore only"
+)
+
+
+class ReadOnlyRefused(HTTPException):
+    error_code = "read_only"
+
+    def __init__(self) -> None:
+        super().__init__(status_code=status.HTTP_403_FORBIDDEN, detail=READ_ONLY_REASON)
+
+
 def refuse_when_read_only() -> None:
     """Refuse a door that needs an external service or writes a file (owner ruling 2026-09-03).
 
@@ -123,10 +136,4 @@ def refuse_when_read_only() -> None:
     would refuse it only after the file existed.
     """
     if settings.read_only:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=(
-                "read-only instance: this needs an external service or writes "
-                "a file, and a backup worker is for viewing and backup/restore only"
-            ),
-        )
+        raise ReadOnlyRefused()

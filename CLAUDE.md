@@ -1508,7 +1508,11 @@ ids and refuse writes.
   spend, dial out or write a file are refused by `refuse_when_read_only`
   (`api/deps.py`): `memories/reason`, `documents/qa`, every `reembed` POST,
   repo create/reindex/reindex-files/webhook, chat, job triggers, page
-  attachment upload. Token refresh reissues without blocklisting there. The
+  attachment upload, analytics reprocess (and its stream) and both
+  pipeline-failure retries, each a 403 with `error.code` `read_only`. MCP
+  `memory_reason`, `memory_overview`, `document_search` and `code_reindex`
+  answer a `read_only` status envelope before any provider call or fetch.
+  Token refresh reissues without blocklisting there. The
   receiver (`app/worker_receiver.py`, its own uvicorn) writes files, never
   rows; a closure walk fails the build if it reaches `app.main`,
   `app.database` or any service. `scripts/worker/restore-cycle.sh`

@@ -422,3 +422,138 @@ async def test_search_answers_without_an_embedder_under_the_flag(monkeypatch):
 
 async def _none():
     return []
+
+
+# ---------------------------------------------------------------------------
+# Reprocess, retry and the MCP twins of refused doors
+# ---------------------------------------------------------------------------
+
+class _SpyLLM:
+    def __init__(self):
+        self.calls: list[str] = []
+
+    async def embed(self, *_a, **_k):
+        self.calls.append("embed")
+        return [[0.0]], "spy|1"
+
+    async def chat_completion(self, *_a, **_k):
+        self.calls.append("chat_completion")
+        return "{}"
+
+
+@pytest.fixture
+def spy_llm(client, monkeypatch):
+    from types import SimpleNamespace
+
+    from app.api.mcp import server as mcp_server
+    from app.main import app
+
+    spy = _SpyLLM()
+    pipeline = SimpleNamespace(llm=spy)
+    monkeypatch.setattr(app.state, "pipeline", pipeline, raising=False)
+    monkeypatch.setattr(app.state, "llm", spy, raising=False)
+    monkeypatch.setattr(mcp_server, "_pipeline", pipeline)
+    return spy
+
+
+_FAILURE = "00000000-0000-4000-8000-0000000000bb"
+REPROCESS_DOORS = [
+    ("POST", "/api/v1/analytics/reprocess"),
+    ("POST", "/api/v1/analytics/reprocess/stream"),
+    ("POST", f"/api/v1/pipeline-failures/{_FAILURE}/retry"),
+    ("POST", "/api/v1/pipeline-failures/retry-all"),
+]
+MCP_TWIN_CALLS = {
+    "memory_reason": {"question": "anything"},
+    "memory_overview": {"project": "default"},
+    "document_search": {"query": "anything", "project": "default"},
+    "code_reindex": {"repo_name": "x", "files": ["a.py"]},
+}
+
+
+async def _call_tool(name: str) -> dict:
+    import json
+
+    from app.api.mcp import server as mcp_server
+
+    return json.loads(await getattr(mcp_server, name)(**MCP_TWIN_CALLS[name]))
+
+
+async def test_reprocess_routes_and_three_mcp_tools_are_refused(
+    client, auth_headers, monkeypatch, spy_llm,
+):
+    monkeypatch.setattr(settings, "read_only", True)
+
+    for method, path in REPROCESS_DOORS:
+        response = await client.request(method, path, headers=auth_headers)
+        assert response.status_code == 403, f"{method} {path} answered {response.status_code}"
+        assert response.json()["error"]["code"] == "read_only", f"{method} {path}"
+
+    for tool in ("memory_reason", "memory_overview", "document_search"):
+        payload = await _call_tool(tool)
+        assert payload["status"] == "read_only", f"{tool} answered {payload}"
+
+    assert spy_llm.calls == []
+
+
+def _guarded_routes() -> set[tuple[str, str]]:
+    from fastapi.routing import APIRoute
+
+    from app.api.deps import refuse_when_read_only
+    from app.main import app
+
+    def walk(dependant):
+        for dep in dependant.dependencies:
+            yield dep.call
+            yield from walk(dep)
+
+    return {
+        (method, route.path)
+        for route in app.routes
+        if isinstance(route, APIRoute) and refuse_when_read_only in walk(route.dependant)
+        for method in route.methods
+    }
+
+
+def _two_door_rows() -> list[tuple[set[str], set[str]]]:
+    import re
+    from pathlib import Path
+
+    doc = (Path(__file__).resolve().parents[2] / "docs" / "two-door-parity.md").read_text()
+    block = doc.split("<!-- BEGIN GENERATED PARITY TABLE -->")[1].split("<!-- END GENERATED PARITY TABLE -->")[0]
+    rows = []
+    for line in block.splitlines():
+        cells = line.split("|")
+        if len(cells) < 6 or cells[4].strip() != "two-door":
+            continue
+        routes = set(re.findall(r"`([A-Z]+ /[^`]+)`", cells[2]))
+        tools = set(re.findall(r"`([a-z_]+)`", cells[3]))
+        rows.append((routes, tools))
+    return rows
+
+
+# A two-door row lists its routes and tools as sets, so which tool answers
+# which route is named here; a newly guarded route with a twin fails below
+# until it is added.
+REST_TWINS = {
+    "POST /api/v1/memories/reason": "memory_reason",
+    "POST /api/v1/documents/search": "document_search",
+    "POST /api/v1/repos/{repo_id}/reindex-files": "code_reindex",
+}
+
+
+async def test_read_only_parity_between_doors(monkeypatch, spy_llm):
+    guarded = {f"{method} {path}" for method, path in _guarded_routes()}
+    twins = {}
+    for routes, tools in _two_door_rows():
+        for route in routes & guarded:
+            assert route in REST_TWINS, f"{route} is refused under read-only; name its MCP twin"
+            assert REST_TWINS[route] in tools, f"{REST_TWINS[route]} is not on {route}'s parity row"
+            twins[route] = REST_TWINS[route]
+    assert twins == REST_TWINS
+
+    monkeypatch.setattr(settings, "read_only", True)
+    for route, tool in twins.items():
+        payload = await _call_tool(tool)
+        assert payload["status"] == "read_only", f"{tool} (twin of {route}) answered {payload}"
+    assert spy_llm.calls == []

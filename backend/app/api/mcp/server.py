@@ -167,6 +167,23 @@ def _ack_to_dict(ack) -> dict:
     return json.loads(ack.model_dump_json())
 
 
+def _read_only_refusal() -> str | None:
+    """The MCP twin of `refuse_when_read_only`: refused before any provider call.
+
+    A refusal, not `_degraded`: nothing here recovers while the instance is
+    read-only, and the `read_only` status matches the REST door's error code.
+    """
+    if not settings.read_only:
+        return None
+    from app.api.deps import READ_ONLY_REASON
+
+    return json.dumps({
+        "schema_version": ENVELOPE_SCHEMA_VERSION,
+        "status": "read_only",
+        "reason": READ_ONLY_REASON,
+    })
+
+
 def _degraded(reason: str, **extra) -> dict:
     """Doc 12 §3's recoverable-unavailability shape.
 
@@ -437,6 +454,8 @@ async def memory_reason(
         limit: Maximum number of source memories to consider (default: 10).
         project: Optional project to restrict the reasoning context to.
     """
+    if refused := _read_only_refusal():
+        return refused
     limit = _clamp_limit(limit, default=10)
     async with _memory_service_context() as service:
         result = await service.reason(question, limit=limit, project=project)
@@ -468,6 +487,8 @@ async def memory_overview(project: str = "default") -> str:
     """
     from app.services.memory_overview import OverviewUnavailable, get_overview
 
+    if refused := _read_only_refusal():
+        return refused
     async with _code_service_context() as session:
         llm = _pipeline.llm if _pipeline is not None else None
         with lease_llm(llm):
@@ -912,6 +933,8 @@ async def document_search(
     """
     from app.services.document_door import search_sections
 
+    if refused := _read_only_refusal():
+        return refused
     with lease_llm(_pipeline.llm if _pipeline is not None else None) as llm:
         if not _pipeline or not llm:
             return json.dumps(_degraded("embedder not configured", results=[]))
@@ -1445,6 +1468,8 @@ async def code_reindex(
     )
     from app.services.repo_manager import RepoManager
 
+    if refused := _read_only_refusal():
+        return refused
     if not repo_path and not repo_name:
         raise ToolInputError("one of repo_path or repo_name is required")
 

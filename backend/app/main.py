@@ -976,7 +976,9 @@ async def _http_exception_handler(_request, exc: StarletteHTTPException):
     detail = exc.detail
     message = detail if isinstance(detail, str) else "Request failed"
     details = detail if isinstance(detail, list) else None
-    code = _HTTP_ERROR_CODES.get(exc.status_code, f"http_{exc.status_code}")
+    code = getattr(exc, "error_code", None) or _HTTP_ERROR_CODES.get(
+        exc.status_code, f"http_{exc.status_code}",
+    )
     return _error_response(exc.status_code, code, message, details, getattr(exc, "headers", None))
 
 

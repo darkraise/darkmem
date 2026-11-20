@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
+from app.api.deps import refuse_when_read_only
 from app.api.websocket import event_manager
 from app.utils.background import spawn
 from app.database import async_session_factory, get_session
@@ -97,6 +98,7 @@ async def get_failure(
 @router.post("/{failure_id}/retry", status_code=202)
 async def retry_failure(
     failure_id: UUID,
+    _read_only=Depends(refuse_when_read_only),
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ):
@@ -146,6 +148,7 @@ async def retry_failure(
 async def retry_all(
     entity_type: str | None = None,
     pipeline_name: str | None = None,
+    _read_only=Depends(refuse_when_read_only),
     _user=Depends(require_auth),
     session: AsyncSession = Depends(get_session),
     request: Request = None,

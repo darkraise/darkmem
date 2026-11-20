@@ -7,7 +7,7 @@ from sqlalchemy import text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
-from app.api.deps import get_analytics_service
+from app.api.deps import get_analytics_service, refuse_when_read_only
 from app.database import get_session
 from app.schemas.config import StatsResponse
 from app.services.analytics import AnalyticsService
@@ -28,6 +28,7 @@ async def get_stats(
 
 @router.post("/reprocess")
 async def reprocess_all_memories(
+    _read_only=Depends(refuse_when_read_only),
     _user=Depends(require_auth),
     service: AnalyticsService = Depends(get_analytics_service),
 ):
@@ -45,6 +46,7 @@ async def _sse_generator(stream):
 
 @router.post("/reprocess/stream")
 async def reprocess_all_stream(
+    _read_only=Depends(refuse_when_read_only),
     _user=Depends(require_auth),
     service: AnalyticsService = Depends(get_analytics_service),
 ):
