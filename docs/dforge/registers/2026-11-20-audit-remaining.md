@@ -27,15 +27,15 @@
 | 20 | B2-4: no door passes a declared context, so w_context_boost never fires and community_injection_enabled has no reader (owner ruling 2026-11-20: remove) | docs/dforge/plans/2026-11-20-audit-remaining.md | A45 (Task 43/45) | doing | - |
 | 21 | B2-6: chat leaves a transaction open, holding a pooled connection for the whole LLM stream | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 14 contracts | done | 05e7497 |
 | 22 | B2-7: on client disconnect the finally usage write is cancelled, so the row is lost | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 14 contracts | done | 05e7497 |
-| 23 | B2-8 and B3b-21: every project-scoped composed search embeds the query twice | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 15 contracts | doing | - |
-| 24 | B2-9: a full provisional compose pass runs on every request to feed a reranker no production caller passes | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 15 contracts | doing | - |
+| 23 | B2-8 and B3b-21: every project-scoped composed search embeds the query twice | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 15 contracts | done | 3c69d90 |
+| 24 | B2-9: a full provisional compose pass runs on every request to feed a reranker no production caller passes | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 15 contracts | done | 3c69d90 |
 | 25 | B2-11: watch_refresh, fill and inject_block are reached only by tests, so the Distribution tab's token budget, watch switch and curb steer nothing (owner ruling 2026-11-20: remove) | docs/dforge/plans/2026-11-20-audit-remaining.md | A44 (Task 44/45) | doing | - |
 | 26 | B2-12 and B3a-5: triple_embeddings.py has no production caller, yet every embedder registration creates an empty table and index (owner ruling 2026-11-20: remove and drop) | docs/dforge/plans/2026-11-20-audit-remaining.md | A46 (Task 46) | doing | - |
 | 27 | B2-13: useVectorProjection has no consumer, and the route runs eigh inline on the event loop | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 17/45 contracts | doing | - |
 | 28 | B2-14: RRF is implemented again inline twice in code_query, whose arms lack savepoints and swallow failures | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 16 contracts | doing | - |
 | 29 | B2-15: graph path ids typed as str reach CAST AS uuid; an uppercase UUID lists the seed as its own neighbour; the 20 neighbours are an arbitrary slice | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 16 contracts | doing | - |
-| 30 | B2-16: FactsChannel.search is tests-only, the row-level dispute block is superseded, and the docstring is stale | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 15 contracts | doing | - |
-| 31 | B2-17: search and search_with_trace duplicate the whole pipeline | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 15 contracts | doing | - |
+| 30 | B2-16: FactsChannel.search is tests-only, the row-level dispute block is superseded, and the docstring is stale | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 15 contracts | done | 3c69d90 |
+| 31 | B2-17: search and search_with_trace duplicate the whole pipeline | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 15 contracts | done | 3c69d90 |
 | 32 | B2-18: flag_measurements is read but nothing writes it, so every flag shows unmeasured forever | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 17/45 contracts | doing | - |
 | 33 | B2-19: chat content has no length limit, and an untyped context with a non-string mention raises mid-stream | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 14 contracts | done | 05e7497 |
 | 34 | B2-20: CLUSTER_RE is unused, and the cluster: filter can never match | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 14 contracts | done | 05e7497 |
