@@ -137,6 +137,12 @@ async def test_verify_in_flight_during_revoke_caches_nothing(mint_key, monkeypat
     assert first is not None
     assert not any(p.api_key_id == row_id for p, _e, _c in api_keys._verified.values())
 
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    async with factory() as s:
+        await api_keys.revoke_key(s, row_id)
+        await s.commit()
+    assert await _authenticate(credential) is None
+
 
 async def test_cache_key_is_a_digest(mint_key):
     _row_id, credential = await mint_key(scopes=["read"])

@@ -397,8 +397,8 @@ async def revoke_key(
 
     row.revoked_at = now or datetime.now(timezone.utc)
     await session.flush()
-    # Marked before the caller commits: a revoke that then rolls back keeps the
-    # key refused in this process until restart, which fails closed.
+    # Marked before the caller commits: a revoke that then rolls back leaves the
+    # key uncached (bcrypt-verified on every call) in this process until restart.
     forget_revoked_key(row.id)
     await record_event(
         session,
