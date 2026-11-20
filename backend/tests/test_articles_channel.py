@@ -251,7 +251,7 @@ class TestStaleness:
     async def test_a_current_article_is_not_labelled_stale(self, session):
         await _partition(session)
         fact_id = await _verified_fact(session, subject_name="redis")
-        current = ac.article_fact_set_hash([fact_id])
+        current = asyn.fact_set_hash([fact_id])
         await _article(
             session, subject_key="redis::concept", fact_set_hash=current,
             vector=[1.0, 0.0, 0.0, 0.0],
@@ -288,7 +288,7 @@ class TestStaleness:
         fact_id = await _verified_fact(session, subject_name="kafka")
         await _article(
             session, subject_key="kafka::concept",
-            fact_set_hash=ac.article_fact_set_hash([fact_id]),
+            fact_set_hash=asyn.fact_set_hash([fact_id]),
             vector=[1.0, 0.0, 0.0, 0.0],
         )
 
@@ -310,13 +310,6 @@ class TestStaleness:
             [1.0, 0.0, 0.0, 0.0], fingerprint=FINGERPRINT, project=PROJECT
         )
         assert trace.results[0]["stale"] is True
-
-    async def test_the_hash_is_the_one_synthesis_stores(self):
-        """Two spellings of "the fact set" would make every article read stale
-        forever, or none of them ever."""
-        ids = [str(uuid4()), str(uuid4())]
-
-        assert ac.article_fact_set_hash(ids) == asyn.fact_set_hash(ids)
 
 
 # ─────────────── an absent partition is not a failure ───────────────
@@ -440,7 +433,7 @@ class TestComposition:
         fact_id = await _verified_fact(session, subject_name="kafka")
         article_id = await _article(
             session, subject_key="kafka::concept",
-            fact_set_hash=ac.article_fact_set_hash([fact_id]),
+            fact_set_hash=asyn.fact_set_hash([fact_id]),
             vector=[1.0, 0.0, 0.0, 0.0],
         )
         trace = await ac.ArticlesChannel(session).search_with_trace(

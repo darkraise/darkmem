@@ -41,7 +41,6 @@ prior one included — and carries both directions of the pointer.
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 from uuid import UUID
 
@@ -50,8 +49,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.articles_channel import ArticlesChannel
 from app.services.fact_badge import row_labels
-
-logger = logging.getLogger(__name__)
 
 ARTICLE_ID_KIND = "article"
 
@@ -154,26 +151,6 @@ _CITATIONS_SQL = text(
 )
 
 
-async def _gate(session: AsyncSession):
-    """The article claim gate, from the judge's own door.
-
-    Resolved once per response rather than per row — one record read answers
-    for every row on the page. A failure to resolve it is not a licence to
-    serve: the caller gets the same fail-closed default an unwired caller gets.
-    """
-    from app.services.config import get_llm_config
-    from app.services.verification_judge import article_claim_gate
-
-    try:
-        llm_config = await get_llm_config(session)
-        return await article_claim_gate(session, llm_config)
-    except Exception:  # noqa: BLE001 - an unresolvable gate serves nothing
-        logger.warning("articles_read: article gate unresolved; serving closed")
-        from app.services.claim_gates import groundedness_gate
-
-        return groundedness_gate()
-
-
 async def _stale_flags(
     session: AsyncSession, rows: list[Any]
 ) -> dict[str, bool]:
@@ -266,7 +243,9 @@ async def list_articles(
         )
     ).mappings().all()
 
-    gate = await _gate(session)
+    from app.services.verification_judge import resolve_article_gate
+
+    gate = await resolve_article_gate(session)
     stale = await _stale_flags(session, rows)
     items = [
         {**_item(row, gate=gate, stale=stale[str(row["id"])]), "excerpt": row["excerpt"]}
@@ -295,7 +274,9 @@ async def get_article(
     if row is None:
         return None
 
-    gate = await _gate(session)
+    from app.services.verification_judge import resolve_article_gate
+
+    gate = await resolve_article_gate(session)
     stale = await _stale_flags(session, [row])
     item = {**_item(row, gate=gate, stale=stale[str(row["id"])])}
     item["content"] = row["content"]

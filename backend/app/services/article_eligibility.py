@@ -60,6 +60,7 @@ where the number lives, not permission to pick it.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from dataclasses import dataclass
 from math import isfinite, log1p
@@ -78,7 +79,9 @@ __all__ = [
     "SubjectCandidate",
     "SynthesisConfig",
     "candidate_subjects",
+    "fact_set_hash",
     "get_synthesis_config",
+    "live_fact_ids",
     "select_for_synthesis",
     "subject_soft_key",
 ]
@@ -136,6 +139,74 @@ def subject_key_parts(subject_key: str) -> tuple[str, str | None]:
     if not separator:
         return subject_key.lower(), None
     return name, entity_type
+
+
+def fact_set_hash(fact_ids: list[str]) -> str:
+    """Doc 09 §4.4's staleness basis: a digest of the **full** verified set.
+
+    Two properties, and both are the doc's.
+
+    **Uncapped.** §4.4 hashes "the subject's non-disputed
+    corroborated/confirmed facts only" — the whole set, so staleness fires
+    exactly when knowledge changed. Hashed over the top-K *input* set instead,
+    read-heat drift reorders the cap boundary and flips the hash with no
+    knowledge change at all, which is the precise failure §4.4 exists to
+    prevent ("not when raw signal arrived").
+
+    **Order-independent**, for the same reason: the set is what changed or did
+    not, and a re-ranking is not a change to it.
+    """
+    basis = "|".join(sorted(fact_ids))
+    return hashlib.sha256(basis.encode("utf-8")).hexdigest()
+
+
+# The hash's basis for any number of subjects in one statement: the writer
+# asks it for one subject, a read surface for a whole page, and one query is
+# what keeps the stored hash and every staleness label on the same set.
+_LIVE_FACT_IDS_SQL = text(
+    f"""
+    SELECT k.subject_key,
+           array_agg(CAST(t.id AS text) ORDER BY CAST(t.id AS text)) AS fact_ids
+    FROM unnest(
+             CAST(:keys AS text[]), CAST(:names AS text[]), CAST(:types AS text[])
+         ) AS k(subject_key, name_lower, entity_type)
+    JOIN knowledge_triples t ON lower(t.subject_name) = k.name_lower
+    WHERE t.project = CAST(:project AS text)
+      AND t.verification_status = ANY(CAST(:statuses AS text[]))
+      AND {SUPPORTING_BELIEF_PREDICATE}
+      AND {subject_type_predicate("k.entity_type")}
+    GROUP BY k.subject_key
+    """
+)
+
+
+async def live_fact_ids(
+    session: AsyncSession,
+    *,
+    project: str,
+    subjects: dict[str, tuple[str, str | None]],
+) -> dict[str, list[str]]:
+    """Each subject's verified, still-believed fact ids, uncapped and sorted.
+
+    ``subjects`` maps a caller's label to ``(name, entity_type)``; a subject
+    with no such fact is absent from the answer.
+    """
+    if not subjects:
+        return {}
+    keys = sorted(subjects)
+    rows = await session.execute(
+        _LIVE_FACT_IDS_SQL,
+        {
+            "project": project,
+            "keys": keys,
+            "names": [subjects[key][0].lower() for key in keys],
+            "types": [subjects[key][1] for key in keys],
+            "statuses": list(VERIFIED_STATUSES),
+        },
+    )
+    return {
+        row["subject_key"]: list(row["fact_ids"]) for row in rows.mappings().all()
+    }
 
 DEFAULT_MIN_VERIFIED_FACTS = 3
 DEFAULT_SYNTHESIS_BUDGET = 5

@@ -1962,9 +1962,11 @@ _SQL_STATEMENT = re.compile(r"\bfrom\b", re.IGNORECASE)
 #   `verified_fact_count` is a stored-vocabulary number, so the first surface
 #   that renders it owes the same `raw_statuses_for_served` inversion
 #   `pin_suggestions` does, or it becomes the oracle that gates against.
-# - `articles_channel` aggregates fact ids per subject to recompute the live
-#   `fact_set_hash` and label a returned article stale. **Ungated, and here the
-#   stored vocabulary is not merely acceptable but required**: the article's
+# - `article_eligibility` also aggregates fact ids per subject
+#   (`live_fact_ids`), the one basis of the stored `fact_set_hash` and of the
+#   articles channel's live one that labels a returned article stale.
+#   **Ungated, and here the stored vocabulary is not merely acceptable but
+#   required**: the article's
 #   own stored hash was computed from stored rungs (T3.02), so comparing it
 #   against a served-inverted set would mark every article stale the moment a
 #   gate closed — a label flip driven by the gate rather than by knowledge
@@ -1974,7 +1976,6 @@ AGGREGATES_NAMING_THE_RUNG = {
     "app/services/pin_suggestions.py",
     "app/services/review_ranking.py",
     "app/services/article_eligibility.py",
-    "app/services/articles_channel.py",
 }
 
 

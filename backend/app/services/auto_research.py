@@ -11,11 +11,10 @@ to a whitelist so a second ingestion path cannot appear here by accident.
 
 **Evidence gathering lives outside the box** (invariant 1, doc 09 §6): web
 search and fetch are the calling agent's capability, never a darkmem datastore.
-So ``ResearchGatherer`` is a port with no in-tree implementation, and that
-absence is a design position rather than an omission — a gatherer backed by a
-model alone would *invent* sources, and inventing sources is the one failure
-this loop's origin discipline exists to prevent. Whoever owns a real
-web-capable agent injects it.
+So the loop takes findings its caller already gathered and has no gatherer of
+its own, and that absence is a design position rather than an omission — a
+gatherer backed by a model alone would *invent* sources, and inventing sources
+is the one failure this loop's origin discipline exists to prevent.
 
 **The loop manufactures origins; it does not observe them, and the corpus must
 be able to tell the difference** (v0.5 spec, Half B). Two markers make that
@@ -58,7 +57,7 @@ import logging
 import re
 import unicodedata
 from dataclasses import dataclass, field
-from typing import Protocol, Sequence
+from typing import Sequence
 from urllib.parse import parse_qsl, urlsplit, unquote
 from uuid import UUID
 
@@ -197,18 +196,6 @@ class ResearchFinding:
     content: str
     source_id: str | None = None
     metadata: dict = field(default_factory=dict)
-
-
-class ResearchGatherer(Protocol):
-    """The evidence-gathering capability, which lives outside darkmem's box.
-
-    Implementations do the searching and fetching and return at most ``limit``
-    findings. Returning more is a contract violation the loop refuses rather
-    than trims.
-    """
-
-    async def gather(self, subject: str, *, limit: int) -> Sequence[ResearchFinding]:
-        ...
 
 
 def _canonical_query(query: str) -> str:
@@ -489,7 +476,7 @@ def _build_entries(
 ) -> list[MemoryCreate]:
     if len(findings) > budget.max_findings_per_run:
         raise ResearchBudgetExceeded(
-            f"gatherer returned {len(findings)} findings for subject {subject!r}, "
+            f"the run carries {len(findings)} findings for subject {subject!r}, "
             f"over the {budget.max_findings_per_run} the budget allows"
         )
     for index, finding in enumerate(findings):
@@ -528,21 +515,20 @@ async def run_research(
     *,
     subject: str,
     project: str,
-    gatherer: ResearchGatherer,
+    findings: Sequence[ResearchFinding],
     service: MemoryService | None = None,
     budget: ResearchBudget | None = None,
 ) -> ResearchRunResult:
-    """Gather evidence for ``subject`` and file it into ``project``.
+    """File the evidence a caller gathered for ``subject`` into ``project``.
 
     Owns ``session``'s transaction for the duration: capture commits, and a
     failure rolls back, so a caller must not hand this a session carrying work
     of its own — and a ``service`` passed in must be bound to that same
     session, or the rollback below reaches a transaction the write did not use.
 
-    The two stages are strictly ordered and never interleaved. Gathering
-    finishes first, so a gatherer that fails partway through has written
-    nothing; filing is then one call, so there is no window in which some
-    findings are durable and others are not.
+    Filing is one call, so there is no window in which some findings are
+    durable and others are not. More findings than the budget allows refuse
+    the whole run rather than filing a trimmed one.
     """
     budget = budget or await load_budget(session)
     if not budget.enabled:
@@ -551,7 +537,7 @@ async def run_research(
         )
 
     run_id = new_id()
-    findings = list(await gatherer.gather(subject, limit=budget.max_findings_per_run))
+    findings = list(findings)
     if not findings:
         logger.info("research run %s for %r gathered nothing", run_id, subject)
         return ResearchRunResult(

@@ -1266,8 +1266,8 @@ _JUDGE_REFERENCE_ALLOWLIST = {
     # T2.11's Tier-C contradiction scan: the first consumer, and gated by the
     # judge's own refusal rather than by this list.
     "app/services/contradiction_scan.py",
-    # T3.02's review-queue articles arm. It imports `article_claim_gate` — the
-    # judge's *qualification-record* accessor — and never the purpose, the
+    # T3.02's review-queue articles arm. It imports `resolve_article_gate` —
+    # the judge's *qualification-record* accessor — and never the purpose, the
     # probe or `judge()`. It is here rather than exempted because the reason
     # the single door exists is that two modules must not decide whether the
     # judge is qualified: the queue asks this module and serves the answer, so
@@ -1278,7 +1278,7 @@ _JUDGE_REFERENCE_ALLOWLIST = {
     # T3.06's articles read door, on exactly the same terms as the review
     # queue's arm above and for the same reason: it serves a rung, so it must
     # ask the one door whether the rung may be served. It imports
-    # `article_claim_gate` and nothing else — re-proved narrowly below beside
+    # `resolve_article_gate` and nothing else — re-proved narrowly below beside
     # the queue's.
     "app/services/articles_read.py",
     # T3.03's claim-entailment pass: the second real consumer of the judge,
@@ -1443,8 +1443,9 @@ def test_the_article_gate_reads_the_record_and_never_the_purpose(module):
 
     Joining `_JUDGE_REFERENCE_ALLOWLIST` buys a module the right to reference
     the judge; it must not buy the right to dispatch it. An articles surface
-    may read the qualification record through `article_claim_gate` and nothing
-    else — no `judge(`, no probe, no `verification` purpose string.
+    may read the qualification record through `resolve_article_gate` (the
+    judge's `article_claim_gate` at the served identity) and nothing else — no
+    `judge(`, no probe, no `verification` purpose string.
     """
     import ast as _ast
 
@@ -1459,7 +1460,7 @@ def test_the_article_gate_reads_the_record_and_never_the_purpose(module):
         ):
             imported.extend(alias.name for alias in node.names)
 
-    assert imported == ["article_claim_gate"], (
+    assert imported and set(imported) == {"resolve_article_gate"}, (
         f"{module} may read the qualification record and nothing else; "
         f"it imports {imported}"
     )

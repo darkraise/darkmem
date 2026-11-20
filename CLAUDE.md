@@ -945,9 +945,14 @@ promoted fact status reaches readers only while
 `app/services/promotion_metrics_record.json` exists with `gate_eligible`
 exactly `true`, minted only on a cleared G-C verdict (the runner never mints
 it). **G-C is cleared and the record is minted**, so promoted and born
-statuses are served. `groundedness_gate` is G-D's and **stays closed**: no
-article may be served labelled grounded. The false-promotion audit scores
-the **95% Clopper-Pearson upper bound** against the 0.01 bar; the point
+statuses are served. The article surfaces (the articles read door and the
+review queue's articles arm) gate on `verification_judge.article_claim_gate`,
+resolved through `resolve_article_gate`, which **opens on the minted
+entailment record** wherever the stored `verification` row is at the
+qualified identity, and then a promoted article status is served.
+`claim_gates.groundedness_gate()` is unconditionally closed and is only that
+resolver's fallback when the gate cannot be resolved. The false-promotion
+audit scores the **95% Clopper-Pearson upper bound** against the 0.01 bar; the point
 estimate is context only. `audit_clears` takes **counts, not a rate**, and
 `false_promotion_min_corroborations` (20) is subsumed by the bound. The
 audit has two arms, `disputed_after` (judge-free; fed only by the
@@ -1015,9 +1020,9 @@ REST (where `api` is REST's own sentinel) but fails on MCP
 (`'api' != 'codex'`). `source_agent` defaults to the raw User-Agent.
 
 **`research_run`** (F7, doc 09 §6) is MCP-only by design: it files evidence
-the **caller** gathered, because `ResearchGatherer` has no in-tree
-implementation and no REST caller can be a gatherer. There is no
-`JobRegistry` job (a cron'd pass would refetch its own sources and
+the **caller** gathered, because darkmem has no evidence gatherer of its own
+(`run_research` takes the findings) and no REST caller can be a gatherer.
+There is no `JobRegistry` job (a cron'd pass would refetch its own sources and
 manufacture corroboration). The tool takes **no `source`, `origin_key` or
 `ctx`**: every row carries `RESEARCH_SOURCE` and an `is_researched_origin`
 key, and a finding naming either field is a validation error. It refuses

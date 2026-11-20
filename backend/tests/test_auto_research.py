@@ -16,9 +16,9 @@ would rot:
   may reach this module), on the same AST scanner the dream-job family uses.
   The budget tests cover the `config` row, its defaults, its clamp against the
   capture door's own batch cap, and both refusals.
-* **A failed run leaves no partial state.** Covered on both sides of the one
-  write: a gatherer that raises, and a failure *inside* the capture call after
-  rows are enqueued and before the commit.
+* **A failed run leaves no partial state.** Covered at the one write: a
+  failure *inside* the capture call after rows are enqueued and before the
+  commit.
 
 The origin tests are the ones that matter two months from now. This loop
 manufactures origins rather than observing them, so the corpus has to be able
@@ -81,21 +81,6 @@ ALLOWED_APP_IMPORTS = {
     "app.services.research_config",
     "app.utils.ids",
 }
-
-
-class _Gatherer:
-    """A stand-in for the capability that lives outside darkmem's box."""
-
-    def __init__(self, findings, *, fail: Exception | None = None):
-        self.findings = findings
-        self.fail = fail
-        self.limits: list[int] = []
-
-    async def gather(self, subject: str, *, limit: int):
-        self.limits.append(limit)
-        if self.fail is not None:
-            raise self.fail
-        return self.findings
 
 
 class _CountingService:
@@ -222,10 +207,10 @@ async def test_a_whole_run_is_one_capture_call(session):
     window in which a failure leaves some findings durable and others not.
     """
     service = _CountingService()
-    gatherer = _Gatherer([_finding(f"finding {i}", f"https://example.test/{i}") for i in range(5)])
+    findings = [_finding(f"finding {i}", f"https://example.test/{i}") for i in range(5)]
     result = await run_research(
         session, subject="pgvector", project="research-lane",
-        gatherer=gatherer, service=service, budget=ENABLED,
+        findings=findings, service=service, budget=ENABLED,
     )
     assert len(service.calls) == 1
     assert len(service.calls[0]) == 5
@@ -235,13 +220,13 @@ async def test_a_whole_run_is_one_capture_call(session):
 @pytest.mark.asyncio
 async def test_a_run_lands_in_the_ordinary_capture_buffer(session):
     """The rows arrive as buffered captures — the 202 path every door uses."""
-    gatherer = _Gatherer([
+    findings = [
         _finding("pgvector stores fixed-dimension vectors.", "https://example.test/a"),
         _finding("HNSW is pgvector's graph index.", "https://example.test/b"),
-    ])
+    ]
     result = await run_research(
         session, subject="pgvector", project="research-lane",
-        gatherer=gatherer, budget=ENABLED,
+        findings=findings, budget=ENABLED,
     )
 
     rows = await _buffer_rows(session)
@@ -262,17 +247,6 @@ async def test_a_run_lands_in_the_ordinary_capture_buffer(session):
         assert research["run_id"] == str(result.run_id)
         assert research["subject"] == "pgvector"
         assert research["source_id"].startswith("https://example.test/")
-
-
-@pytest.mark.asyncio
-async def test_the_gatherer_is_bounded_by_the_budget(session):
-    service = _CountingService()
-    gatherer = _Gatherer([_finding("one")])
-    await run_research(
-        session, subject="s", project="p", gatherer=gatherer, service=service,
-        budget=ResearchBudget(enabled=True, max_findings_per_run=7, max_content_chars=100),
-    )
-    assert gatherer.limits == [7]
 
 
 # --------------------------------------------------------------------------
@@ -488,11 +462,11 @@ async def test_the_budget_defaults_fail_closed(session):
 
 
 @pytest.mark.asyncio
-async def test_a_disabled_install_refuses_the_run_before_gathering(session):
-    gatherer = _Gatherer([_finding("evidence")])
+async def test_a_disabled_install_refuses_the_run_before_filing(session):
     with pytest.raises(ResearchDisabled):
-        await run_research(session, subject="s", project="p", gatherer=gatherer)
-    assert gatherer.limits == [], "a disabled install still called the gatherer"
+        await run_research(
+            session, subject="s", project="p", findings=[_finding("evidence")],
+        )
     assert await _buffer_count(session) == 0
 
 
@@ -556,10 +530,10 @@ async def test_a_truthy_non_boolean_enabled_does_not_arm_the_loop(session):
 
 @pytest.mark.asyncio
 async def test_more_findings_than_the_budget_allows_refuses_the_whole_run(session):
-    gatherer = _Gatherer([_finding(f"f{i}") for i in range(4)])
+    findings = [_finding(f"f{i}") for i in range(4)]
     with pytest.raises(ResearchBudgetExceeded):
         await run_research(
-            session, subject="s", project="p", gatherer=gatherer,
+            session, subject="s", project="p", findings=findings,
             budget=ResearchBudget(enabled=True, max_findings_per_run=3, max_content_chars=100),
         )
     assert await _buffer_count(session) == 0
@@ -569,10 +543,10 @@ async def test_more_findings_than_the_budget_allows_refuses_the_whole_run(sessio
 async def test_an_over_long_finding_refuses_the_whole_run(session):
     """Refused, not truncated. A truncated filing would record a run whose
     origin story is untrue in a way nothing downstream could detect."""
-    gatherer = _Gatherer([_finding("ok"), _finding("x" * 200)])
+    findings = [_finding("ok"), _finding("x" * 200)]
     with pytest.raises(ResearchBudgetExceeded):
         await run_research(
-            session, subject="s", project="p", gatherer=gatherer,
+            session, subject="s", project="p", findings=findings,
             budget=ResearchBudget(enabled=True, max_findings_per_run=10, max_content_chars=50),
         )
     assert await _buffer_count(session) == 0
@@ -581,16 +555,6 @@ async def test_an_over_long_finding_refuses_the_whole_run(session):
 # --------------------------------------------------------------------------
 # Clause 3 — a failed run leaves no partial state
 # --------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_a_gatherer_failure_writes_nothing(session):
-    gatherer = _Gatherer([], fail=RuntimeError("fetch timed out"))
-    with pytest.raises(RuntimeError):
-        await run_research(
-            session, subject="s", project="p", gatherer=gatherer, budget=ENABLED,
-        )
-    assert await _buffer_count(session) == 0
 
 
 @pytest.mark.asyncio
@@ -609,10 +573,10 @@ async def test_a_failure_inside_the_capture_call_rolls_the_whole_run_back(
         raise RuntimeError("hint hand-off failed")
 
     monkeypatch.setattr(MemoryService, "_handoff_repo_hints", boom)
-    gatherer = _Gatherer([_finding(f"finding {i}") for i in range(3)])
+    findings = [_finding(f"finding {i}") for i in range(3)]
     with pytest.raises(RuntimeError):
         await run_research(
-            session, subject="s", project="p", gatherer=gatherer, budget=ENABLED,
+            session, subject="s", project="p", findings=findings, budget=ENABLED,
         )
     assert await _buffer_count(session) == 0
 
@@ -641,10 +605,10 @@ async def test_a_failed_journal_commit_does_not_report_a_filed_run_as_failed(
             raise RuntimeError("journal commit failed")
         await real_commit(self)
 
-    gatherer = _Gatherer([_finding("f0"), _finding("f1")])
+    findings = [_finding("f0"), _finding("f1")]
     monkeypatch.setattr(AsyncSession, "commit", commit)
     result = await run_research(
-        session, subject="s", project="p", gatherer=gatherer, budget=ENABLED,
+        session, subject="s", project="p", findings=findings, budget=ENABLED,
     )
     monkeypatch.undo()
 
@@ -661,10 +625,10 @@ async def test_one_unfileable_finding_refuses_the_whole_run(session):
     service is called at all, so a finding the door would reject takes the
     run down while it is still free to take nothing with it.
     """
-    gatherer = _Gatherer([_finding("real evidence"), _finding("")])
+    findings = [_finding("real evidence"), _finding("")]
     with pytest.raises(ValidationError):
         await run_research(
-            session, subject="s", project="p", gatherer=gatherer, budget=ENABLED,
+            session, subject="s", project="p", findings=findings, budget=ENABLED,
         )
     assert await _buffer_count(session) == 0
 
@@ -672,7 +636,7 @@ async def test_one_unfileable_finding_refuses_the_whole_run(session):
 @pytest.mark.asyncio
 async def test_a_run_that_gathers_nothing_writes_nothing(session):
     result = await run_research(
-        session, subject="s", project="p", gatherer=_Gatherer([]), budget=ENABLED,
+        session, subject="s", project="p", findings=[], budget=ENABLED,
     )
     assert (result.gathered, result.filed) == (0, 0)
     assert result.journalled is False
@@ -686,9 +650,9 @@ async def test_a_run_that_gathers_nothing_writes_nothing(session):
 
 @pytest.mark.asyncio
 async def test_every_researched_capture_carries_the_reserved_source(session):
-    gatherer = _Gatherer([_finding("a", "https://example.test/a")])
+    findings = [_finding("a", "https://example.test/a")]
     await run_research(
-        session, subject="s", project="p", gatherer=gatherer, budget=ENABLED,
+        session, subject="s", project="p", findings=findings, budget=ENABLED,
     )
     rows = await _buffer_rows(session)
     assert {row.source for row in rows} == {RESEARCH_SOURCE}
@@ -705,12 +669,12 @@ async def test_findings_without_source_identity_are_one_origin(session):
     resolve to a single `origin_key`, because minting one apiece would be
     manufactured corroboration.
     """
-    gatherer = _Gatherer([
+    findings = [
         _finding("claim", None),
         _finding("same claim", None),
-    ])
+    ]
     await run_research(
-        session, subject="s", project="p", gatherer=gatherer, budget=ENABLED,
+        session, subject="s", project="p", findings=findings, budget=ENABLED,
     )
     rows = await _buffer_rows(session)
     assert len({row.metadata_["origin_key"] for row in rows}) == 1
@@ -725,9 +689,9 @@ async def test_the_merged_origin_never_fires_a_corroboration_gate(session):
     finding of unestablished identity cannot reach the N = 2 diversity bar
     alongside one real witness.
     """
-    gatherer = _Gatherer([_finding("claim", None)])
+    findings = [_finding("claim", None)]
     await run_research(
-        session, subject="s", project="p", gatherer=gatherer, budget=ENABLED,
+        session, subject="s", project="p", findings=findings, budget=ENABLED,
     )
     rows = await _buffer_rows(session)
     assert rows[0].metadata_["origin_key"].startswith("unknown:")
@@ -772,12 +736,12 @@ async def test_the_origin_seam_is_per_finding(session, monkeypatch):
     monkeypatch.setattr(
         auto_research, "research_origin_id", lambda finding: finding.source_id,
     )
-    gatherer = _Gatherer([
+    findings = [
         _finding("claim", "https://example.test/a"),
         _finding("same claim", "https://other.test/b"),
-    ])
+    ]
     await run_research(
-        session, subject="s", project="p", gatherer=gatherer, budget=ENABLED,
+        session, subject="s", project="p", findings=findings, budget=ENABLED,
     )
     rows = await _buffer_rows(session)
     keys = {row.metadata_["origin_key"] for row in rows}
@@ -793,10 +757,10 @@ async def test_the_origin_seam_is_per_finding(session, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_a_completed_run_journals_one_row_carrying_no_content(session):
-    gatherer = _Gatherer([_finding("a secret paragraph of evidence", "https://example.test/a")])
+    findings = [_finding("a secret paragraph of evidence", "https://example.test/a")]
     result = await run_research(
         session, subject="pgvector", project="research-lane",
-        gatherer=gatherer, budget=ENABLED,
+        findings=findings, budget=ENABLED,
     )
     assert result.journalled is True
 
@@ -999,8 +963,8 @@ async def test_the_door_refuses_an_over_budget_run_rather_than_trimming(door):
 
     A door that sliced the supplied findings down to the budget would file a
     partial run and report it filed — a corpus whose origin story is untrue in
-    a way nothing downstream could detect. The gatherer adapter hands every
-    supplied finding to the loop precisely so the budget can refuse them all.
+    a way nothing downstream could detect. The door hands every supplied
+    finding to the loop precisely so the budget can refuse them all.
     """
     await _arm(door, max_findings_per_run=2)
 

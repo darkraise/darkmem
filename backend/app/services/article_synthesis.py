@@ -66,7 +66,9 @@ from app.services.llm import lease_llm
 from app.services.article_eligibility import (
     SUPPORTING_BELIEF_PREDICATE,
     VERIFIED_STATUSES,
+    fact_set_hash,
     get_synthesis_config,
+    live_fact_ids,
     select_for_synthesis,
     subject_key_parts,
     subject_type_predicate,
@@ -547,25 +549,6 @@ async def synthesise_draft(
 # ─────────────── the write and the journal (Steps 3-4) ───────────────
 
 
-def fact_set_hash(fact_ids: list[str]) -> str:
-    """Doc 09 §4.4's staleness basis: a digest of the **full** verified set.
-
-    Two properties, and both are the doc's.
-
-    **Uncapped.** §4.4 hashes "the subject's non-disputed
-    corroborated/confirmed facts only" — the whole set, so staleness fires
-    exactly when knowledge changed. Hashed over the top-K *input* set instead,
-    read-heat drift reorders the cap boundary and flips the hash with no
-    knowledge change at all, which is the precise failure §4.4 exists to
-    prevent ("not when raw signal arrived").
-
-    **Order-independent**, for the same reason: the set is what changed or did
-    not, and a re-ranking is not a change to it.
-    """
-    basis = "|".join(sorted(fact_ids))
-    return hashlib.sha256(basis.encode("utf-8")).hexdigest()
-
-
 _LIVE_ARTICLE_SQL = text(
     "SELECT id FROM knowledge_articles "
     "WHERE project = CAST(:project AS text) "
@@ -761,7 +744,6 @@ async def store_article(
 
 @dataclass
 class SynthesisOutcome:
-    """(see below) — ``unmeasured`` added by T3.03 (D14)."""
     """What one tick did, per the doc's own vocabulary.
 
     ``refused`` and ``failed`` are separate counts because they mean different
@@ -791,18 +773,6 @@ class SynthesisOutcome:
     # different ticks, for no reason an operator could see.
     visited: list[str] = field(default_factory=list)
 
-
-_ALL_VERIFIED_IDS_SQL = text(
-    f"""
-    SELECT t.id
-    FROM knowledge_triples t
-    WHERE t.project = CAST(:project AS text)
-      AND lower(t.subject_name) = CAST(:subject AS text)
-      AND t.verification_status = ANY(CAST(:statuses AS text[]))
-      AND {SUPPORTING_BELIEF_PREDICATE}
-      AND {subject_type_predicate("CAST(:entity_type AS text)")}
-    """
-)
 
 _NEXT_PROJECTS_SQL = text(
     """
@@ -834,16 +804,10 @@ async def all_verified_fact_ids(
     the hash would spend on the wire exactly what the cap exists to save. This
     reads ids alone.
     """
-    rows = await session.execute(
-        _ALL_VERIFIED_IDS_SQL,
-        {
-            "project": project,
-            "subject": subject.lower(),
-            "entity_type": entity_type,
-            "statuses": list(VERIFIED_STATUSES),
-        },
+    found = await live_fact_ids(
+        session, project=project, subjects={subject: (subject, entity_type)}
     )
-    return [str(row[0]) for row in rows.all()]
+    return found.get(subject, [])
 
 
 async def synthesise_subject(
@@ -855,8 +819,9 @@ async def synthesise_subject(
     cap: int = DEFAULT_HUB_CAP,
     budget_words: int = DEFAULT_LENGTH_BUDGET_WORDS,
     now: datetime | None = None,
-) -> str | None:
-    """Gather, draft, store. Returns the article id, or ``None`` on a refusal.
+) -> tuple[str, DraftArticle, list[GatheredFact]] | None:
+    """Gather, draft, store. Returns ``(article_id, draft, facts)``, or
+    ``None`` when the subject has no verified facts.
 
     ``subject_key`` is the **soft key** ``name::entity_type`` that
     ``select_for_synthesis`` hands back, and the two halves go to different
@@ -1385,9 +1350,9 @@ async def stale_articles(
 
     One id query per live article, deliberately: it reuses the writer's own
     basis (:func:`all_verified_fact_ids`), so the comparison cannot drift from
-    what produced the stored hash. The retrieval channel's grouped query is the
-    right shape for labelling a page of results on a request; this runs once a
-    day, per project, over the articles that exist.
+    what produced the stored hash. The retrieval channel asks the same query
+    for a whole page at once; this runs once a day, per project, over the
+    articles that exist.
     """
     rows = (
         await session.execute(_LIVE_ARTICLES_SQL, {"project": project})

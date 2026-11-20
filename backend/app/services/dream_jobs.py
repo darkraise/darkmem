@@ -296,15 +296,20 @@ def _make_recompute_runner(registry: JobRegistry, key: str) -> JobRunner:
 # make it pass — become an operator-editable field. It is neither a tunable
 # nor a thing an operator should set to an arbitrary project name.
 _TOPIC_STATE_CONFIG_KEY = "topic_detection_state"
+_ARTICLE_STATE_CONFIG_KEY = "article_synthesis_state"
 
 
-async def _load_topic_cursor(session) -> str | None:
+# A second copy of `dream_journal`'s state-row helpers, and the one the
+# invariant-15 scan forces: it derives the forbidden module set from this
+# file's own imports, so importing `dream_journal` here would forbid it to the
+# undo door and the digest, which share it with the family.
+async def _load_cursor(session, key: str) -> str | None:
     from sqlalchemy import select
 
     from app.models.config import Config
 
     row = (
-        await session.execute(select(Config).where(Config.key == _TOPIC_STATE_CONFIG_KEY))
+        await session.execute(select(Config).where(Config.key == key))
     ).scalar_one_or_none()
     if row is None or not isinstance(row.value, dict):
         return None
@@ -312,17 +317,18 @@ async def _load_topic_cursor(session) -> str | None:
     return cursor if isinstance(cursor, str) and cursor else None
 
 
-async def _save_topic_cursor(session, last_project: str | None) -> None:
+async def _save_cursor(session, key: str, last_project: str | None) -> None:
+    """Persist a project rotation cursor; ``None`` restarts the rotation."""
     from sqlalchemy import select
 
     from app.models.config import Config
 
     row = (
-        await session.execute(select(Config).where(Config.key == _TOPIC_STATE_CONFIG_KEY))
+        await session.execute(select(Config).where(Config.key == key))
     ).scalar_one_or_none()
     value = {"last_project": last_project}
     if row is None:
-        session.add(Config(key=_TOPIC_STATE_CONFIG_KEY, value=value))
+        session.add(Config(key=key, value=value))
     else:
         row.value = value
 
@@ -348,7 +354,7 @@ def _make_topic_runner(registry: JobRegistry, key: str, llm_provider) -> JobRunn
         cfg = await registry.load_config(key)
         settings_ = {**registry.get(key).default_config, **cfg.config}
         async with registry.session_factory() as session:
-            after_project = await _load_topic_cursor(session)
+            after_project = await _load_cursor(session, _TOPIC_STATE_CONFIG_KEY)
 
         knobs = {
             field.key: settings_[field.key]
@@ -379,7 +385,7 @@ def _make_topic_runner(registry: JobRegistry, key: str, llm_provider) -> JobRunn
         cursor = None if wrapped else outcome.last_project
 
         async with registry.session_factory() as session:
-            await _save_topic_cursor(session, cursor)
+            await _save_cursor(session, _TOPIC_STATE_CONFIG_KEY, cursor)
             await session.commit()
 
         logger.info(
@@ -556,7 +562,7 @@ def _make_article_runner(registry: JobRegistry, key: str, llm_provider) -> JobRu
         cfg = await registry.load_config(key)
         settings_ = {**registry.get(key).default_config, **cfg.config}
         async with registry.session_factory() as session:
-            after_project = await _load_article_cursor(session)
+            after_project = await _load_cursor(session, _ARTICLE_STATE_CONFIG_KEY)
 
         batch_size = int(settings_.get("batch_size", 10))
         outcome = await run_article_synthesis(
@@ -585,7 +591,10 @@ def _make_article_runner(registry: JobRegistry, key: str, llm_provider) -> JobRu
         # remains, so saving it unchanged parks the job on the last project.
         wrapped = len(outcome.visited) < batch_size
         async with registry.session_factory() as session:
-            await _save_article_cursor(session, None if wrapped else outcome.last_project)
+            await _save_cursor(
+                session, _ARTICLE_STATE_CONFIG_KEY,
+                None if wrapped else outcome.last_project,
+            )
             await session.commit()
         logger.info(
             "article_synthesis: projects=%d attempted=%d written=%d refused=%d; "
@@ -600,43 +609,6 @@ def _make_article_runner(registry: JobRegistry, key: str, llm_provider) -> JobRu
         return {"synthesis": asdict(outcome), "resynthesis": asdict(resynthesis)}
 
     return run
-
-
-_ARTICLE_STATE_CONFIG_KEY = "article_synthesis_state"
-
-
-async def _load_article_cursor(session) -> str | None:
-    from sqlalchemy import select
-
-    from app.models.config import Config
-
-    row = (
-        await session.execute(
-            select(Config).where(Config.key == _ARTICLE_STATE_CONFIG_KEY)
-        )
-    ).scalar_one_or_none()
-    if row is None or not isinstance(row.value, dict):
-        return None
-    cursor = row.value.get("last_project")
-    return cursor if isinstance(cursor, str) and cursor else None
-
-
-async def _save_article_cursor(session, last_project: str | None) -> None:
-    """Persist the rotation cursor; ``None`` restarts the rotation."""
-    from sqlalchemy import select
-
-    from app.models.config import Config
-
-    row = (
-        await session.execute(
-            select(Config).where(Config.key == _ARTICLE_STATE_CONFIG_KEY)
-        )
-    ).scalar_one_or_none()
-    value = {"last_project": last_project}
-    if row is None:
-        session.add(Config(key=_ARTICLE_STATE_CONFIG_KEY, value=value))
-    else:
-        row.value = value
 
 
 def register_dream_jobs(registry: JobRegistry, llm_provider=None) -> None:

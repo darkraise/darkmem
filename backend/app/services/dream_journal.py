@@ -16,13 +16,18 @@ even to read one constant. The derivation is deliberately ONE HOP (T2.67
 documents that as a contract), so a neutral module the pass imports but the
 umbrella does not stays outside the set and both ends may share it.
 
-Everything here is a constant or a pure function over a ``metadata`` mapping.
-Nothing touches a session, so the digest's advisory read and the undo door's
-authoritative one cannot answer differently.
+Everything here is a constant or a pure function over a ``metadata`` mapping,
+apart from the two state-row helpers at the bottom, so the digest's advisory
+read and the undo door's authoritative one cannot answer differently.
 """
 from __future__ import annotations
 
 import hashlib
+
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.config import Config
 
 # ── the journal stream ───────────────────────────────────────────────────
 
@@ -121,3 +126,59 @@ def subsume_tombstone_blocks(older, newer) -> bool:
         tombstone.get("content_sha") == older.content_sha
         and tombstone.get("counterpart_content_sha") == newer.content_sha
     )
+
+
+# ── the memory row every action locks ────────────────────────────────────
+
+# `tag_names` rides the read so a compare-and-swap sees the tags as of the
+# lock, not as of a render some minutes earlier. The digest reads the identical
+# projection without the lock, so its advisory answer is computed from the same
+# inputs as the undo door's.
+_MEMORY_STATE_SQL = """
+    SELECT m.status::text AS status,
+           m.content,
+           m.project,
+           m.summary,
+           m.metadata,
+           CAST(m.superseded_by AS text) AS superseded_by,
+           COALESCE(
+               ARRAY(
+                   SELECT t.name FROM memory_tags mt
+                   JOIN tags t ON t.id = mt.tag_id
+                   WHERE mt.memory_id = m.id
+                   ORDER BY t.name
+               ),
+               CAST(ARRAY[] AS text[])
+           ) AS tag_names
+    FROM memories m
+    WHERE m.id = CAST(:memory_id AS uuid)
+"""
+
+LOCK_MEMORY_STATE = text(f"{_MEMORY_STATE_SQL}    FOR UPDATE")
+READ_MEMORY_STATE = text(_MEMORY_STATE_SQL)
+
+
+# ── a pass's own bookkeeping row ─────────────────────────────────────────
+
+# Rotation state lives in its own `config` row, never in the job's config
+# dict: `JobRegistry.set_config` validates against the job's schema, so a
+# cursor there would be rejected as an unknown key or become operator-editable.
+
+
+async def read_state_row(session: AsyncSession, key: str) -> dict:
+    row = (
+        await session.execute(select(Config).where(Config.key == key))
+    ).scalar_one_or_none()
+    if row is None or not isinstance(row.value, dict):
+        return {}
+    return dict(row.value)
+
+
+async def write_state_row(session: AsyncSession, key: str, value: dict) -> None:
+    row = (
+        await session.execute(select(Config).where(Config.key == key))
+    ).scalar_one_or_none()
+    if row is None:
+        session.add(Config(key=key, value=value))
+    else:
+        row.value = value

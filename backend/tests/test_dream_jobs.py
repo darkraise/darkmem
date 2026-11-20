@@ -944,7 +944,7 @@ async def test_topic_detection_persists_its_rotation_cursor(monkeypatch):
         assert seen == [None, "project-1"], seen
 
         async with registry.session_factory() as session:
-            cursor = await dream_jobs._load_topic_cursor(session)
+            cursor = await dream_jobs._load_cursor(session, dream_jobs._TOPIC_STATE_CONFIG_KEY)
         assert cursor == "project-2"
     finally:
         await registry.stop_all()
@@ -974,7 +974,7 @@ async def test_the_cursor_advances_even_when_the_batch_partly_failed(monkeypatch
         monkeypatch.setattr(dream_jobs, "run_topic_detection", fake_run)
         await registry.get(TOPIC_DETECTION_JOB_KEY).runner()
         async with registry.session_factory() as session:
-            assert await dream_jobs._load_topic_cursor(session) == "wedged"
+            assert await dream_jobs._load_cursor(session, dream_jobs._TOPIC_STATE_CONFIG_KEY) == "wedged"
     finally:
         await registry.stop_all()
         await engine.dispose()
@@ -1015,11 +1015,11 @@ async def test_the_article_rotation_wraps_at_the_last_project(monkeypatch):
 
         await runner()
         async with registry.session_factory() as session:
-            assert await dream_jobs._load_article_cursor(session) == "omega"
+            assert await dream_jobs._load_cursor(session, dream_jobs._ARTICLE_STATE_CONFIG_KEY) == "omega"
 
         await runner()
         async with registry.session_factory() as session:
-            assert await dream_jobs._load_article_cursor(session) is None
+            assert await dream_jobs._load_cursor(session, dream_jobs._ARTICLE_STATE_CONFIG_KEY) is None
 
         await runner()
         assert seen == [None, "omega", None], seen
@@ -1068,8 +1068,8 @@ async def test_the_rotation_wraps_and_the_real_composition_succeeds():
                 ),
                 {"project": project},
             )
-            from app.services.dream_jobs import _save_topic_cursor
-            await _save_topic_cursor(session, None)
+            from app.services.dream_jobs import _TOPIC_STATE_CONFIG_KEY, _save_cursor
+            await _save_cursor(session, _TOPIC_STATE_CONFIG_KEY, None)
             await session.commit()
         await registry.set_config(TOPIC_DETECTION_JOB_KEY, {"batch_size": 1})
 
@@ -1082,7 +1082,7 @@ async def test_the_rotation_wraps_and_the_real_composition_succeeds():
         # first batch, the mirror of the defect this test exists for.
         await job.runner()
         async with registry.session_factory() as session:
-            assert await dream_jobs._load_topic_cursor(session) == project
+            assert await dream_jobs._load_cursor(session, dream_jobs._TOPIC_STATE_CONFIG_KEY) == project
 
             reasons = (await session.execute(
                 _text(
@@ -1107,7 +1107,7 @@ async def test_the_rotation_wraps_and_the_real_composition_succeeds():
         for _ in range(12):
             await job.runner()
             async with registry.session_factory() as session:
-                cursors.append(await dream_jobs._load_topic_cursor(session))
+                cursors.append(await dream_jobs._load_cursor(session, dream_jobs._TOPIC_STATE_CONFIG_KEY))
             if cursors[-1] is None:
                 break
 

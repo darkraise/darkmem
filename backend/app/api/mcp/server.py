@@ -2343,11 +2343,11 @@ async def knowledge_search(
 # `job_registry.FieldDescriptor.default` is typed `int`, so a job's
 # `config_schema` cannot carry one either.
 #
-# What picks MCP over REST is the gatherer. `ResearchGatherer` has no in-tree
-# implementation by design, because a model without web access would invent
-# its sources — so the door cannot *call* a gatherer, the caller has to *be*
-# one. On MCP the caller is the web-capable agent that did the searching a
-# moment ago: it hands over its own findings and their per-source locators,
+# What picks MCP over REST is the gatherer. darkmem has no evidence gatherer
+# by design, because a model without web access would invent its sources — so
+# the door cannot *call* a gatherer, the caller has to *be* one. On MCP the
+# caller is the web-capable agent that did the searching a moment ago: it
+# hands over its own findings and their per-source locators,
 # and the tool description delivers the origin-identity contract to the exact
 # actor that can violate it. REST's callers are the SPA and the generated
 # three-verb SDK, neither of which can gather, so the honest REST shape of
@@ -2365,31 +2365,15 @@ async def knowledge_search(
 # the owner enables the config row.
 
 
-class _SuppliedFindings:
-    """The gatherer for a caller that has already gathered.
-
-    Deliberately not a slice to ``limit``. A door that trimmed an over-budget
-    call would file part of a research run and report it as filed, which is
-    the truncated filing the loop refuses outright; handing every supplied
-    finding back is what lets the budget refuse the whole run instead.
-    """
-
-    def __init__(self, findings: list):
-        self._findings = findings
-
-    async def gather(self, subject: str, *, limit: int) -> list:
-        return self._findings
-
-
 @mcp.tool(
     description="File research evidence YOU have already gathered into this project as one research run. This tool does not search or fetch anything: evidence gathering is your capability, not darkmem's, so do the searching with your own tools and hand the findings here. Give every finding the canonical locator of the source it actually came from in 'source_id' — corroboration counts distinct sources, so two findings from one page must carry the same source_id and two independent pages must carry different ones, and a finding whose source you cannot identify must leave it null so it merges into one anonymous origin rather than counting twice. Never split one page into several source_ids or paraphrase one page into two findings with different ones: that manufactures corroboration for a claim only one source made. Every row filed here is marked research-originated and cannot be filed as ordinary capture. Disabled by default — an install whose research config row is not enabled refuses the run and files nothing."
 )
 async def research_run(
     subject: str,
     project: str,
-    # Bounded at the schema boundary, not only at runtime: an unauthenticated
-    # door should refuse an oversized list before validating and materialising
-    # it three times. The bound is the capture door's own ceiling, read off
+    # Bounded at the schema boundary, not only at runtime: the door should
+    # refuse an oversized list before validating and materialising it three
+    # times. The bound is the capture door's own ceiling, read off
     # `MemoryBatchCreate` rather than re-typed, so it cannot drift from the cap
     # the run is measured against. The configured budget is a further, lower
     # refusal — this only stops work no budget could ever authorise.
@@ -2423,21 +2407,23 @@ async def research_run(
         # refuses an empty batch rather than accepting it as a no-op.
         raise ToolInputError("findings must not be empty")
 
-    gatherer = _SuppliedFindings([
+    # Every supplied finding goes through, never a slice to the budget: an
+    # over-budget run is refused whole rather than filed in part.
+    supplied = [
         ResearchFinding(
             content=finding.content,
             source_id=finding.source_id,
             metadata=dict(finding.metadata),
         )
         for finding in parsed
-    ])
+    ]
     async with _memory_service_context() as service:
         try:
             result = await run_research(
                 service.session,
                 subject=subject,
                 project=project,
-                gatherer=gatherer,
+                findings=supplied,
                 service=service,
             )
         except ResearchDisabled as exc:

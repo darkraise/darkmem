@@ -28,7 +28,6 @@ its own beyond the semantic distance it was asked for.
 
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass, field
 
 from sqlalchemy import text
@@ -36,10 +35,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.retrieval_trace import ChannelStatus
 from app.services.article_eligibility import (
-    SUPPORTING_BELIEF_PREDICATE,
-    VERIFIED_STATUSES,
+    fact_set_hash,
+    live_fact_ids,
     subject_key_parts,
-    subject_type_predicate,
 )
 from app.services.embedder_registry import child_table
 
@@ -50,7 +48,6 @@ __all__ = [
     "SEMANTIC_ARM",
     "ArticleChannelTrace",
     "ArticlesChannel",
-    "article_fact_set_hash",
 ]
 
 LAYER = "L3"
@@ -103,16 +100,6 @@ class ArticleChannelTrace:
         }
 
 
-def article_fact_set_hash(fact_ids: list[str]) -> str:
-    """The same digest ``article_synthesis`` stores, so the two can be compared.
-
-    Imported by value rather than by reference to avoid a service-to-service
-    import cycle; pinned equal by test, because two spellings of "the fact set"
-    would make every article read stale forever or none of them ever.
-    """
-    return hashlib.sha256("|".join(sorted(fact_ids)).encode("utf-8")).hexdigest()
-
-
 _SEARCH_SQL = """
     SELECT a.id AS article_id,
            a.subject_key,
@@ -133,26 +120,6 @@ _SEARCH_SQL = """
     ORDER BY e.embedding <=> CAST(:vec AS vector)
     LIMIT :limit
 """
-
-# One statement for the whole page's staleness, not one per row: the page is
-# small but the query is not free, and N round trips to label N rows is the
-# shape that turns a cheap label into a per-result cost.
-_LIVE_HASHES_SQL = text(
-    f"""
-    SELECT k.subject_key,
-           array_agg(CAST(t.id AS text) ORDER BY CAST(t.id AS text)) AS fact_ids
-    FROM unnest(
-             CAST(:keys AS text[]), CAST(:names AS text[]), CAST(:types AS text[])
-         ) AS k(subject_key, name_lower, entity_type)
-    JOIN knowledge_triples t ON lower(t.subject_name) = k.name_lower
-    WHERE t.project = CAST(:project AS text)
-      AND t.verification_status = ANY(CAST(:statuses AS text[]))
-      AND {SUPPORTING_BELIEF_PREDICATE}
-      AND {subject_type_predicate("k.entity_type")}
-    GROUP BY k.subject_key
-    """
-)
-
 
 class ArticlesChannel:
     def __init__(self, session: AsyncSession):
@@ -262,25 +229,12 @@ class ArticlesChannel:
         ``stale_articles``: that lives in the synthesis module, and a read
         surface importing it is what invariant 15's scan fails the build on.
         """
-        if not subject_keys:
-            return {}
-        keys = sorted(set(subject_keys))
-        parts = [subject_key_parts(key) for key in keys]
-        return {
-            row["subject_key"]: article_fact_set_hash(list(row["fact_ids"]))
-            for row in (
-                await session.execute(
-                    _LIVE_HASHES_SQL,
-                    {
-                        "project": project,
-                        "keys": keys,
-                        "names": [name for name, _ in parts],
-                        "types": [entity_type for _, entity_type in parts],
-                        "statuses": list(VERIFIED_STATUSES),
-                    },
-                )
-            ).mappings().all()
-        }
+        found = await live_fact_ids(
+            session,
+            project=project,
+            subjects={key: subject_key_parts(key) for key in subject_keys},
+        )
+        return {key: fact_set_hash(ids) for key, ids in found.items()}
 
     async def _stale_subjects(
         self, rows: list[dict], *, project: str

@@ -115,13 +115,12 @@ bridge to ``memory_access_stats`` and ``subject_key`` is a text key, not an
 entity pointer. A ranking derived from nothing would be arrival order wearing
 a score, so this arm names its order explicitly instead of inheriting a
 default it cannot honour. Ranking articles needs an input doc 09's synthesis
-job would have to produce, and ``article_synthesis`` is still a placeholder.
+job would have to produce, and ``article_synthesis`` produces none.
 """
 
 from __future__ import annotations
 
 import enum
-import logging
 from typing import Any
 
 from sqlalchemy import text
@@ -141,8 +140,6 @@ from app.services.review_ranking import (
     get_ranking_config,
 )
 from app.services.verified_evidence import latest_verified_evidence
-
-logger = logging.getLogger(__name__)
 
 
 class ReviewQueueOrder(str, enum.Enum):
@@ -575,7 +572,9 @@ async def list_open_articles(
     # individually below.
     rows = result.mappings().all()
 
-    gate = await _article_gate(session)
+    from app.services.verification_judge import resolve_article_gate
+
+    gate = await resolve_article_gate(session)
     # Read here, never by importing the pass: T2.112's lesson is that a read
     # surface importing a dream-family module is what invariant 15's scan fails
     # the build on.
@@ -707,26 +706,3 @@ async def counts(session: AsyncSession, *, project: str | None = None) -> dict[s
         await session.execute(text(held_count_sql), params)
     ).scalar_one()
     return {"facts": int(facts_total), "articles": int(articles_total)}
-
-
-async def _article_gate(session):
-    """The article claim gate, from the judge's own door.
-
-    Resolved once per listing rather than per row: it is one record read and
-    every row on the page is gated against the same answer, so asking per row
-    would be the same question asked N times.
-
-    A failure to resolve it is not a licence to serve: the fail-closed default
-    is what a caller gets, which is the same thing an unwired caller gets.
-    """
-    from app.services.config import get_llm_config
-    from app.services.verification_judge import article_claim_gate
-
-    try:
-        llm_config = await get_llm_config(session)
-        return await article_claim_gate(session, llm_config)
-    except Exception:  # noqa: BLE001 - an unresolvable gate serves nothing
-        logger.warning("review_queue: article gate unresolved; serving closed")
-        from app.services.claim_gates import groundedness_gate
-
-        return groundedness_gate()

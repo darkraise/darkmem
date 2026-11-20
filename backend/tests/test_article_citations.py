@@ -260,8 +260,7 @@ class TestStalenessOnInvalidation:
         the belief half, and it is the one that just moved.
         """
         sql = [
-            str(article_synthesis._ALL_VERIFIED_IDS_SQL),
-            str(articles_channel._LIVE_HASHES_SQL),
+            str(article_eligibility._LIVE_FACT_IDS_SQL),
             str(article_synthesis._FACTS_SQL),
             str(article_eligibility._CANDIDATES_SQL),
         ]

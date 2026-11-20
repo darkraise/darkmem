@@ -179,14 +179,14 @@ class TestOneSourceIsOneOrigin:
         Three findings, one page, three different spellings — one origin on the
         rows the buffer actually holds.
         """
-        gatherer = _StubGatherer([
+        findings = [
             _finding("first pass", ONE_PAGE[0]),
             _finding("second pass, redirected", ONE_PAGE[1]),
             _finding("third pass, from a search result", ONE_PAGE[7]),
-        ])
+        ]
         result = await run_research(
             session, subject="pgvector", project=PROJECT,
-            gatherer=gatherer, budget=ENABLED,
+            findings=findings, budget=ENABLED,
         )
         assert result.filed == 3
 
@@ -206,7 +206,7 @@ class TestOneSourceIsOneOrigin:
         for _ in range(2):
             await run_research(
                 session, subject="pgvector", project=PROJECT,
-                gatherer=_StubGatherer([_finding("evidence", ONE_PAGE[0])]),
+                findings=[_finding("evidence", ONE_PAGE[0])],
                 budget=ENABLED,
             )
         keys = await _buffer_origin_keys(session)
@@ -216,13 +216,13 @@ class TestOneSourceIsOneOrigin:
     @pytest.mark.asyncio
     async def test_a_paraphrase_of_one_page_adds_no_origin(self, session):
         """Doc 09 §6's third clause: one source written up as two notes."""
-        gatherer = _StubGatherer([
+        findings = [
             _finding("pgvector stores fixed-dimension vectors.", ONE_PAGE[0]),
             _finding("Vectors in pgvector have a fixed dimension.", ONE_PAGE[0]),
-        ])
+        ]
         await run_research(
             session, subject="pgvector", project=PROJECT,
-            gatherer=gatherer, budget=ENABLED,
+            findings=findings, budget=ENABLED,
         )
         assert len(set(await _buffer_origin_keys(session))) == 1
 
@@ -687,10 +687,10 @@ class TestUnknownIdentity:
         them could supply the source-kind or time gate that drops N from 3 to
         2 alongside a single real witness.
         """
-        gatherer = _StubGatherer([_finding(f"note {i}", None) for i in range(3)])
+        findings = [_finding(f"note {i}", None) for i in range(3)]
         await run_research(
             session, subject="pgvector", project=PROJECT,
-            gatherer=gatherer, budget=ENABLED,
+            findings=findings, budget=ENABLED,
         )
         keys = set(await _buffer_origin_keys(session))
         assert keys == {f"{UNKNOWN_ORIGIN_PREFIX}:{RESEARCH_SOURCE}:{PROJECT}"}
@@ -784,12 +784,12 @@ class TestManufacturedOriginsStayVisible:
 
     @pytest.mark.asyncio
     async def test_every_row_of_a_run_carries_the_marker(self, session):
-        gatherer = _StubGatherer([
+        findings = [
             _finding("a", ONE_PAGE[0]), _finding("b", ANOTHER_PAGE), _finding("c", None),
-        ])
+        ]
         await run_research(
             session, subject="pgvector", project=PROJECT,
-            gatherer=gatherer, budget=ENABLED,
+            findings=findings, budget=ENABLED,
         )
         keys = await _buffer_origin_keys(session)
         assert len(keys) == 3
@@ -892,11 +892,3 @@ class TestCorroborationOutcome:
         assert decision.outcome == "hold"
 
 
-class _StubGatherer:
-    """The capability that lives outside darkmem's box, standing still."""
-
-    def __init__(self, findings):
-        self.findings = findings
-
-    async def gather(self, subject: str, *, limit: int):
-        return self.findings

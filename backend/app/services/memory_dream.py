@@ -66,11 +66,10 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import select, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.llm import lease_llm
-from app.models.config import Config
 from app.repositories.memory_relations import (
     DREAM_PROPERTIES_KEY,
     clear_pass_block,
@@ -88,6 +87,7 @@ from app.services.dream_journal import (
     DETECTOR,
     EVENT_TYPE,
     HYGIENE_STATE_OPEN,
+    LOCK_MEMORY_STATE,
     NEAR_DUPLICATE_PASS,
     OBJECT_TYPE,
     # Unused here, and deliberately imported anyway: the move of this
@@ -96,8 +96,10 @@ from app.services.dream_journal import (
     # is the same object. Dropping it as "unused" reds that test.
     REFINE_MARKER_PATH,  # noqa: F401
     content_sha,
+    read_state_row,
     refine_marker_of,
     subsume_tombstone_blocks,
+    write_state_row,
 )
 from app.services.embedder_registry import child_table
 from app.services.events import record_event
@@ -257,22 +259,11 @@ class _State:
 
 
 async def _load_state(session: AsyncSession) -> _State:
-    row = (
-        await session.execute(select(Config).where(Config.key == _STATE_CONFIG_KEY))
-    ).scalar_one_or_none()
-    if row is None or not isinstance(row.value, dict):
-        return _State()
-    return _State.from_dict(row.value)
+    return _State.from_dict(await read_state_row(session, _STATE_CONFIG_KEY))
 
 
 async def _save_state(session: AsyncSession, state: _State) -> None:
-    row = (
-        await session.execute(select(Config).where(Config.key == _STATE_CONFIG_KEY))
-    ).scalar_one_or_none()
-    if row is None:
-        session.add(Config(key=_STATE_CONFIG_KEY, value=state.to_dict()))
-    else:
-        row.value = state.to_dict()
+    await write_state_row(session, _STATE_CONFIG_KEY, state.to_dict())
 
 
 # ── Phase R: the fingerprint, the seed slice, the pairs ──────────────────
@@ -828,18 +819,6 @@ DREAM_SUPERSEDE_REASON = "dream_dedup"
 # value is a fixed internal constant.
 _LOCK_TIMEOUT_MS = 5000
 
-_LOCK_MEMORY = text("""
-    SELECT m.status::text AS status,
-           m.content,
-           m.project,
-           m.summary,
-           m.metadata,
-           CAST(m.superseded_by AS text) AS superseded_by
-    FROM memories m
-    WHERE m.id = CAST(:memory_id AS uuid)
-    FOR UPDATE
-""")
-
 # Every refusal is reported, never swallowed and never worked around.
 _REFUSAL_COUNTERS = {
     "already_superseded": "refused_already_superseded",
@@ -883,7 +862,7 @@ async def _set_local_lock_timeout(session: AsyncSession) -> None:
 
 
 async def _locked(session: AsyncSession, memory_id: str) -> dict | None:
-    result = await session.execute(_LOCK_MEMORY, {"memory_id": memory_id})
+    result = await session.execute(LOCK_MEMORY_STATE, {"memory_id": memory_id})
     row = result.mappings().first()
     return dict(row) if row is not None else None
 

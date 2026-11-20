@@ -297,33 +297,6 @@ _ALREADY_UNDONE = text("""
       AND payload ->> 'undoes_event_id' = ANY(CAST(:event_ids AS text[]))
 """)
 
-# `tag_names` rides the read for the same reason it rides the producer's: the
-# compare-and-swap must see the state as of the lock, not as of a render some
-# minutes earlier. The digest reads the identical projection without the lock,
-# so its advisory answer is computed from the same inputs as the door's.
-_MEMORY_STATE_SQL = """
-    SELECT m.status::text AS status,
-           m.content,
-           m.project,
-           m.summary,
-           m.metadata,
-           CAST(m.superseded_by AS text) AS superseded_by,
-           COALESCE(
-               ARRAY(
-                   SELECT t.name FROM memory_tags mt
-                   JOIN tags t ON t.id = mt.tag_id
-                   WHERE mt.memory_id = m.id
-                   ORDER BY t.name
-               ),
-               CAST(ARRAY[] AS text[])
-           ) AS tag_names
-    FROM memories m
-    WHERE m.id = CAST(:memory_id AS uuid)
-"""
-
-_LOCK_MEMORY = text(f"{_MEMORY_STATE_SQL}    FOR UPDATE")
-_READ_MEMORY = text(_MEMORY_STATE_SQL)
-
 _READ_CONTENT = text(
     "SELECT content FROM memories WHERE id = CAST(:memory_id AS uuid)"
 )
@@ -459,7 +432,9 @@ async def _read_live(
     live: dict[tuple, LiveState] = {}
     for kind, key in plan:
         if kind == "memory":
-            statement = _LOCK_MEMORY if lock else _READ_MEMORY
+            statement = (
+                journal.LOCK_MEMORY_STATE if lock else journal.READ_MEMORY_STATE
+            )
             row = (
                 await session.execute(statement, {"memory_id": key[0]})
             ).mappings().first()

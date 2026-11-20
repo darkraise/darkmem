@@ -495,9 +495,11 @@ async def article_claim_gate(
     Now minting a cleared qualification record opens it with no edit anywhere,
     exactly as minting the promotion record lights a fact's.
 
-    The entailment record is minted, so this gate can open; T3.02 still
-    writes only `candidate` articles — the only path that could raise one is
-    T3.03's coverage routing, itself behind G-E.
+    The entailment record is minted, so this gate opens wherever the stored
+    `verification` row is at the qualified identity, and every article surface
+    serves its rung through it by way of :func:`resolve_article_gate`.
+    ``groundedness_gate()`` is only that resolver's fallback when the gate
+    cannot be resolved.
     """
     from app.services.claim_gates import ClaimGate, REASON_NO_QUALIFICATION_RECORD
 
@@ -508,6 +510,26 @@ async def article_claim_gate(
         return ClaimGate(True, None)
     reason = "; ".join(state.reasons) if state.reasons else REASON_NO_QUALIFICATION_RECORD
     return ClaimGate(False, reason)
+
+
+async def resolve_article_gate(session: AsyncSession) -> "ClaimGate":
+    """The article claim gate at the served judge identity, for a read surface.
+
+    Resolved once per response rather than per row: one record read answers
+    for every row on the page. A failure to resolve it is not a licence to
+    serve, so the caller gets the same fail-closed default an unwired caller
+    gets.
+    """
+    from app.services.config import get_llm_config
+
+    try:
+        llm_config = await get_llm_config(session)
+        return await article_claim_gate(session, llm_config)
+    except Exception:  # noqa: BLE001 - an unresolvable gate serves nothing
+        logger.warning("article gate unresolved; serving closed")
+        from app.services.claim_gates import groundedness_gate
+
+        return groundedness_gate()
 
 
 # The field an entailment-role record must carry to be honoured: how many
