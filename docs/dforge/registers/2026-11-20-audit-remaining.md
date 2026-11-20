@@ -123,10 +123,10 @@
 | 116 | B6-6: the CORS fallback grants credentialed cross-origin access to localhost:3000 and :5173 | docs/dforge/plans/2026-11-20-audit-remaining.md | A8 (Task 1) | done | 1d02a7c |
 | 117 | B6-7: SSH destination user/host go unvalidated into the ssh/scp argv | docs/dforge/plans/2026-11-20-audit-remaining.md | A9 (Task 3) | done | 9124abd |
 | 118 | B6-8: every MCP request and every keyed REST call pays a fresh bcrypt | docs/dforge/plans/2026-11-20-audit-remaining.md | A11 (Task 2) | done | 6eb3cde |
-| 119 | B6-9: min_interval_seconds is persisted into the job row on first save, so raising a floor in code never takes effect | docs/dforge/plans/2026-11-20-audit-remaining.md | A30 (Task 40) | doing | - |
-| 120 | B6-10: PUT /jobs/{key} and its config twin wait on the per-job run lock | docs/dforge/plans/2026-11-20-audit-remaining.md | A30 (Task 40) | doing | - |
-| 121 | B6-12: job_runs.trigger is never written, so the UI's manual badge never renders | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 40 contracts | doing | - |
-| 122 | B6-13: three hourly cleanup jobs write a maintenance_run row into the permanent journal even when they do nothing | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 40 contracts | doing | - |
+| 119 | B6-9: min_interval_seconds is persisted into the job row on first save, so raising a floor in code never takes effect | docs/dforge/plans/2026-11-20-audit-remaining.md | A30 (Task 40) | done | f976565 |
+| 120 | B6-10: PUT /jobs/{key} and its config twin wait on the per-job run lock | docs/dforge/plans/2026-11-20-audit-remaining.md | A30 (Task 40) | done | f976565 |
+| 121 | B6-12: job_runs.trigger is never written, so the UI's manual badge never renders | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 40 contracts | done | f976565 |
+| 122 | B6-13: three hourly cleanup jobs write a maintenance_run row into the permanent journal even when they do nothing | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 40 contracts | done | f976565 |
 | 123 | B6-14: any boot exception in the LLM try leaves pipeline=None for the life of the process while /health returns 200 | docs/dforge/plans/2026-11-20-audit-remaining.md | A31 (Task 41) | doing | - |
 | 124 | B6-15: code_rename matches with an unescaped LIKE | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 27 contracts | done | cf10951 |
 | 125 | B6-16: several MCP code tools call scalar_one_or_none() on Repository.name, which is not unique | docs/dforge/plans/2026-11-20-audit-remaining.md | A35 (Task 26) | done | eddcc5e |
@@ -138,7 +138,7 @@
 | 131 | B6-22: stale statements: 48 tools, dream jobs called placeholders, the curb row's reader, and LLM_* env vars in CLAUDE.md | docs/dforge/plans/2026-11-20-audit-remaining.md | A51 (Task 69) | doing | - |
 | 132 | B6-D1: the lifespan carries boot steps for states that no longer occur | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 41 contracts | doing | - |
 | 133 | B6-D2: about 830 lines of MCP code tools run raw SQL in the transport instead of CodeQueryService | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 27 contracts | done | cf10951 |
-| 134 | B6-D4: job last_* state is rewritten into config on every tick | docs/dforge/plans/2026-11-20-audit-remaining.md | A30 (Task 40) | doing | - |
+| 134 | B6-D4: job last_* state is rewritten into config on every tick | docs/dforge/plans/2026-11-20-audit-remaining.md | A30 (Task 40) | done | f976565 |
 | 135 | B6-D5: inject_* and client_connect live under app/services but are reached at runtime only by a CLI script | docs/dforge/plans/2026-11-20-audit-remaining.md | A51 (Task 69) | doing | - |
 | 136 | B6-D6: per-socket, per-second revalidation is a heavy polling contract; close sockets directly and drop the polling | - | - | deferred | declined in the spec: CLAUDE.md records the one-second revalidation as contract; B6-21 removes its cost |
 | 137 | F1-1 (high): the Edit Repository dialog cannot save URL-cloned repositories | docs/dforge/plans/2026-11-20-audit-remaining.md | A3 (Task 49) | doing | - |
