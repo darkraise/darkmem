@@ -117,10 +117,10 @@
 | 110 | B5-15: the document list joins and groups every block of every document before LIMIT/OFFSET | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 36 contracts | doing | - |
 | 111 | B5-16: an unembeddable block stays in the first batch and costs a failed batch call plus up to 500 single-row embeds on every tick | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 33 contracts | doing | - |
 | 112 | B5-17: four copies of the same register-the-fingerprint helper | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 33 contracts | doing | - |
-| 113 | B6-2: login runs bcrypt on the event loop, and the lockout check happens before an await, so concurrent attempts exceed five guesses | docs/dforge/plans/2026-11-20-audit-remaining.md | A7 (Task 1) | doing | - |
+| 113 | B6-2: login runs bcrypt on the event loop, and the lockout check happens before an await, so concurrent attempts exceed five guesses | docs/dforge/plans/2026-11-20-audit-remaining.md | A7 (Task 1) | done | 1d02a7c |
 | 114 | B6-3: MCP memory_reason, memory_overview and document_search call the LLM or embedder on the read-only backup worker | docs/dforge/plans/2026-11-20-audit-remaining.md | A12 (Task 5) | doing | - |
 | 115 | B6-5: get_session commits after the response is sent, so routes without an explicit commit return 200 before the write is durable | docs/dforge/plans/2026-11-20-audit-remaining.md | A29 (Task 38) | doing | - |
-| 116 | B6-6: the CORS fallback grants credentialed cross-origin access to localhost:3000 and :5173 | docs/dforge/plans/2026-11-20-audit-remaining.md | A8 (Task 1) | doing | - |
+| 116 | B6-6: the CORS fallback grants credentialed cross-origin access to localhost:3000 and :5173 | docs/dforge/plans/2026-11-20-audit-remaining.md | A8 (Task 1) | done | 1d02a7c |
 | 117 | B6-7: SSH destination user/host go unvalidated into the ssh/scp argv | docs/dforge/plans/2026-11-20-audit-remaining.md | A9 (Task 3) | doing | - |
 | 118 | B6-8: every MCP request and every keyed REST call pays a fresh bcrypt | docs/dforge/plans/2026-11-20-audit-remaining.md | A11 (Task 2) | doing | - |
 | 119 | B6-9: min_interval_seconds is persisted into the job row on first save, so raising a floor in code never takes effect | docs/dforge/plans/2026-11-20-audit-remaining.md | A30 (Task 40) | doing | - |
