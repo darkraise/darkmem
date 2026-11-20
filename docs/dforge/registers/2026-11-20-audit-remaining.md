@@ -9,10 +9,10 @@
 | 2 | B1-3: Phase 5 sessions upsert shared entity and relation rows in extraction order and hold the locks until commit (deadlock class) | docs/dforge/plans/2026-11-20-audit-remaining.md | A16 (Task 7) | done | 9e0f324 |
 | 3 | B1-4: the supersession UPDATE has no status='active' predicate, so two concurrent writers re-point an already-superseded memory | docs/dforge/plans/2026-11-20-audit-remaining.md | A15 (Task 7) | done | 9e0f324 |
 | 4 | B1-5: predicates written as :mid = ANY(memory_ids) cannot use the GIN index | docs/dforge/plans/2026-11-20-audit-remaining.md | A17 (Task 7) | done | 9e0f324 |
-| 5 | B1-6: at its 10-second deadline wait_process cancels the in-flight flush, leaving the row claimed and discarding the LLM spend | docs/dforge/plans/2026-11-20-audit-remaining.md | A18 (Task 9) | doing | - |
+| 5 | B1-6: at its 10-second deadline wait_process cancels the in-flight flush, leaving the row claimed and discarding the LLM spend | docs/dforge/plans/2026-11-20-audit-remaining.md | A18 (Task 9) | done | 91d1bd5 |
 | 6 | B1-7: the reprocess and pipeline-failure retry routes are not refused in read-only mode | docs/dforge/plans/2026-11-20-audit-remaining.md | A12 (Task 5) | done | 7d6e56b |
 | 7 | B1-8: if the same-batch reconciliation raises, the backstop overwrites every already-committed status with vector and graph errors | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 8 contracts | done | af32cc0 |
-| 8 | B1-9: wait_process returns 201 with an unprocessed memory for a capture whose replay hard-failed | docs/dforge/plans/2026-11-20-audit-remaining.md | A18 (Task 9) | doing | - |
+| 8 | B1-9: wait_process returns 201 with an unprocessed memory for a capture whose replay hard-failed | docs/dforge/plans/2026-11-20-audit-remaining.md | A18 (Task 9) | done | 91d1bd5 |
 | 9 | B1-10: discarding an error buffer row leaves its already-materialized memory live with no vector or graph | docs/dforge/plans/2026-11-20-audit-remaining.md | A55 (Task 10/12) | doing | - |
 | 10 | B1-11: the retry/reprocess entry dict is built in three places, and two of them omit project | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 13 contracts | doing | - |
 | 11 | B1-12: pipeline._get_feature_flags duplicates feature_flags.get_feature_flags_dict | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 13 contracts | doing | - |
@@ -22,7 +22,7 @@
 | 15 | B1-19: a 116-name __all__ plus a star re-export exist only so tests and scripts can import private pass helpers | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 13 contracts | doing | - |
 | 16 | B1-20: EXTRACTION_SCHEMA is used by one eval script only | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 13 contracts | doing | - |
 | 17 | B1-21: _MAX_CONTENT_CHARS = 6000 is declared twice and is also reused as the reasoning context budget | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 13 contracts | doing | - |
-| 18 | B1-22: buffer_wait_timeout_seconds is a flag the API cannot set and nothing bounds | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 9 contracts | doing | - |
+| 18 | B1-22: buffer_wait_timeout_seconds is a flag the API cannot set and nothing bounds | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 9 contracts | done | 91d1bd5 |
 | 19 | B2-2: chat and knowledge_search ignore hybrid_search_enabled and reranker_enabled, and no memory row carries confidence/importance | docs/dforge/plans/2026-11-20-audit-remaining.md | A13 (Task 6) | done | d9337ef |
 | 20 | B2-4: no door passes a declared context, so w_context_boost never fires and community_injection_enabled has no reader (owner ruling 2026-11-20: remove) | docs/dforge/plans/2026-11-20-audit-remaining.md | A45 (Task 43/45) | doing | - |
 | 21 | B2-6: chat leaves a transaction open, holding a pooled connection for the whole LLM stream | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 14 contracts | doing | - |
