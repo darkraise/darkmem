@@ -119,7 +119,7 @@
 | 112 | B5-17: four copies of the same register-the-fingerprint helper | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 33 contracts | done | 6877a10 |
 | 113 | B6-2: login runs bcrypt on the event loop, and the lockout check happens before an await, so concurrent attempts exceed five guesses | docs/dforge/plans/2026-11-20-audit-remaining.md | A7 (Task 1) | done | 1d02a7c |
 | 114 | B6-3: MCP memory_reason, memory_overview and document_search call the LLM or embedder on the read-only backup worker | docs/dforge/plans/2026-11-20-audit-remaining.md | A12 (Task 5) | done | 7d6e56b |
-| 115 | B6-5: get_session commits after the response is sent, so routes without an explicit commit return 200 before the write is durable | docs/dforge/plans/2026-11-20-audit-remaining.md | A29 (Task 38) | doing | - |
+| 115 | B6-5: get_session commits after the response is sent, so routes without an explicit commit return 200 before the write is durable | docs/dforge/plans/2026-11-20-audit-remaining.md | A29 (Task 38) | done | 703d4b7 |
 | 116 | B6-6: the CORS fallback grants credentialed cross-origin access to localhost:3000 and :5173 | docs/dforge/plans/2026-11-20-audit-remaining.md | A8 (Task 1) | done | 1d02a7c |
 | 117 | B6-7: SSH destination user/host go unvalidated into the ssh/scp argv | docs/dforge/plans/2026-11-20-audit-remaining.md | A9 (Task 3) | done | 9124abd |
 | 118 | B6-8: every MCP request and every keyed REST call pays a fresh bcrypt | docs/dforge/plans/2026-11-20-audit-remaining.md | A11 (Task 2) | done | 6eb3cde |
