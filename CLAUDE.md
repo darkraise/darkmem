@@ -1124,7 +1124,8 @@ walked as before. A tree git cannot read fails the run; it never falls back
 to the walk. Files indexed before this rule leave the index on the next full
 reindex or drift scan. A file whose parse raises or times out is recorded as
 a `code_files` row with its content hash, no symbols and a NULL `language`,
-so the drift scan does not report it again until its content changes.
+so the drift scan does not report it again until its content changes; an
+index run that has other work retries it once.
 
 Incremental import resolution uses every surviving indexed repository file,
 and heritage edges resolve base classes against the stored graph as well as

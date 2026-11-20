@@ -789,8 +789,23 @@ class CodePipeline:
             self._stats["files_deleted"] += len(self._deleted_files)
 
         await self._fold_index_debt(new_sha)
+        await self._fold_unparsed_files()
 
         self._phase_done("01_file_discovery", t0)
+
+    async def _fold_unparsed_files(self) -> None:
+        """Retry every file whose last parse failed, once per run that
+        already has work: a timeout may have been passing, and nothing else
+        re-queues a file whose content did not change."""
+        if not (self._changed_files or self._deleted_files):
+            return
+        unparsed = (await self.session.execute(
+            select(CodeFile.file_path).where(
+                CodeFile.repo_id == self._repo.id, CodeFile.language.is_(None),
+            ).order_by(CodeFile.file_path)
+        )).scalars().all()
+        present = set(self._changed_files) | set(self._deleted_files)
+        self._changed_files.extend(fp for fp in unparsed if fp not in present)
 
     def _completion_payload(self) -> dict:
         """The ``repo.indexing_completed`` payload, shared by both exits.
@@ -1120,16 +1135,16 @@ class CodePipeline:
                 class_file_index.setdefault(name, fp)
 
         tracked = sorted(self._parsed.keys() | self._parse_failures.keys())
-        stored_hashes: dict[str, tuple[UUID, str | None]] = {}
+        stored_hashes: dict[str, tuple[UUID, str | None, str | None]] = {}
         if tracked:
-            for file_id, fp, content_hash in (await self.session.execute(
+            for file_id, fp, content_hash, language in (await self.session.execute(
                 text("""
-                    SELECT id, file_path, content_hash FROM code_files
+                    SELECT id, file_path, content_hash, language FROM code_files
                     WHERE repo_id = :repo_id AND file_path = ANY(CAST(:files AS text[]))
                 """),
                 {"repo_id": repo.id, "files": tracked},
             )).all():
-                stored_hashes[fp] = (file_id, content_hash)
+                stored_hashes[fp] = (file_id, content_hash, language)
 
         rewrites: list[str] = []
         snapshots: dict[str, dict] = {}
@@ -1139,6 +1154,7 @@ class CodePipeline:
             if (
                 stored
                 and stored[1] == parsed["content_hash"]
+                and stored[2] is not None
                 and not self._force_full
             ):
                 self._all_file_paths.append(fp)
@@ -1241,17 +1257,23 @@ class CodePipeline:
         from app.services.import_resolvers import resolve_import
         from app.services.suffix_index import SuffixIndex
 
-        self._repository_file_paths = list((await self.session.execute(
-            select(CodeFile.file_path).where(CodeFile.repo_id == self._repo.id)
+        indexed_rows = (await self.session.execute(
+            select(CodeFile.file_path, CodeFile.language)
+            .where(CodeFile.repo_id == self._repo.id)
             .order_by(CodeFile.file_path)
-        )).scalars().all())
+        )).all()
+        self._repository_file_paths = [fp for fp, _language in indexed_rows]
+        # A file whose parse failed carries no binding metadata; phase 02
+        # already retried it this run, so parsing it again here only repeats
+        # the failure.
+        unparsed = {fp for fp, language in indexed_rows if language is None}
         metadata_rows = (await self.session.execute(text(
             "SELECT key, properties->'binding_metadata' AS metadata "
             "FROM code_graph_nodes WHERE repo_id = :repo_id AND kind = 'file'"
         ), {"repo_id": self._repo.id})).all()
         metadata_by_file = dict(metadata_rows)
         for file_path in self._repository_file_paths:
-            if file_path in self._parsed:
+            if file_path in self._parsed or file_path in unparsed:
                 continue
             metadata = metadata_by_file.get(file_path)
             if metadata is not None and metadata.get("version") == 2:

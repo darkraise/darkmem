@@ -345,3 +345,81 @@ async def test_code_deriver_skips_a_repository_whose_head_did_not_move(
     await session.flush()
     await runner()
     assert derived.count(repo.id) == 2
+
+
+async def _indexed_with_a_failing_file(session, root: Path, monkeypatch, failing: set[str]):
+    real_parse = code_pipeline.parse_file
+    parsed: list[str] = []
+
+    def _parse(rel_path, content):
+        parsed.append(rel_path)
+        if rel_path in failing:
+            raise RuntimeError("parser blew up")
+        return real_parse(rel_path, content)
+
+    monkeypatch.setattr(code_pipeline, "parse_file", _parse)
+    _write(root, {
+        "good.py": "def good():\n    return 1\n",
+        "bad.py": "def bad():\n    return 2\n",
+    })
+    _git(root, "init", "-q")
+    _git(root, "add", ".")
+    _git(root, "commit", "-qm", "init")
+    repo = await _local_repo(session, root)
+    await session.commit()
+    await CodePipeline(
+        session=session, llm=None, vector_repo=None, repo_manager=RepoManager(session),
+    ).run(repo.id)
+    return repo, parsed
+
+
+async def _next_commit_run(session, root: Path, repo: Repository, n: int) -> None:
+    _write(root, {"good.py": f"def good():\n    return {n}\n"})
+    _git(root, "commit", "-qam", f"change {n}")
+    await CodePipeline(
+        session=session, llm=None, vector_repo=None, repo_manager=RepoManager(session),
+    ).run(repo.id)
+
+
+async def test_an_unparseable_file_is_parsed_once_per_run(session, tmp_path, monkeypatch):
+    failing = {"bad.py"}
+    repo, parsed = await _indexed_with_a_failing_file(session, tmp_path, monkeypatch, failing)
+    parsed.clear()
+    in_phase_04: list[str] = []
+    real_phase_04 = CodePipeline.phase_04_import_resolution
+
+    async def _phase_04(self):
+        before = len(parsed)
+        await real_phase_04(self)
+        in_phase_04.extend(parsed[before:])
+
+    monkeypatch.setattr(CodePipeline, "phase_04_import_resolution", _phase_04)
+
+    await _next_commit_run(session, tmp_path, repo, 3)
+
+    assert parsed.count("bad.py") == 1
+    assert "bad.py" not in in_phase_04
+    language = (await session.execute(
+        text("SELECT language FROM code_files WHERE repo_id = :r AND file_path = 'bad.py'"),
+        {"r": repo.id},
+    )).scalar_one()
+    assert language is None
+
+
+async def test_a_file_that_parses_on_retry_gains_its_symbols(session, tmp_path, monkeypatch):
+    failing = {"bad.py"}
+    repo, _parsed = await _indexed_with_a_failing_file(session, tmp_path, monkeypatch, failing)
+    failing.clear()
+
+    await _next_commit_run(session, tmp_path, repo, 3)
+
+    row = (await session.execute(
+        text("""
+            SELECT f.language,
+                   (SELECT count(*) FROM code_symbols s WHERE s.file_id = f.id) AS symbols
+            FROM code_files f WHERE f.repo_id = :r AND f.file_path = 'bad.py'
+        """),
+        {"r": repo.id},
+    )).one()
+    assert row.language == "python"
+    assert row.symbols == 1

@@ -30,8 +30,8 @@ reads the code graph an index run wrote, and `last_indexed_commit` already
 says when that graph moved. Each successful derivation stamps the commit it
 read into the `config` row `CODE_DERIVER_STATE_KEY` (repository id to
 commit), in the same transaction as its write, and a tick skips every
-repository whose `last_indexed_commit` equals its stamp, the way
-`citation_reverify` scopes by `reverified_at_sha`. A failed derivation
+repository whose `last_indexed_commit` equals its stamp, the way the
+citation re-verification job scopes by `reverified_at_sha`. A failed derivation
 stamps nothing, so the next tick retries it. A drift-forced index of
 uncommitted changes leaves `last_indexed_commit` where it was, so its
 import changes reach the derivation at the next commit.
