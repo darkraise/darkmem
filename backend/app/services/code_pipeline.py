@@ -2014,17 +2014,9 @@ class CodePipeline:
 
         # Register every distinct fingerprint observed before writing rows.
         if embed_fingerprint:
-            from app.services.embedder_registry import (  # noqa: PLC0415
-                EmbedderInfo, embedder_registry, parse_fingerprint,
-            )
+            from app.services.embedder_registry import ensure_registered  # noqa: PLC0415
             for fp_value in set(embed_fingerprint.values()):
-                if embedder_registry.is_known(fp_value):
-                    continue
-                model_id, dims = parse_fingerprint(fp_value)
-                await embedder_registry.register(
-                    self.session,
-                    EmbedderInfo(fingerprint=fp_value, model_id=model_id, dims=dims, source="llm"),
-                )
+                await ensure_registered(self.session, fp_value)
 
         chunk_count = 0
         for fp, pr in file_items:

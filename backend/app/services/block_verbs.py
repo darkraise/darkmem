@@ -7,13 +7,15 @@ there is no diffing and no matching heuristic anywhere in this module.
 Every verb runs the same pass: lock the document, load its tree, apply one
 mutation in memory, serialise, write the placement and the document row in a
 SAVEPOINT, journal, commit, then embed only the block that changed -- for a
-document. A page edit embeds nothing: it drops the changed block's vectors and
-the hourly sweep refills them. The
+document. An edit to a block's text or type drops its vectors inside the
+SAVEPOINT; a page then embeds nothing and the hourly sweep refills it, and a
+document's embed failing after the commit leaves the gap to that sweep. The
 serialiser is the only thing that knows where each block landed, so
 ``char_span`` is recomputed on every mutation rather than drifting.
 """
 from __future__ import annotations
 
+import logging
 from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
@@ -21,7 +23,7 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.block_embeddings import PAGE_PARENT_TABLE, PARENT_TABLE, embed_blocks
@@ -49,6 +51,8 @@ from app.services.page_attachments import (
 )
 from app.taxonomy import normalize_block_type, normalize_page_block_type
 from app.utils.ids import new_id
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "BLOCKS_EDITED_EVENT",
@@ -154,9 +158,7 @@ class BlockOwner:
     normalize_type: Callable[[str | None], str]
     validate: Callable[[TreeBlock, str | None], TreeBlock]
     check_nesting: Callable[[TreeBlock | None, TreeBlock], None]
-    # False means the sweep is this owner's only embedder, so an edit that
-    # changes what the embedder reads must delete the stale vector: the sweep
-    # fills only blocks that have none.
+    # False means the sweep is this owner's only embedder.
     embed_inline: bool
 
 
@@ -519,9 +521,7 @@ async def _mutate(session, llm, *, document_id, apply, touched_embed, verb,
                     "parent": None if target.parent_id is None else str(target.parent_id),
                 })
                 previous = before[target.id]
-                if not owner.embed_inline and (
-                    previous.text != target.text or previous.type != target.type
-                ):
+                if previous.text != target.text or previous.type != target.type:
                     await _drop_vectors(session, owner, block_ids[0])
 
             placed = {p.block_id: p for p in result.placed}
@@ -574,10 +574,21 @@ async def _mutate(session, llm, *, document_id, apply, touched_embed, verb,
 
     written = 0
     if owner.embed_inline and touched_embed is not None:
-        embed = await embed_blocks(session, llm, block_ids=[touched_embed],
-                                   parent=owner.embed_parent)
-        written = embed.written if embed else 0
-        await session.commit()
+        # The write has committed; a failed embed leaves the block without a
+        # vector, which the hourly sweep fills, never a 500 for a landed edit.
+        try:
+            embed = await embed_blocks(session, llm, block_ids=[touched_embed],
+                                       parent=owner.embed_parent)
+            await session.commit()
+        except Exception as exc:  # noqa: BLE001
+            if isinstance(exc, SQLAlchemyError):
+                await session.rollback()
+            logger.warning(
+                "block %s %s; its embed failed and the sweep will retry it",
+                touched_embed, verb, exc_info=True,
+            )
+        else:
+            written = embed.written if embed else 0
 
     return BlockWriteResult(
         document_id=document_id if owner.kind == "document" else None,

@@ -631,23 +631,10 @@ async def write_article_embedding(
     """
     if llm is None:
         return None
-    from app.services.embedder_registry import (
-        EmbedderInfo,
-        embedder_registry,
-        parse_fingerprint,
-    )
+    from app.services.embedder_registry import ensure_registered
 
     vector, fingerprint = await llm.embed(text_body)
-    if not embedder_registry.is_known(fingerprint):
-        model_id, dims = parse_fingerprint(fingerprint)
-        await embedder_registry.register(
-            session,
-            # `source='llm'` is CHECK-constrained on `embedders`; the column
-            # records how the vectors are produced, not which feature asked.
-            EmbedderInfo(
-                fingerprint=fingerprint, model_id=model_id, dims=dims, source="llm"
-            ),
-        )
+    await ensure_registered(session, fingerprint)
     await session.execute(
         text(
             f"INSERT INTO {child_table(ARTICLE_EMBEDDINGS_PARENT, fingerprint)} "

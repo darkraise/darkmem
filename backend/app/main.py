@@ -82,7 +82,7 @@ async def lifespan(app: FastAPI):
         from app.services.config import get_llm_config
         from app.services.usage_recorder import UsageRecorder
         from app.services.embedder_registry import (
-            EmbedderInfo, embedder_registry, parse_fingerprint,
+            embedder_registry, ensure_registered,
         )
         async with async_session_factory() as session:
             llm_config = await get_llm_config(session)
@@ -159,15 +159,8 @@ async def lifespan(app: FastAPI):
                 )
             else:
                 try:
-                    llm_model_id, llm_dims = parse_fingerprint(llm_fp)
                     async with async_session_factory() as session:
-                        await embedder_registry.register(
-                            session,
-                            EmbedderInfo(
-                                fingerprint=llm_fp, model_id=llm_model_id,
-                                dims=llm_dims, source="llm",
-                            ),
-                        )
+                        await ensure_registered(session, llm_fp)
                 except Exception:
                     logger.exception("Failed to register LLM embedder %s at boot", llm_fp)
 

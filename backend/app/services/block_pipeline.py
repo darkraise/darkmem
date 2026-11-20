@@ -206,6 +206,7 @@ async def ingest_document(
     source: str | None = None,
     expected_hash: str | None = None,
     force_reparse: bool = False,
+    carry_fingerprint: str | None = None,
 ) -> DocumentIngest:
     """File one source through the block pipeline. Does not commit.
 
@@ -232,6 +233,7 @@ async def ingest_document(
         source=source,
         expected_hash=expected_hash,
         force_reparse=force_reparse,
+        carry_fingerprint=carry_fingerprint,
     )
 
 

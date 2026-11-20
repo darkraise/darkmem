@@ -18,12 +18,7 @@ from dataclasses import dataclass
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.embedder_registry import (
-    EmbedderInfo,
-    child_table,
-    embedder_registry,
-    parse_fingerprint,
-)
+from app.services.embedder_registry import child_table, ensure_registered
 
 __all__ = ["EMBED_CHARS", "MISSING_SQL", "PARENT_TABLE", "WriteResult", "embed_entries"]
 
@@ -63,16 +58,6 @@ class WriteResult:
     written: int
 
 
-async def _ensure_partition(session: AsyncSession, fingerprint: str) -> None:
-    if embedder_registry.is_known(fingerprint):
-        return
-    model_id, dims = parse_fingerprint(fingerprint)
-    await embedder_registry.register(
-        session,
-        EmbedderInfo(fingerprint=fingerprint, model_id=model_id, dims=dims, source="llm"),
-    )
-
-
 async def embed_entries(
     session: AsyncSession,
     llm,
@@ -106,7 +91,7 @@ async def embed_entries(
             "they may not belong to"
         )
 
-    await _ensure_partition(session, fingerprint)
+    await ensure_registered(session, fingerprint)
     table = child_table(PARENT_TABLE, fingerprint)
     for row, vector in zip(rows, vectors):
         await session.execute(

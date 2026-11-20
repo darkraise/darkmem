@@ -8,7 +8,7 @@ the shape ``relation_embeddings.embed_relations`` and
 target-new families — a batch embed call, a register-before-insert partition
 guarantee, and an upsert keyed on ``(block_id, fingerprint)``.
 
-**Register-before-insert is not advisory.** ``ensure_partition`` runs before
+**Register-before-insert is not advisory.** ``ensure_registered`` runs before
 the first statement that names the child table; skip it and the insert fails
 outright with an undefined-relation error rather than silently landing
 somewhere else, because the table does not exist until the registry creates
@@ -25,8 +25,8 @@ through one of them, never through an inline f-string of the parent name.
 the two own separate partition families: the document family carries one HNSW
 index per child that every document ANN read filters the owner *after*, so a
 growing notes corpus sharing it would starve document search of candidates.
-``embed_blocks`` and ``ensure_partition`` therefore take the family to write
-as ``parent``, defaulting to the document one. The read side
+``embed_blocks`` therefore takes the family to write as ``parent``,
+defaulting to the document one. The read side
 (``search_blocks``, ``block_vectors``) is document-only and takes no
 ``parent``: both join ``documents``, and page retrieval has no door yet.
 
@@ -47,7 +47,7 @@ to be the right shape) is downstream work, not this task's.
 **This may commit the caller's transaction**, for the same reason
 ``triple_embeddings.embed_facts`` and ``relation_embeddings.embed_relations``
 both record: first contact with an unknown fingerprint runs the child-table
-DDL through ``embedder_registry.register``, which commits on this session so
+DDL through ``embedder_registry.ensure_registered``, which commits on this session so
 the partition's inline ``REFERENCES blocks`` FK can take a lock that would
 otherwise conflict with row locks the caller already holds on its own
 uncommitted block inserts. A caller that needs the surrounding work to stay
@@ -63,7 +63,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.vector import SEMANTIC_FETCH_MULTIPLIER, PostgresVectorRepository
-from app.services.embedder_registry import child_table
+from app.services.embedder_registry import child_table, ensure_registered
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +72,9 @@ PAGE_PARENT_TABLE = "page_embeddings"
 
 DEFAULT_EMBED_CHUNK = 32
 DEFAULT_EMBED_CONCURRENCY = 2
+# Rows per vector INSERT; the arrays are bound as two parameters, so this
+# bounds one statement's payload rather than its parameter count.
+INSERT_CHUNK = 500
 
 
 @dataclass(frozen=True)
@@ -135,33 +138,81 @@ async def embed_blocks(
             "they may not belong to"
         )
 
-    await ensure_partition(session, fingerprint, parent=parent)
+    await ensure_registered(session, fingerprint)
     await _lock_owners(session, rows)
     current = {
         row["block_id"]: row["text"]
         for row in (await session.execute(text(_BLOCK_TEXTS), {"ids": ids})).mappings()
     }
-    table = child_table(parent, fingerprint)
-    written = 0
-    for row, vector in zip(rows, vectors):
-        if row["block_id"] not in current or current[row["block_id"]] != row["text"]:
-            continue
+    fresh = [
+        (row["block_id"], str(list(vector)))
+        for row, vector in zip(rows, vectors)
+        if current.get(row["block_id"]) == row["text"]
+    ]
+    await write_vectors(session, child_table(parent, fingerprint), fingerprint, fresh)
+    return WriteResult(fingerprint=fingerprint, written=len(fresh))
+
+
+async def write_vectors(
+    session: AsyncSession, table: str, fingerprint: str,
+    pairs: Sequence[tuple[str, str]],
+) -> None:
+    """Upsert ``(block_id, vector text)`` pairs into ``table``, a few
+    statements per call however many blocks a document holds."""
+    for start in range(0, len(pairs), INSERT_CHUNK):
+        chunk = pairs[start:start + INSERT_CHUNK]
         await session.execute(
             text(f"""
                 INSERT INTO {table} (block_id, fingerprint, embedding)
-                VALUES (CAST(:bid AS uuid), CAST(:fp AS text), CAST(:embedding AS vector))
+                SELECT t.block_id, CAST(:fp AS text), CAST(t.embedding AS vector)
+                FROM unnest(CAST(:ids AS uuid[]), CAST(:embeddings AS text[]))
+                     AS t(block_id, embedding)
                 ON CONFLICT (block_id, fingerprint) DO UPDATE
                     SET embedding = EXCLUDED.embedding
             """),
             {
-                "bid": row["block_id"],
                 "fp": fingerprint,
-                "embedding": str(list(vector)),
+                "ids": [block_id for block_id, _ in chunk],
+                "embeddings": [embedding for _, embedding in chunk],
             },
         )
-        written += 1
 
-    return WriteResult(fingerprint=fingerprint, written=written)
+
+async def document_vectors_by_text(
+    session: AsyncSession, document_id, fingerprint: str,
+) -> dict[str, str]:
+    """A document's vectors under ``fingerprint`` keyed by block text, read
+    before a re-file strips the blocks they cascade with. Empty when the
+    partition does not exist yet."""
+    table = child_table(PARENT_TABLE, fingerprint)
+    exists = (await session.execute(
+        text("SELECT to_regclass(:name)"), {"name": table},
+    )).scalar_one_or_none()
+    if exists is None:
+        return {}
+    rows = await session.execute(text(f"""
+        SELECT DISTINCT ON (b.text) b.text, e.embedding::text AS embedding
+        FROM blocks b JOIN {table} e ON e.block_id = b.id
+        WHERE b.document_id = CAST(:id AS uuid)
+        ORDER BY b.text, b.id
+    """), {"id": str(document_id)})
+    return {row.text: row.embedding for row in rows}
+
+
+async def carry_document_vectors(
+    session: AsyncSession, document_id, fingerprint: str, by_text: dict[str, str],
+) -> int:
+    """Give each newly filed block whose text is unchanged the vector that
+    text already had, so a re-file embeds only the blocks that changed."""
+    if not by_text:
+        return 0
+    rows = await session.execute(text(
+        "SELECT CAST(id AS text) AS id, text FROM blocks "
+        "WHERE document_id = CAST(:id AS uuid) ORDER BY id"
+    ), {"id": str(document_id)})
+    pairs = [(row.id, by_text[row.text]) for row in rows if row.text in by_text]
+    await write_vectors(session, child_table(PARENT_TABLE, fingerprint), fingerprint, pairs)
+    return len(pairs)
 
 
 async def _lock_owners(session: AsyncSession, rows) -> None:
@@ -186,44 +237,6 @@ async def _lock_owners(session: AsyncSession, rows) -> None:
             await session.execute(text(
                 f"SELECT id FROM {table} WHERE id = ANY(CAST(:ids AS uuid[])) ORDER BY id FOR UPDATE"
             ), {"ids": owner_ids})
-
-
-async def ensure_partition(
-    session: AsyncSession, fingerprint: str, *, parent: str = PARENT_TABLE,
-) -> None:
-    """Idempotently register `fingerprint` and create its per-family child
-    tables if they do not already exist.
-
-    ``parent`` names the family the caller is about to write. Registration
-    creates every family's children in one pass, so it selects nothing here;
-    it is taken so a call site reads as scoped to the family it writes,
-    matching `embed_blocks`.
-
-    **Exported (no leading underscore) because it is part of this family's
-    contract, not merely an internal implementation detail** (T-doc-door.6
-    review, round 4, 2026-08-24): both `document_door.put_document`'s
-    ``unchanged`` repair and `block_embedding_refresh`'s sweep must guarantee
-    a fingerprint resolved from a real embed call — which, unlike a
-    data-probe result, is not guaranteed to already be registered — has a
-    child table before they run their own anti-join read against it,
-    *before* either of them reaches `embed_blocks` (which already calls this
-    internally on the write side). Two family-external callers needing the
-    same guarantee is what promotes a helper from private to part of the
-    contract; sibling families' own `_ensure_partition` copies
-    (`relation_embeddings.py`, `triple_embeddings.py`, `entity_anchoring.py`)
-    stay private and un-shared, because nothing outside each of those
-    modules needs to reach for one directly.
-    """
-    from app.services.embedder_registry import (  # noqa: PLC0415
-        EmbedderInfo, embedder_registry, parse_fingerprint,
-    )
-    if embedder_registry.is_known(fingerprint):
-        return
-    model_id, dims = parse_fingerprint(fingerprint)
-    await embedder_registry.register(
-        session,
-        EmbedderInfo(fingerprint=fingerprint, model_id=model_id, dims=dims, source="llm"),
-    )
 
 
 async def resolve_read_fingerprint(session: AsyncSession, llm) -> str:
@@ -264,6 +277,19 @@ async def resolve_read_fingerprint(session: AsyncSession, llm) -> str:
 _ACTIVE_FINGERPRINT_PROBE_TEXT = "darkmem block_embeddings active-fingerprint probe"
 
 
+async def active_fingerprint(llm) -> str:
+    """The fingerprint the active embedder writes under. A configured width
+    names it exactly, since an embed returning any other width is refused, so
+    no call is spent; without one, a real embed call names it."""
+    try:
+        configured = llm.llm_fingerprint()
+    except (AttributeError, KeyError):
+        configured = None
+    if configured and not configured.endswith("|0"):
+        return configured
+    return await resolve_active_fingerprint(llm)
+
+
 async def resolve_active_fingerprint(llm) -> str:
     """The fingerprint the active embedder produces right now, established
     the same way retrieval does (`BlockQueryService.search`, which embeds the
@@ -297,13 +323,9 @@ async def resolve_active_fingerprint(llm) -> str:
     review, round 4, 2026-08-24). For `block_embedding_refresh`'s sweep that
     unit is one scheduled run (at most once every
     ``BLOCK_EMBEDDING_MIN_INTERVAL_SECONDS``), so the cost is bounded and
-    small. For `document_door.put_document`'s ``unchanged`` repair the unit
-    is one write-door request: every re-push of an already-fully-embedded,
-    unchanged document now spends one embed call it would not have spent
-    before this function existed, where it previously spent a cheap database
-    probe instead. A caller re-pushing N unchanged documents in a pass pays N
-    embed calls, unconditionally. That is the traded-away cost this function
-    is named for taking on, not a side effect to discover later.
+    small. `document_door.put_document` reaches it through
+    :func:`active_fingerprint`, so it pays one call per filing only when the
+    embedding purpose configures no width.
     """
     _, fingerprint = await llm.embed(_ACTIVE_FINGERPRINT_PROBE_TEXT)
     return fingerprint

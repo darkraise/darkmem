@@ -16,7 +16,7 @@ from typing import Awaitable, Callable
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.embedder_registry import child_table
+from app.services.embedder_registry import child_table, ensure_registered
 from app.utils.scope_labels import SCOPE_LABEL_COLUMNS, scope_labels
 
 logger = logging.getLogger(__name__)
@@ -397,7 +397,7 @@ class ReembedService:
         embed_chunk_size = flags.get("embedding_batch_size", 20)
         embed_concurrency = flags.get("embedding_concurrency", 1)
 
-        await self._ensure_partition(llm, current_fingerprint)
+        await ensure_registered(self.session, current_fingerprint)
         mem_table = child_table("memory_embeddings", current_fingerprint)
 
         total = (await self.session.execute(
@@ -519,7 +519,7 @@ class ReembedService:
         embed_chunk_size = flags.get("embedding_batch_size", 20)
         embed_concurrency = flags.get("embedding_concurrency", 1)
 
-        await self._ensure_partition(llm, current_fingerprint)
+        await ensure_registered(self.session, current_fingerprint)
         ent_table = child_table("entity_embeddings", current_fingerprint)
         cache_table = child_table("entity_embedding_cache", current_fingerprint)
 
@@ -626,18 +626,6 @@ class ReembedService:
         return {"processed": processed, "errors": errors, "last_error": last_error}
 
     # -- helpers ------------------------------------------------------------
-
-    async def _ensure_partition(self, llm, fingerprint: str) -> None:
-        from app.services.embedder_registry import (  # noqa: PLC0415
-            EmbedderInfo, embedder_registry, parse_fingerprint,
-        )
-        if embedder_registry.is_known(fingerprint):
-            return
-        model_id, dims = parse_fingerprint(fingerprint)
-        await embedder_registry.register(
-            self.session,
-            EmbedderInfo(fingerprint=fingerprint, model_id=model_id, dims=dims, source="llm"),
-        )
 
     @staticmethod
     def _assert_fingerprint(produced: str, expected: str) -> None:

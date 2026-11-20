@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from app.config import settings
 from app.services import block_embeddings, block_verbs, page_attachment_cleanup, page_import
 from app.services.block_embedding_refresh import refresh_block_embeddings
+from app.services.embedder_registry import ensure_registered
 from app.services.block_verbs import DOCUMENT_OWNER, PAGE_OWNER, NewBlock
 from app.services.document_ingest import BlockDraft, file_document
 from app.services.page_attachments import attachment_path, attachment_url, store_upload
@@ -71,7 +72,7 @@ async def _seed_owner(factory, project, owner):
         block_id = str((await session.execute(text(
             f"SELECT id FROM blocks WHERE {owner.kind}_id = CAST(:owner AS uuid)"
         ), {"owner": owner_id})).scalar_one())
-        await block_embeddings.ensure_partition(session, FINGERPRINT)
+        await ensure_registered(session, FINGERPRINT)
         await session.commit()
     return owner_id, block_id
 

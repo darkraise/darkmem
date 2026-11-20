@@ -314,21 +314,12 @@ class ProcessingPipeline:
     async def _register_fingerprint(self, fingerprint: str) -> None:
         """Idempotently register the fingerprint so its partition exists."""
         from app.services.embedder_registry import (  # noqa: PLC0415
-            EmbedderInfo, embedder_registry, parse_fingerprint,
+            embedder_registry, ensure_registered,
         )
         if embedder_registry.is_known(fingerprint):
             return
-        model_id, dims = parse_fingerprint(fingerprint)
         async with self.session_factory() as session:
-            await embedder_registry.register(
-                session,
-                EmbedderInfo(
-                    fingerprint=fingerprint,
-                    model_id=model_id,
-                    dims=dims,
-                    source="llm",
-                ),
-            )
+            await ensure_registered(session, fingerprint)
 
     def _record_entity_cache_stats(self, stats: EntityCacheStats) -> None:
         self.last_entity_cache_stats = stats

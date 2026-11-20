@@ -338,6 +338,20 @@ class EmbedderRegistry:
 embedder_registry = EmbedderRegistry()
 
 
+async def ensure_registered(session: AsyncSession, fingerprint: str) -> None:
+    """Register an embed call's fingerprint so every family's child tables
+    exist before a write names one. First contact runs DDL that commits on
+    ``session``, so a caller whose own writes must stay rollback-able
+    registers before them or after its commit."""
+    if embedder_registry.is_known(fingerprint):
+        return
+    model_id, dims = parse_fingerprint(fingerprint)
+    await embedder_registry.register(
+        session,
+        EmbedderInfo(fingerprint=fingerprint, model_id=model_id, dims=dims, source="llm"),
+    )
+
+
 async def _ensure_children(session: AsyncSession, fingerprint: str, dims: int) -> None:
     """Run every template's idempotent DDL for one fingerprint.
 

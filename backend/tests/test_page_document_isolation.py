@@ -20,12 +20,12 @@ from fastapi import HTTPException
 from sqlalchemy import text
 
 from app.services.block_embedding_refresh import refresh_block_embeddings
-from app.services.block_embeddings import PAGE_PARENT_TABLE, PARENT_TABLE, ensure_partition
+from app.services.block_embeddings import PAGE_PARENT_TABLE, PARENT_TABLE
 from app.services.block_verbs import insert_block, update_block
 from app.services.document_connections import connections_for_document
 from app.services.document_door import document_outline, put_document, search_sections
 from app.services.document_parsers import parse_markdown
-from app.services.embedder_registry import child_table
+from app.services.embedder_registry import child_table, ensure_registered
 from app.services.page_door import create_page
 from app.taxonomy import BLOCK_TYPES, PAGE_BLOCK_TYPES
 
@@ -122,7 +122,7 @@ async def _leak_page_block_into_document_partition(session, llm, block_id: str) 
     row itself is untouched: `blocks.document_id` for `block_id` stays NULL,
     which is exactly the NULL semantics each channel is pinned on."""
     fingerprint = llm.llm_fingerprint()
-    await ensure_partition(session, fingerprint, parent=PARENT_TABLE)
+    await ensure_registered(session, fingerprint)
     table = child_table(PARENT_TABLE, fingerprint)
     await session.execute(
         text(

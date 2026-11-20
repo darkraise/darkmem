@@ -55,7 +55,7 @@ from dataclasses import dataclass
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.embedder_registry import child_table
+from app.services.embedder_registry import child_table, ensure_registered
 from app.services.job_registry import FieldDescriptor
 
 logger = logging.getLogger(__name__)
@@ -116,19 +116,6 @@ def _missing_sql(table: str) -> str:
         ORDER BY e.created_at, e.id
         LIMIT CAST(:limit AS int)
     """
-
-
-async def _ensure_partition(session: AsyncSession, fingerprint: str) -> None:
-    from app.services.embedder_registry import (  # noqa: PLC0415
-        EmbedderInfo, embedder_registry, parse_fingerprint,
-    )
-    if embedder_registry.is_known(fingerprint):
-        return
-    model_id, dims = parse_fingerprint(fingerprint)
-    await embedder_registry.register(
-        session,
-        EmbedderInfo(fingerprint=fingerprint, model_id=model_id, dims=dims, source="llm"),
-    )
 
 
 async def resolve_read_fingerprint(session: AsyncSession, llm) -> str:
@@ -198,7 +185,7 @@ async def embed_repo_entities(
             "they may not belong to"
         )
 
-    await _ensure_partition(session, fingerprint)
+    await ensure_registered(session, fingerprint)
     table = child_table(PARENT_TABLE, fingerprint)
     cache = child_table(CACHE_PARENT_TABLE, fingerprint)
     for row, vector in zip(rows, vectors):
@@ -266,7 +253,7 @@ async def refresh_repo_entity_anchors(
             "repo_entity_anchoring: no fingerprint holds data yet; nothing to anchor"
         )
         return outcome
-    await _ensure_partition(session, fingerprint)
+    await ensure_registered(session, fingerprint)
     outcome.fingerprint = fingerprint
 
     missing = await repo_entities_missing_vectors(session, fingerprint, missing_batch)

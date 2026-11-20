@@ -9,7 +9,7 @@ that reaches a live table after registration proves the writer works when the
 guard is intact; it says nothing about whether the guard is *load-bearing*.
 `test_skipping_registration_breaks_the_insert` disables the register call and
 shows the insert fails outright — the table genuinely does not exist until
-`ensure_partition` creates it — then restores the guard and shows the same
+`ensure_registered` creates it — then restores the guard and shows the same
 call succeeds.
 
 **Naming goes through `child_table(PARENT_TABLE, fingerprint)` only.**
@@ -216,10 +216,10 @@ async def test_skipping_registration_breaks_the_insert(session, monkeypatch):
     _doc_id, block_ids = await _file_blocks(session, "guarded content")
     embedder = FakeEmbedder()
 
-    async def _noop_ensure_partition(_session, _fingerprint, *, parent=None):
+    async def _noop_ensure_registered(_session, _fingerprint):
         return None
 
-    monkeypatch.setattr(be_mod, "ensure_partition", _noop_ensure_partition)
+    monkeypatch.setattr(be_mod, "ensure_registered", _noop_ensure_registered)
 
     # The failing insert runs inside its own SAVEPOINT so recovering from it
     # rolls back that savepoint and nothing else. A bare `session.rollback()`
@@ -285,14 +285,30 @@ def test_every_child_table_is_reached_through_the_parent_constant():
 def test_the_module_never_calls_llm_fingerprint():
     """The `|0` sentinel trap (T2.68, T2.83): under a phantom fingerprint a
     bulk read would find nothing under a table nothing real ever wrote to,
-    with no error and no symptom."""
+    with no error and no symptom. Only `active_fingerprint` reads it, and it
+    takes a real embed's fingerprint whenever no width is configured."""
     tree = ast.parse(MODULE_PATH.read_text())
-    calls = [
-        node for node in ast.walk(tree)
+    callers = {
+        func.name
+        for func in ast.walk(tree)
+        if isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef))
+        for node in ast.walk(func)
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
         and node.func.attr == "llm_fingerprint"
-    ]
-    assert not calls
+    }
+    assert callers <= {"active_fingerprint"}
+
+
+@pytest.mark.asyncio
+async def test_an_unset_width_resolves_through_a_real_embed():
+    class _Unsized:
+        def llm_fingerprint(self):
+            return "unsized-model|0"
+
+        async def embed(self, value):
+            return [0.0] * 5, "unsized-model|5"
+
+    assert await be_mod.active_fingerprint(_Unsized()) == "unsized-model|5"
 
 
 def test_the_template_is_no_longer_inert():

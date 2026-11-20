@@ -266,7 +266,7 @@ async def test_unchanged_repair_raises_when_the_embed_lands_under_a_different_fi
         return lie_fingerprint
 
     monkeypatch.setattr(
-        "app.services.document_door.resolve_active_fingerprint", _resolve_to_a_lie,
+        "app.services.document_door.active_fingerprint", _resolve_to_a_lie,
     )
 
     try:

@@ -707,7 +707,9 @@ undercounts.
   members; they are artefact refreshes (doc 07 §4, doc 10 §6, doc 16 §3).
   `block_embedding_refresh` also sweeps page blocks on its own `page_batch`
   budget and work-log entries on `worklog_batch`, the only writer of
-  `worklog_embeddings`.
+  `worklog_embeddings`. A batch the embedder rejects is bisected; each row
+  it rejects alone is recorded in the `config` row
+  `block_embedding_refresh_state` and skipped for the next six runs.
 
 **Scheduling.** Five-field cron is minute-precision; six-field puts seconds
 first (Quartz-style). `min_interval_seconds` is a per-job floor the loop
@@ -1248,9 +1250,11 @@ the same `document_door` functions; targets resolve through
   (`DocumentHashConflict`); `PutResult` echoes `content_hash`. A
   byte-identical re-push with a stale hash is a conflict, not `unchanged`.
   Omitting it keeps last-writer-wins; batch ingest takes none.
-- **An edit re-embeds the whole document**: re-filing strips every block and
-  inserts a fresh set with new ids. There is no diffing and no per-block
-  identity across a re-file.
+- **An edit re-embeds only changed text**: re-filing strips every block and
+  inserts a fresh set with new ids, and inside the filing each new block whose
+  text an old block had takes that text's vector under the active
+  fingerprint, so only blocks with new text are embedded. There is no
+  per-block identity across a re-file.
 - **Revisions** (`document_revisions`): `document_ingest`'s filing body, inside
   its SAVEPOINT, writes the filed `content` as a post-image row stamped with
   `actor`, `api_key_id` and `clock_timestamp()` whenever the filing changes
@@ -1269,8 +1273,9 @@ the same `document_door` functions; targets resolve through
 - **`unchanged` still embeds**: a byte-identical re-push returns `UNCHANGED`
   without touching blocks, then embeds any of the document's blocks missing
   a vector under the **active** fingerprint, so re-pushing repairs a failed
-  embed. Resolving the active fingerprint costs one real embed call per
-  `unchanged` re-push, unconditionally.
+  embed. The active fingerprint is the configured one when the embedding
+  purpose sets `dimensions` (no embed call); without it, every filing
+  spends one real embed call to learn it.
 - **`embed_inline=False`** (the board's register edit) returns once the
   filing commits and embeds nothing, so `llm` may be None and an embedder
   outage cannot fail the write; `block_embedding_refresh` embeds the new
@@ -1308,10 +1313,11 @@ the row lock with `DocumentMirrorOwned`, a `DocumentNotConvertible` (REST
 through content puts, and the SPA offers no edit mode for them. Each runs one pass:
 lock, load tree, mutate in memory, serialise, write placement and owner row
 in a SAVEPOINT, journal `blocks_edited` (no block text), commit, then embed
-**only** the touched block for a document. A page write embeds nothing
-(`BlockOwner.embed_inline`): an update that changes a block's text or type
-deletes its `page_embeddings__<slug>` rows for every fingerprint with
-`retired_at IS NULL` in the same savepoint, so the hourly sweep refills it.
+**only** the touched block for a document. An update that changes a block's
+text or type deletes its vectors for every fingerprint with `retired_at IS
+NULL` in the same savepoint; a document's embed failing after the commit
+answers `blocks_embedded: 0` and leaves the gap to the hourly sweep. A page
+write embeds nothing (`BlockOwner.embed_inline`), so the sweep refills it.
 `char_span` is recomputed in the same pass. All four verbs take an optional
 `expected_hash`, compared **after** the row lock; a stale hash answers 409 /
 `hash_conflict` and writes nothing (on `DELETE .../blocks/{block_id}` it

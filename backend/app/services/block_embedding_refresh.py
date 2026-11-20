@@ -79,12 +79,15 @@ neither of this family's two known callers is that shape today.
 fetch below is ``ORDER BY b.id``, so a failing batch is the *same* failing
 batch on every subsequent tick; a run that simply raised would be loud in
 ``job_runs.last_error`` and would still never sweep anything. So a failed
-batch is retried block-at-a-time (:func:`_embed_isolating`) and the poison
-row settles alone, which is the shape ``memory_buffer``'s flush already uses
-for the same reason.
+batch is bisected (:func:`_embed_bisecting`) until each rejected row stands
+alone, and the rejected ids are kept in the ``config`` row
+``block_embedding_refresh_state`` and left out of the next
+``POISON_SKIP_TICKS`` runs, so a backlog behind one bad block costs a few
+calls once rather than a failed batch on every tick.
 """
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -94,10 +97,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.block_embeddings import (
-    PAGE_PARENT_TABLE, PARENT_TABLE, ensure_partition, embed_blocks,
-    resolve_active_fingerprint,
+    PAGE_PARENT_TABLE, PARENT_TABLE, embed_blocks, resolve_active_fingerprint,
 )
-from app.services.embedder_registry import child_table
+from app.services.embedder_registry import child_table, ensure_registered
 from app.services.job_registry import FieldDescriptor
 from app.services.worklog_embeddings import (
     MISSING_SQL as WORKLOG_MISSING_SQL,
@@ -125,6 +127,8 @@ BLOCK_EMBEDDING_MAX_RUN_SECONDS = 900
 DEFAULT_BATCH = 500
 DEFAULT_PAGE_BATCH = 500
 DEFAULT_WORKLOG_BATCH = 500
+STATE_KEY = "block_embedding_refresh_state"
+POISON_SKIP_TICKS = 6
 
 BLOCK_EMBEDDING_CONFIG_SCHEMA: list[FieldDescriptor] = [
     FieldDescriptor(
@@ -222,9 +226,9 @@ _WORKLOG_ARM = _Arm(
 class RefreshOutcome:
     embedded: int
     fingerprint: str | None
-    # Rows this run tried individually and could not embed. Non-zero only
-    # on the isolation path below; they stay in the backlog and are retried
-    # next tick, so a run that reports any is never `converged`.
+    # Rows the bisection isolated and could not embed. They stay in the
+    # backlog, skipped for `POISON_SKIP_TICKS` runs, so a run that reports
+    # any is never `converged`.
     failed: int
     # Whether this run's own fetch came back under the batch limit — i.e.
     # this run saw the entire backlog and cleared it, rather than merely
@@ -237,69 +241,84 @@ class RefreshOutcome:
     converged: bool
 
 
-# How many individual embeds may fail, with none yet succeeding, before the
-# isolation pass gives up and re-raises. An embedder that is simply down fails
-# every block, and walking a full batch of them would spend `batch` calls
-# against a dead endpoint every tick; a poison block is one row among many, so
-# a few successes anywhere in the pass prove the embedder is up and the walk
-# runs to the end.
+# How many split attempts may fail, with none yet succeeding, before the
+# bisection gives up and re-raises. An embedder that is down fails every half;
+# one poison row leaves the other half of the first split embeddable, so a
+# success arrives first.
 _OUTAGE_PROBE = 3
 
 
-async def _embed_isolating(
+async def _embed_bisecting(
     session: AsyncSession, llm, row_ids: list[str], batch_error: Exception,
     *, arm: _Arm,
 ) -> tuple[int, str | None, list[str]]:
-    """Re-embed `row_ids` one at a time after the batch call failed.
+    """Split `row_ids` in halves after the batch call failed, until each
+    rejected row stands alone.
 
-    Each arm's writer sends its whole work set through one chunked embed, so
-    a single row the embedder rejects fails every row in the chunk. Every
-    arm's fetch is ordered by id and therefore deterministic, which turns
-    that into the failure this exists to stop: the same first batch fails on
-    every tick and nothing behind it is ever swept — a backlog starved by one
-    row, loud in `job_runs.last_error` but never draining. Isolating settles
-    the poison row alone, the same shape `memory_buffer`'s flush uses for the
-    same reason.
-
+    Halves are tried a level at a time, so one poison row among n costs about
+    2·log2(n) calls and an outage costs `_OUTAGE_PROBE` calls past the batch.
     Each attempt runs in its own SAVEPOINT, so a row that fails mid-insert
-    rolls back only itself: a failed statement aborts the transaction for
-    everything after it, and the successes must not go down with it. A bare
-    ``session.rollback()`` would work on a session this job owns outright but
-    would discard whatever the caller had already written, which is a wider
-    promise than this retry needs to make.
+    rolls back only its own half.
 
-    Re-raises `batch_error` — never a per-row one — when nothing could be
+    Re-raises `batch_error` — never a per-half one — when nothing could be
     embedded at all, so the run's `last_error` names the failure an operator
     would recognise rather than an artefact of the retry.
     """
     embedded = 0
     fingerprint: str | None = None
-    failed: list[str] = []
+    rejected: list[str] = []
+    level = [row_ids]
+    failures = 0
 
-    for row_id in row_ids:
-        try:
-            async with session.begin_nested():
-                result = await arm.embed(session, llm, [row_id])
-        except Exception:
-            failed.append(row_id)
-            if embedded == 0 and len(failed) >= _OUTAGE_PROBE:
-                raise batch_error from None
-            continue
-        if result is not None:
-            embedded += result.written
-            fingerprint = result.fingerprint
+    while level:
+        failing: list[list[str]] = []
+        for current in level:
+            if len(current) == 1:
+                rejected.append(current[0])
+                continue
+            middle = len(current) // 2
+            for half in (current[:middle], current[middle:]):
+                try:
+                    async with session.begin_nested():
+                        result = await arm.embed(session, llm, half)
+                except Exception:
+                    failures += 1
+                    if embedded == 0 and failures >= _OUTAGE_PROBE:
+                        raise batch_error from None
+                    failing.append(half)
+                    continue
+                if result is not None:
+                    embedded += result.written
+                    fingerprint = result.fingerprint
+        level = failing
 
-    if embedded == 0 and failed:
+    if embedded == 0 and rejected:
         raise batch_error from None
 
-    if failed:
+    if rejected:
         logger.warning(
             "block_embedding_refresh: %d of %d %s row(s) could not be embedded "
-            "individually and stay in the backlog; the rest of the batch was "
-            "written. Ids: %s",
-            len(failed), len(row_ids), arm.parent, ", ".join(failed),
+            "and are skipped for %d runs; the rest of the batch was written. "
+            "Ids: %s",
+            len(rejected), len(row_ids), arm.parent, POISON_SKIP_TICKS,
+            ", ".join(rejected),
         )
-    return embedded, fingerprint, failed
+    return embedded, fingerprint, rejected
+
+
+async def _load_state(session: AsyncSession) -> tuple[int, dict[str, int]]:
+    value = (await session.execute(
+        text("SELECT value FROM config WHERE key = :key"), {"key": STATE_KEY},
+    )).scalar_one_or_none() or {}
+    return int(value.get("tick", 0)), dict(value.get("skip", {}))
+
+
+async def _save_state(session: AsyncSession, tick: int, skip: dict[str, int]) -> None:
+    await session.execute(text("""
+        INSERT INTO config (key, value) VALUES (:key, CAST(:value AS jsonb))
+        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+    """), {"key": STATE_KEY, "value": json.dumps({"tick": tick, "skip": skip})})
+    await session.commit()
 
 
 async def refresh_block_embeddings(
@@ -329,6 +348,9 @@ async def refresh_block_embeddings(
         )
 
     fingerprint = await resolve_active_fingerprint(llm)
+    last_tick, recorded = await _load_state(session)
+    tick = last_tick + 1
+    skip = {row_id: until for row_id, until in recorded.items() if until >= tick}
 
     embedded = 0
     failed = 0
@@ -336,9 +358,12 @@ async def refresh_block_embeddings(
     for arm, arm_batch in (
         (_DOCUMENT_ARM, batch), (_PAGE_ARM, page_batch), (_WORKLOG_ARM, worklog_batch),
     ):
-        outcome = await _refresh_arm(
-            session, llm, fingerprint, arm=arm, batch=arm_batch,
+        outcome, rejected = await _refresh_arm(
+            session, llm, fingerprint, arm=arm, batch=arm_batch, skip=skip,
         )
+        for row_id in rejected:
+            skip[row_id] = tick + POISON_SKIP_TICKS
+        await _save_state(session, tick, skip)
         embedded += outcome.embedded
         failed += outcome.failed
         converged = converged and outcome.converged
@@ -353,7 +378,8 @@ async def refresh_block_embeddings(
 
 async def _refresh_arm(
     session: AsyncSession, llm, fingerprint: str, *, arm: _Arm, batch: int,
-) -> RefreshOutcome:
+    skip: dict[str, int],
+) -> tuple[RefreshOutcome, list[str]]:
     """Embed up to `batch` of `arm`'s rows lacking a vector under `fingerprint`.
 
     The fingerprint is the caller's, resolved from one real embed call
@@ -362,10 +388,11 @@ async def _refresh_arm(
     the module docstring for why a data probe cannot do this job correctly,
     on any family.
 
-    A batch the embedder rejects is retried one block at a time
-    (:func:`_embed_isolating`) rather than failing the run: without that, one
-    unembeddable block starves every block behind it forever, because the
-    fetch order is deterministic and the same batch comes back every tick.
+    A batch the embedder rejects is bisected (:func:`_embed_bisecting`)
+    rather than failing the run: without that, one unembeddable block starves
+    every block behind it forever, because the fetch order is deterministic
+    and the same batch comes back every tick. Ids in `skip` are left out of
+    the work set; the rejected ids are returned for the caller to record.
 
     Raises ``RuntimeError`` when the fingerprint `embed_blocks` actually
     writes the batch under disagrees with the one the probe call resolved.
@@ -378,29 +405,32 @@ async def _refresh_arm(
     if batch <= 0:
         return RefreshOutcome(
             embedded=0, fingerprint=fingerprint, failed=0, converged=True,
-        )
+        ), []
 
-    await ensure_partition(session, fingerprint, parent=arm.parent)
+    await ensure_registered(session, fingerprint)
     table = child_table(arm.parent, fingerprint)
-    row_ids = list((await session.execute(
+    limit = batch + len(skip)
+    fetched = list((await session.execute(
         text(arm.missing_sql.format(table=table, owner=arm.owner_column)),
-        {"fp": fingerprint, "limit": batch},
+        {"fp": fingerprint, "limit": limit},
     )).scalars().all())
-    converged = len(row_ids) < batch
+    row_ids = [row_id for row_id in fetched if row_id not in skip][:batch]
+    # A skipped row is still missing, so a backlog holding one is not cleared.
+    converged = len(fetched) < limit and len(row_ids) == len(fetched)
     if not row_ids:
         return RefreshOutcome(
-            embedded=0, fingerprint=fingerprint, failed=0, converged=True,
-        )
+            embedded=0, fingerprint=fingerprint, failed=0, converged=converged,
+        ), []
 
     failed: list[str] = []
     # The SAVEPOINT is what makes the retry below possible: a batch that fails
-    # inside its inserts leaves the transaction aborted, and the isolation
-    # pass could not run a single statement in it.
+    # inside its inserts leaves the transaction aborted, and the bisection
+    # could not run a single statement in it.
     try:
         async with session.begin_nested():
             result = await arm.embed(session, llm, row_ids)
     except Exception as batch_error:  # noqa: BLE001 - re-raised unless isolable
-        embedded, written_fingerprint, failed = await _embed_isolating(
+        embedded, written_fingerprint, failed = await _embed_bisecting(
             session, llm, row_ids, batch_error, arm=arm,
         )
         await session.commit()
@@ -409,7 +439,7 @@ async def _refresh_arm(
         if result is None:
             return RefreshOutcome(
                 embedded=0, fingerprint=fingerprint, failed=0, converged=converged,
-            )
+            ), []
         embedded, written_fingerprint = result.written, result.fingerprint
 
     # None only where every isolated id named a block that vanished mid-run,
@@ -439,4 +469,4 @@ async def _refresh_arm(
         # left any behind has not seen the backlog cleared however short its
         # own fetch came back.
         converged=converged and not failed,
-    )
+    ), failed

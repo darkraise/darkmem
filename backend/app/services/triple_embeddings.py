@@ -79,7 +79,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.knowledge_triples import LIVE_PREDICATE, OPEN_BELIEF_PREDICATE
 from app.repositories.vector import PostgresVectorRepository
-from app.services.embedder_registry import child_table
+from app.services.embedder_registry import child_table, ensure_registered
 from app.services.relations import names_distinct
 
 logger = logging.getLogger(__name__)
@@ -201,7 +201,7 @@ async def embed_facts(
             f"{len(rows)} facts; refusing to write vectors under ids they may not belong to"
         )
 
-    await _ensure_partition(session, fingerprint)
+    await ensure_registered(session, fingerprint)
     table = child_table(PARENT_TABLE, fingerprint)
     for row, vector in zip(rows, vectors):
         await session.execute(
@@ -215,19 +215,6 @@ async def embed_facts(
         )
 
     return WriteResult(fingerprint=fingerprint, written=len(rows))
-
-
-async def _ensure_partition(session: AsyncSession, fingerprint: str) -> None:
-    from app.services.embedder_registry import (  # noqa: PLC0415
-        EmbedderInfo, embedder_registry, parse_fingerprint,
-    )
-    if embedder_registry.is_known(fingerprint):
-        return
-    model_id, dims = parse_fingerprint(fingerprint)
-    await embedder_registry.register(
-        session,
-        EmbedderInfo(fingerprint=fingerprint, model_id=model_id, dims=dims, source="llm"),
-    )
 
 
 async def resolve_read_fingerprint(session: AsyncSession, llm) -> str:

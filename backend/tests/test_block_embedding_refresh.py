@@ -309,10 +309,12 @@ async def test_one_unembeddable_block_does_not_starve_the_ones_behind_it(session
 
 @pytest.mark.asyncio
 async def test_a_backlog_of_nothing_but_poison_fails_the_run(session):
-    """The residue is loud, not silent. Once the isolable blocks are gone the
-    backlog is the poison row alone, nothing can be embedded, and the run
-    raises so the failure reaches `job_runs.last_error` rather than reporting
-    a converged sweep over a block it never wrote."""
+    """The residue is skipped, then loud. The rejected row sits out
+    `POISON_SKIP_TICKS` runs, each reporting an unconverged sweep without
+    sending it; the run after that finds the poison row alone, embeds nothing,
+    and raises so the failure reaches `job_runs.last_error`."""
+    from app.services.block_embedding_refresh import POISON_SKIP_TICKS
+
     await _unembedded_document(session, StubEmbedder(), "docs/poison-only.md")
 
     poison = (await session.execute(
@@ -322,6 +324,12 @@ async def test_a_backlog_of_nothing_but_poison_fails_the_run(session):
 
     first = await refresh_block_embeddings(session, llm, batch=100)
     assert first.failed == 1
+
+    sent_before = len(llm.batches)
+    for _ in range(POISON_SKIP_TICKS):
+        skipped = await refresh_block_embeddings(session, llm, batch=100)
+        assert skipped.embedded == 0 and not skipped.converged
+    assert len(llm.batches) == sent_before
 
     with pytest.raises(RuntimeError, match="embedder rejected this input"):
         await refresh_block_embeddings(session, llm, batch=100)

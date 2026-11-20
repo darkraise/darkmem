@@ -75,6 +75,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories import documents as documents_repo
+from app.services.block_embeddings import carry_document_vectors, document_vectors_by_text
 from app.services.events import record_event
 from app.taxonomy import normalize_block_type
 from app.utils.ids import new_id
@@ -215,6 +216,7 @@ async def file_document(
     source: str | None = None,
     expected_hash: str | None = None,
     force_reparse: bool = False,
+    carry_fingerprint: str | None = None,
 ) -> DocumentIngest:
     """File `content` as a document and replace its blocks, atomically.
     Does not commit.
@@ -223,6 +225,9 @@ async def file_document(
     database error — after the SAVEPOINT has already rolled the whole filing
     back, so a caller that catches sees the document exactly as it was, keeps
     its prior `content_hash`, and gets a session it can keep using.
+
+    With `carry_fingerprint`, each new block whose text an old block had keeps
+    that text's vector under that fingerprint across the strip.
     """
     async with session.begin_nested():
         return await _file_document_without_savepoint(
@@ -240,6 +245,7 @@ async def file_document(
             source=source,
             expected_hash=expected_hash,
             force_reparse=force_reparse,
+            carry_fingerprint=carry_fingerprint,
         )
 
 
@@ -259,6 +265,7 @@ async def _file_document_without_savepoint(
     source: str | None = None,
     expected_hash: str | None = None,
     force_reparse: bool = False,
+    carry_fingerprint: str | None = None,
 ) -> DocumentIngest:
     """`file_document`'s body with the atomic replace taken away.
 
@@ -365,9 +372,15 @@ async def _file_document_without_savepoint(
                 current_hash=None if current is None else current.content_hash,
             )
 
+    previous_vectors = (
+        await document_vectors_by_text(session, resolved_id, carry_fingerprint)
+        if carry_fingerprint is not None else {}
+    )
     stripped = await documents_repo.strip_blocks(session, resolved_id)
     rows = _resolve_tree(parse())
     await documents_repo.insert_blocks(session, resolved_id, rows)
+    if previous_vectors:
+        await carry_document_vectors(session, resolved_id, carry_fingerprint, previous_vectors)
 
     # A post-image: the content this filing wrote, written only when the
     # filing changed the row's hash. A forced reparse of identical bytes

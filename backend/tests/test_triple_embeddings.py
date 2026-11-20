@@ -587,9 +587,7 @@ IMPORT_SURFACE = {
     "app.repositories.knowledge_triples.OPEN_BELIEF_PREDICATE",
     "app.repositories.vector.PostgresVectorRepository",
     "app.services.embedder_registry.child_table",
-    "app.services.embedder_registry.EmbedderInfo",
-    "app.services.embedder_registry.embedder_registry",
-    "app.services.embedder_registry.parse_fingerprint",
+    "app.services.embedder_registry.ensure_registered",
     "app.services.relations.names_distinct",
 }
 

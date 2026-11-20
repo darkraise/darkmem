@@ -1,8 +1,8 @@
 """The document door's write half (spec 2026-08-23).
 
 **Embed after commit, never inside the filing.** First contact with an unknown
-fingerprint runs child-table DDL through `embedder_registry.register`, which
-commits on this session; embedding inside the filing transaction would make the
+fingerprint runs child-table DDL through `embedder_registry.ensure_registered`,
+which commits on this session; embedding inside the filing transaction would make the
 filing non-rollback-able. So: file, commit, then embed.
 
 **The `unchanged` path still embeds.** `ingest_document` returns UNCHANGED
@@ -11,9 +11,14 @@ which is exactly the state a caller is in after an embed failed post-commit.
 Stopping there would make the agent's one natural repair a no-op, so this path
 finds blocks of the document that carry no vector under the active fingerprint
 and embeds those.
+
+**A re-file embeds only changed text.** Inside the filing, each new block whose
+text matches an old block's takes that block's vector under the active
+fingerprint, so the embed after commit sends only the blocks that changed.
 """
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from uuid import UUID
@@ -30,13 +35,15 @@ from app.repositories.documents import (
 )
 from app.repositories.relational import PostgresTagRepository
 from app.services.block_embeddings import (
-    PARENT_TABLE, ensure_partition, embed_blocks, resolve_active_fingerprint,
+    PARENT_TABLE, active_fingerprint, embed_blocks,
 )
 from app.services.block_pipeline import ingest_document
 from app.services.block_query import BlockQueryService
 from app.services.document_ingest import UNCHANGED, DocumentHashConflict, DocumentUriConflict
-from app.services.embedder_registry import child_table
+from app.services.embedder_registry import child_table, ensure_registered
 from app.services.events import record_event
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "DOCUMENTS_DELETED_EVENT",
@@ -565,6 +572,16 @@ async def put_document(
         session, project=project, uri=uri, title=title, content=content,
     )
 
+    carry_fingerprint = None
+    if embed_inline:
+        try:
+            carry_fingerprint = await active_fingerprint(llm)
+        except Exception:  # noqa: BLE001 - the embed after commit reports it
+            logger.warning(
+                "document_door: no active fingerprint before filing %s; "
+                "re-embedding every block", uri, exc_info=True,
+            )
+
     # `ingest_document` (via `file_document`) opens and RELEASES its own
     # SAVEPOINT before returning, and a released savepoint's writes merge
     # into whatever transaction called it rather than staying discardable
@@ -588,6 +605,7 @@ async def put_document(
             source=source,
             expected_hash=expected_hash,
             force_reparse=force_reparse,
+            carry_fingerprint=carry_fingerprint,
         )
         if filed.blocks_written > MAX_BLOCKS:
             raise DocumentTooLarge(
@@ -609,25 +627,13 @@ async def put_document(
             content_hash=filed.content_hash,
         )
 
-    if filed.outcome == UNCHANGED:
-        # Resolved from a real embed call, never a data probe (T-doc-door.6
-        # review, round 3): this is the identical chicken-and-egg the sweep
-        # had — finding which blocks still need embedding requires already
-        # knowing the fingerprint, and a data probe answers "which live
-        # fingerprint holds data", which is biased toward a stale, already-
-        # complete partition after a rotation rather than the active-but-
-        # still-empty one retrieval actually reads. See
-        # `block_embeddings.resolve_active_fingerprint`'s docstring.
-        #
-        # Cost, stated plainly (round 4): this spends one embed call on
-        # EVERY `unchanged` re-push, unconditionally — including a document
-        # that is already fully embedded and has nothing to repair, where
-        # this used to spend a cheap database probe instead. A caller
-        # re-pushing N unchanged documents in a pass now makes N embedding
-        # calls. The sweep pays this once an hour; this door pays it once
-        # per request.
-        fingerprint = await resolve_active_fingerprint(llm)
-        await ensure_partition(session, fingerprint)
+    fingerprint = carry_fingerprint
+    if fingerprint is None and filed.outcome == UNCHANGED:
+        fingerprint = await active_fingerprint(llm)
+    if fingerprint is not None:
+        # Never a data probe: after a rotation a probe answers the stale,
+        # complete partition rather than the empty one retrieval reads.
+        await ensure_registered(session, fingerprint)
         rows = await session.execute(
             _unembedded_sql(fingerprint), {"document_id": str(filed.document_id)}
         )
@@ -645,16 +651,11 @@ async def put_document(
         # for reading this number is to learn whether its document is
         # findable.
         if result is not None and filed.outcome == UNCHANGED and result.fingerprint != fingerprint:
-            # Mirrors `block_embedding_refresh`'s own guard (T-doc-door.6
-            # review, round 4): `fingerprint` above and `result.fingerprint`
-            # here are two separate real embed calls, and the unembedded-
-            # blocks count in `rows` was computed against the FIRST one. A
-            # rotation landing between them would silently write the batch
-            # under a second partition while reporting a count that was
-            # never actually verified against it. Refusing is the same
-            # asymmetry closed on the sweep's side; only the `unchanged`
-            # branch resolves a fingerprint ahead of the write, so only it
-            # can race this way.
+            # The gaps were listed under `fingerprint`; a rotation between
+            # that and the embed wrote the repair under another partition, so
+            # the repair count would describe a partition it never verified.
+            # A changed filing has already landed and the sweep fills what a
+            # rotation stranded, so only the repair refuses.
             raise RuntimeError(
                 f"document_door: resolved fingerprint {fingerprint!r} for "
                 f"this unchanged repair but the batch embed call wrote "
