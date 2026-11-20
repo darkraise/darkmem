@@ -10,7 +10,7 @@
 | 3 | B1-4: the supersession UPDATE has no status='active' predicate, so two concurrent writers re-point an already-superseded memory | docs/dforge/plans/2026-11-20-audit-remaining.md | A15 (Task 7) | doing | - |
 | 4 | B1-5: predicates written as :mid = ANY(memory_ids) cannot use the GIN index | docs/dforge/plans/2026-11-20-audit-remaining.md | A17 (Task 7) | doing | - |
 | 5 | B1-6: at its 10-second deadline wait_process cancels the in-flight flush, leaving the row claimed and discarding the LLM spend | docs/dforge/plans/2026-11-20-audit-remaining.md | A18 (Task 9) | doing | - |
-| 6 | B1-7: the reprocess and pipeline-failure retry routes are not refused in read-only mode | docs/dforge/plans/2026-11-20-audit-remaining.md | A12 (Task 5) | doing | - |
+| 6 | B1-7: the reprocess and pipeline-failure retry routes are not refused in read-only mode | docs/dforge/plans/2026-11-20-audit-remaining.md | A12 (Task 5) | done | 7d6e56b |
 | 7 | B1-8: if the same-batch reconciliation raises, the backstop overwrites every already-committed status with vector and graph errors | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 8 contracts | doing | - |
 | 8 | B1-9: wait_process returns 201 with an unprocessed memory for a capture whose replay hard-failed | docs/dforge/plans/2026-11-20-audit-remaining.md | A18 (Task 9) | doing | - |
 | 9 | B1-10: discarding an error buffer row leaves its already-materialized memory live with no vector or graph | docs/dforge/plans/2026-11-20-audit-remaining.md | A55 (Task 10/12) | doing | - |
@@ -118,7 +118,7 @@
 | 111 | B5-16: an unembeddable block stays in the first batch and costs a failed batch call plus up to 500 single-row embeds on every tick | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 33 contracts | doing | - |
 | 112 | B5-17: four copies of the same register-the-fingerprint helper | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 33 contracts | doing | - |
 | 113 | B6-2: login runs bcrypt on the event loop, and the lockout check happens before an await, so concurrent attempts exceed five guesses | docs/dforge/plans/2026-11-20-audit-remaining.md | A7 (Task 1) | done | 1d02a7c |
-| 114 | B6-3: MCP memory_reason, memory_overview and document_search call the LLM or embedder on the read-only backup worker | docs/dforge/plans/2026-11-20-audit-remaining.md | A12 (Task 5) | doing | - |
+| 114 | B6-3: MCP memory_reason, memory_overview and document_search call the LLM or embedder on the read-only backup worker | docs/dforge/plans/2026-11-20-audit-remaining.md | A12 (Task 5) | done | 7d6e56b |
 | 115 | B6-5: get_session commits after the response is sent, so routes without an explicit commit return 200 before the write is durable | docs/dforge/plans/2026-11-20-audit-remaining.md | A29 (Task 38) | doing | - |
 | 116 | B6-6: the CORS fallback grants credentialed cross-origin access to localhost:3000 and :5173 | docs/dforge/plans/2026-11-20-audit-remaining.md | A8 (Task 1) | done | 1d02a7c |
 | 117 | B6-7: SSH destination user/host go unvalidated into the ssh/scp argv | docs/dforge/plans/2026-11-20-audit-remaining.md | A9 (Task 3) | done | 9124abd |
