@@ -531,10 +531,13 @@ route through this service.
 
 **Chat retrieval is the same path**: `ChatService` goes through
 `LayerCompositionService.search`, whose memory channel is
-`HybridSearchService.search_with_trace`, and holds no vector repository.
-`tests/test_chat_retrieval_parity.py` asserts parity **on order**, not shape.
-Parity is proven only while every rank arm is at weight 0; activating an arm
-obliges re-measuring both doors.
+`HybridSearchService.search_ranked(with_trace=True)`, the memory search
+door's own path, and holds no vector repository. It honours
+`hybrid_search_enabled` and `reranker_enabled` and spends every rank arm
+once, so the composition admits memory rows with no signals of their own
+rather than multiplying an arm in twice. `tests/test_chat_retrieval_parity.py`
+asserts parity **on order**, not shape, with each search flag flipped and
+with an activated arm.
 
 Ordinary and traced memory search share `HybridSearchService.search_ranked`.
 Both apply all-tag filters and supported hybrid/graph flags, and read

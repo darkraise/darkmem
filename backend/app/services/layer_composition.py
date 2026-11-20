@@ -111,10 +111,7 @@ from app.services.rank_fusion import (
     ContextOutcome,
     DeclaredContext,
     RowContext,
-    access_arms_active,
-    dual_list_weight,
     match_context,
-    ppr_list_weight,
     rank_fusion_factor,
     row_context_from_applies_when,
 )
@@ -438,13 +435,20 @@ def dispute_label(row: Mapping, evidence: Mapping | None) -> dict | None:
     }
 
 
-def memory_candidate(row: Mapping, *, channel_rank: int) -> LayerCandidate:
+def memory_candidate(
+    row: Mapping, *, channel_rank: int, arms_spent: bool = False,
+) -> LayerCandidate:
     """An L0 row from the memory hybrid.
 
     ``verification_status`` is ``None`` and is **not** read off the row. A
     memory carries a lifecycle ``status`` (``scope_labels`` stamps one on
     every hybrid row), which is a different vocabulary entirely; feeding it to
     the tier lookup would raise on every memory in the corpus.
+
+    ``arms_spent`` marks a row ``search_ranked`` already ordered with every
+    rank arm applied: it enters with no signals, so the composition does not
+    multiply the same arm in a second time and reorder the memories away from
+    the memory search door's order.
     """
     return LayerCandidate(
         id=_admit_id(row.get("memory_id") if row.get("memory_id") is not None else row.get("id")),
@@ -453,7 +457,7 @@ def memory_candidate(row: Mapping, *, channel_rank: int) -> LayerCandidate:
         channel_rank=channel_rank,
         row=row,
         verification_status=None,
-        signals=_signals(row),
+        signals={} if arms_spent else _signals(row),
         row_context=row_context_from_applies_when(row.get("applies_when")),
     )
 
@@ -1426,12 +1430,10 @@ class LayerCompositionService:
 
         memory_failed = False
         try:
-            memory_trace = await HybridSearchService(self.llm, self.session).search_with_trace(
-                query, limit=limit,
+            memory_trace = await HybridSearchService(self.llm, self.session).search_ranked(
+                query, flags=weights, limit=limit,
                 filters=MemoryFilter(project=project, statuses=statuses),
-                ppr_weight=ppr_list_weight(weights),
-                dual_weight=dual_list_weight(weights),
-                access_signals=access_arms_active(weights),
+                with_trace=True,
             )
         except Exception:
             logger.error("Layer composition: the memory channel failed outright")
@@ -1445,12 +1447,16 @@ class LayerCompositionService:
         else:
             channels.update(
                 _namespaced("memory", {
-                    "semantic": ChannelStatus(ran=True, failed=memory_trace.semantic_failed),
-                    "keyword": ChannelStatus(ran=True, failed=memory_trace.keyword_failed),
+                    "semantic": ChannelStatus(
+                        ran=memory_trace.semantic_ran, failed=memory_trace.semantic_failed,
+                    ),
+                    "keyword": ChannelStatus(
+                        ran=memory_trace.keyword_ran, failed=memory_trace.keyword_failed,
+                    ),
                 })
             )
             candidates.extend(
-                memory_candidate(row, channel_rank=rank)
+                memory_candidate(row, channel_rank=rank, arms_spent=True)
                 for rank, row in enumerate(memory_trace.results, start=1)
             )
             channel_scores.update({

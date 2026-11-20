@@ -90,6 +90,7 @@ class HybridSearchService:
                 results = response
         elif settings.read_only:
             results = await self._keyword_search(query, limit, filters)
+            self._record_access(results)
             if with_trace:
                 trace = ChannelTrace(
                     results=results,
@@ -101,6 +102,7 @@ class HybridSearchService:
             results = await PostgresVectorRepository(self.session).search(
                 vector, fingerprint=fingerprint, limit=limit, filters=filters,
             )
+            self._record_access(results)
             if with_trace:
                 trace = ChannelTrace(
                     results=results,
@@ -141,7 +143,11 @@ class HybridSearchService:
             signal_map = {str(row[0]): (float(row[1]), float(row[2])) for row in stored}
         score_key = "rrf_score" if "rrf_score" in results[0] else "score"
         for row in results:
-            confidence, importance = signal_map.get(normalize_row_id(row), (CONFIDENCE_DEFAULT, IMPORTANCE_DEFAULT))
+            row_id = normalize_row_id(row)
+            confidence, importance = signal_map.get(row_id, (CONFIDENCE_DEFAULT, IMPORTANCE_DEFAULT))
+            if row_id in signal_map:
+                row["confidence"] = confidence
+                row["importance"] = importance
             signals = {"confidence": confidence, "importance": importance}
             for name in ("heat", "recency"):
                 if row.get(name) is not None:

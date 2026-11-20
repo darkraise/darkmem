@@ -28,19 +28,13 @@ Plus the constant scan Done-when 3 asks for, which is a *declaration* check
 rather than a literal check; its exact reach and its blind spots are stated on
 the test itself.
 
-**Where the two doors still part, and who owns it.** They agree exactly while
-every rank arm sits at its default zero — the shipped state, and the state every
-gate measures. They do **not** agree under an activated arm, and that is
-asserted here rather than described: ``test_an_activated_rank_arm_still_moves_
-one_door_and_not_the_other`` drives both doors at a non-zero
-``confidence_rank_gamma`` and pins which one moves. The mechanism is not a
-weight but a missing signal — the memory hybrid's arms select no ``confidence``
-column, so the composition's factor is 1.0 at every gamma while the search
-surface reads the column off the ORM row. Inherited rather than introduced (it
-is equally true of ``knowledge_search``), but that test is what makes T2.30's
-and T2.31's both-doors obligation fail a build instead of living in prose: it
-goes red the moment the doors are converged, which is the moment this file's
-parity claim needs re-reading.
+**The search flags and the rank arms move both doors.** The composition's
+memory channel is ``HybridSearchService.search_ranked``, the search surface's
+own path, so flipping ``hybrid_search_enabled`` or ``reranker_enabled``, or
+activating ``confidence_rank_gamma`` or ``w_importance``, moves chat,
+``knowledge_search`` and the search surface to one order;
+``test_the_doors_rank_alike_with_each_search_flag_flipped`` and
+``test_an_activated_rank_arm_moves_both_doors_alike`` pin it.
 """
 
 from __future__ import annotations
@@ -300,53 +294,126 @@ async def test_the_doors_rank_alike_on_a_corpus_deeper_than_a_turn_fetches(sessi
     assert chat == surface[:len(chat)]
 
 
-async def test_an_activated_rank_arm_still_moves_one_door_and_not_the_other(session):
-    """The one divergence the parity above does **not** cover, measured.
+async def test_an_activated_rank_arm_moves_both_doors_alike(session):
+    """An activated arm moves chat and the search surface to one order.
 
-    The doors agree while every rank arm sits at its default zero, which is the
-    shipped state and the state every gate measures. They do not agree under an
-    activated arm, and the reason is not a weight: the memory hybrid's arms
-    select ``memory_id``, ``score``, ``payload`` and the two scope labels, so
-    ``confidence`` never reaches the composition's ``_signals`` at all. Its
-    factor is 1.0 for every memory row at every gamma, while the search surface
-    reads the column off the ORM row and re-sorts on it.
-
-    So an arm activation moves the search surface and leaves chat and
-    ``knowledge_search`` exactly where they were — with no error, no log and
-    nothing in either trace that names the difference. **T2.30 and T2.31 must
-    re-measure both doors, not one**, and this test is where that obligation
-    lives: it fails the moment the two are converged, which is the moment the
-    parity claim above needs re-reading rather than re-asserting.
+    The composition's memory channel is the search surface's own
+    ``search_ranked``, which reads ``confidence`` and ``importance`` off the
+    stored rows and spends every arm once, so a confident or important row
+    climbs on both doors or on neither.
     """
     from app.models.config import Config
 
     await _seed_partition(session)
-    # Two rows the keyword arm cannot see, adjacent in the semantic order, so
-    # their fused scores differ by one rank step — a small gamma is enough to
-    # reorder them wherever the signal is actually read.
     first = await _add_memory(
-        session, vector=[1.0, 0.0, 0.0, 0.0], confidence=0.75,
+        session, vector=[1.0, 0.0, 0.0, 0.0], importance=0.1,
         content="the box runs a database proxy, note one",
     )
     second = await _add_memory(
-        session, vector=[0.999, 0.045, 0.0, 0.0], confidence=1.0,
+        session, vector=[0.999, 0.045, 0.0, 0.0], importance=1.0,
         content="the box runs a database proxy, note two",
     )
-    session.add(Config(key="feature_flags", value={"confidence_rank_gamma": 1.0}))
+    session.add(Config(key="feature_flags", value={"w_importance": 1.0}))
     await session.flush()
 
     surface = await _search_surface_ids(session)
     chat = await _chat_ids(session)
 
     assert surface[:2] == [str(second.id), str(first.id)], (
-        "the search surface spends the arm: the more confident row moves up"
+        "the arm spends importance: the more important row moves up"
     )
-    assert chat[:2] == [str(first.id), str(second.id)], (
-        "chat's composed channel never receives the confidence signal, so the "
-        "arm is inert there — if this now matches the surface, the doors have "
-        "been converged and the T2.30/T2.31 both-doors obligation is discharged"
+    assert chat == surface[:len(chat)]
+
+
+FLIPPED_FLAGS = {
+    "hybrid_off": {"hybrid_search_enabled": False},
+    "reranker_on": {"reranker_enabled": True},
+    "confidence_gamma": {"confidence_rank_gamma": 0.5},
+}
+# The reranker stub's fixed scoring, by note number: an order neither arm
+# produces, so a door that skips the rerank cannot match one that runs it.
+RERANK_ORDER = [2, 5, 0, 3, 1, 4]
+
+
+async def _flag_corpus(session) -> dict[str, int]:
+    """Six rows whose vector, keyword and signal orders all disagree."""
+    await _seed_partition(session)
+    notes = {}
+    for i in range(6):
+        angle = 0.1 * i
+        text_body = (
+            f"pgbouncer connection pooling note {i}" if i >= 3
+            else f"the box runs a database proxy note {i}"
+        )
+        memory = await _add_memory(
+            session, vector=[math.cos(angle), math.sin(angle), 0.0, 0.0],
+            confidence=0.5 + 0.1 * i, importance=0.9 - 0.1 * i, content=text_body,
+        )
+        notes[str(memory.id)] = i
+    return notes
+
+
+async def _knowledge_ids(client, auth_headers) -> tuple[list[str], list[str]]:
+    import json
+
+    from app.api.mcp import server as mcp_server
+
+    response = await client.post(
+        "/api/v1/knowledge/search",
+        json={"query": QUERY, "project": PROJECT, "limit": 20, "fuse": True},
+        headers=auth_headers,
     )
-    assert chat != surface
+    assert response.status_code == 200, response.text
+    tool = json.loads(await mcp_server.knowledge_search(query=QUERY, project=PROJECT, limit=20, fuse=True))
+    return tuple(
+        [row["id"] for row in body["rows"] if row["id_kind"] == "memory"]
+        for body in (response.json(), tool)
+    )
+
+
+@pytest.mark.parametrize("case", sorted(FLIPPED_FLAGS))
+async def test_the_doors_rank_alike_with_each_search_flag_flipped(
+    session, client, auth_headers, monkeypatch, case,
+):
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+
+    from app.api.mcp import server as mcp_server
+    from app.main import app
+    from app.models.config import Config
+    from app.services.reranker import RerankerService
+
+    notes = await _flag_corpus(session)
+
+    async def _fixed_rerank(self, query, documents, top_k=None, **_kwargs):
+        def note(row):
+            return notes[str(row.get("memory_id") or row.get("id"))]
+
+        ranked = sorted(documents, key=lambda row: RERANK_ORDER.index(note(row)))
+        return ranked[:top_k] if top_k else ranked
+
+    @asynccontextmanager
+    async def _same_session():
+        yield session
+
+    monkeypatch.setattr(RerankerService, "rerank", _fixed_rerank)
+    monkeypatch.setattr(mcp_server, "async_session_factory", _same_session)
+    monkeypatch.setattr(mcp_server, "_pipeline", SimpleNamespace(llm=_FakeLLM()))
+    monkeypatch.setattr(app.state, "llm", _FakeLLM(), raising=False)
+
+    baseline = await _search_surface_ids(session)
+    session.add(Config(key="feature_flags", value=FLIPPED_FLAGS[case]))
+    await session.flush()
+
+    surface = await _search_surface_ids(session)
+    chat = await _chat_ids(session)
+    rest, tool = await _knowledge_ids(client, auth_headers)
+
+    assert len(surface) == len(notes)
+    assert surface != baseline, f"{case} must move the search surface on this corpus"
+    assert chat == surface
+    assert rest == surface
+    assert tool == surface
 
 
 async def test_chat_ranks_by_the_fused_order_and_not_by_the_semantic_one(session):

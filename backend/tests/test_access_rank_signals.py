@@ -246,3 +246,52 @@ async def test_recency_cannot_lift_a_row_across_the_belief_axis(session):
     ordering_fields = {f.name for f in ComposedRow.__dataclass_fields__.values()}
     assert "band" in ordering_fields
     assert "rank_fusion_factor" in ordering_fields
+
+
+@pytest.mark.parametrize("read_only", [False, True])
+async def test_access_is_recorded_with_hybrid_off(monkeypatch, read_only):
+    import uuid
+
+    from app.config import settings
+    from app.services import access_stats
+    from app.services import hybrid_search as hybrid_module
+
+    ids = [uuid.uuid4(), uuid.uuid4()]
+    rows = [{"memory_id": mid, "score": 1.0 - i / 10} for i, mid in enumerate(ids)]
+
+    class _LLM:
+        async def embed(self, _query):
+            return [1.0, 0.0], "fp|2"
+
+    class _Vectors:
+        def __init__(self, _session):
+            pass
+
+        async def search(self, *_a, **_k):
+            return [dict(row) for row in rows]
+
+    async def _keyword(self, *_a, **_k):
+        return [dict(row) for row in rows]
+
+    recorded: list[list] = []
+    real_spawn = access_stats.spawn_record_access
+
+    def _spy(memory_ids, **kwargs):
+        memory_ids = list(memory_ids)
+        recorded.append(memory_ids)
+        # Only the read-only case reaches the real buffer: it must stay a
+        # no-op, and the writable case's flush is not this test's subject.
+        return real_spawn(memory_ids, **kwargs) if read_only else None
+
+    monkeypatch.setattr(settings, "read_only", read_only)
+    monkeypatch.setattr(hybrid_module, "PostgresVectorRepository", _Vectors)
+    monkeypatch.setattr(HybridSearchService, "_keyword_search", _keyword)
+    monkeypatch.setattr(hybrid_module, "spawn_record_access", _spy)
+    monkeypatch.setattr(access_stats, "_pending_counts", {})
+
+    service = HybridSearchService(_LLM(), session=None)
+    results = await service.search_ranked("anything", flags={"hybrid_search_enabled": False}, limit=5)
+
+    assert [row["memory_id"] for row in results] == ids
+    assert recorded == [ids]
+    assert access_stats._pending_counts == {}
