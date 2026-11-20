@@ -662,9 +662,8 @@ class TestJudge:
             json.dumps({"summary": "s", "content": "REWRITTEN", "tags": ["a"]})
         )
         assert parsed.summary == "s"
-        assert parsed.tags == ("a",)
         assert not hasattr(parsed, "content")
-        assert "content" not in {f.name for f in fields(parsed)}
+        assert {f.name for f in fields(parsed)} == {"summary"}
 
     @pytest.mark.parametrize(
         "raw",
@@ -672,10 +671,10 @@ class TestJudge:
             "not json",
             "",
             json.dumps({"summary": 7}),
-            json.dumps({"tags": "not-a-list"}),
+            json.dumps({"tags": ["a"]}),
             json.dumps({"summary": None, "tags": None}),
         ],
-        ids=["prose", "empty", "bad-summary", "bad-tags", "nothing-proposed"],
+        ids=["prose", "empty", "bad-summary", "tags-only", "nothing-proposed"],
     )
     def test_every_unusable_refine_answer_raises_the_same_handled_error(self, raw):
         with pytest.raises(dream.JudgeError):
@@ -766,6 +765,7 @@ async def committing(setup_database):
                 "DELETE FROM knowledge_triples WHERE project LIKE 't212-%'",
                 "DELETE FROM memories WHERE project LIKE 't212-%'",
                 "DELETE FROM tags WHERE name LIKE 't212-%'",
+                "DELETE FROM tags WHERE name LIKE 'project/t212-%'",
                 "DELETE FROM config WHERE key = 'memory_dream_state'",
             ):
                 await cleanup.execute(text(statement))
@@ -829,6 +829,18 @@ async def memory_row(factory, memory_id) -> dict:
             {"id": str(memory_id)},
         )
         return dict(result.mappings().one())
+
+
+async def memory_tag_names(factory, memory_id) -> list[str]:
+    async with factory() as session:
+        result = await session.execute(
+            text(
+                "SELECT t.name FROM memory_tags mt JOIN tags t ON t.id = mt.tag_id "
+                "WHERE mt.memory_id = CAST(:id AS uuid) ORDER BY t.name"
+            ),
+            {"id": str(memory_id)},
+        )
+        return list(result.scalars().all())
 
 
 async def consolidated_events(factory, project, memory_id=None) -> list[dict]:
@@ -1327,7 +1339,41 @@ class TestRefineArm:
         assert payload["action"] == "refine"
         assert payload["before"]["summary"] is None
         assert payload["after"]["summary"] == "An hourly sweeper."
-        assert "tags" in payload["fields"]
+
+    async def test_refine_changes_the_summary_and_never_the_tags(
+        self, committing, project, run_cycle
+    ):
+        project_tag = f"project/{project}"
+        async with committing() as session:
+            await seed_partition(session)
+            target = await seed_memory(
+                session, project=project, content="the sweeper runs hourly"
+            )
+            await put_vector(session, target, [0.0, 1.0, 0.0, 0.0])
+            await PostgresMemoryRepository(session).set_tags(
+                target, [project_tag, "t212-ops"]
+            )
+            await session.commit()
+        stub = StubLLM(
+            pair_verdict=verdict("distinct"),
+            refine=refine(summary="An hourly sweeper.", tags=["t212-cleaned"]),
+        )
+
+        outcome = await run_cycle(committing, stub, judge_fanout=0)
+
+        assert outcome.refined == 1
+        assert (await memory_row(committing, target))["summary"] == (
+            "An hourly sweeper."
+        )
+        assert await memory_tag_names(committing, target) == sorted(
+            [project_tag, "t212-ops"]
+        )
+        payload = (await consolidated_events(committing, project, target))[0][
+            "payload"
+        ]
+        assert "tags" not in payload["before"]
+        assert "tags" not in payload["after"]
+        assert payload["fields"] == ["summary"]
 
     async def test_refine_is_suppressed_on_a_re_run(
         self, committing, project, run_cycle
@@ -1418,17 +1464,6 @@ class TestRefineArm:
         assert row["summary"] == "s"
         events = await consolidated_events(committing, project, target)
         assert "content" not in events[0]["payload"]["after"]
-
-    def test_the_allowlist_raises_on_a_forbidden_column(self):
-        """T-N2b. The allowlist is enforcement, not documentation."""
-        with pytest.raises(dream.RefinableColumnError) as caught:
-            dream.build_refine_update({"content": "x"})
-        assert "content" in str(caught.value)
-
-    def test_the_allowlist_accepts_only_what_it_names(self):
-        assignments, ordered = dream.build_refine_update({"summary": "s"})
-        assert ordered == ("summary",)
-        assert assignments == "summary = :summary"
 
 
 # ── the source scans, and their negative controls ────────────────────────
@@ -1931,7 +1966,7 @@ class TestJournalling:
             payload["after"]["edge"]["rel_type"],
         ) is None
 
-        # Refine: summary and tags, and nothing else.
+        # Refine: the summary, and nothing else.
         payload = events["refine"]
         async with committing() as session:
             await session.execute(
@@ -1940,9 +1975,6 @@ class TestJournalling:
                     "WHERE id = CAST(:id AS uuid)"
                 ),
                 {"summary": payload["before"]["summary"], "id": str(fixture["lone"])},
-            )
-            await PostgresMemoryRepository(session).set_tags(
-                fixture["lone"], payload["before"]["tags"]
             )
             await session.commit()
         undone = await memory_row(committing, fixture["lone"])
@@ -1978,9 +2010,6 @@ class TestJournalling:
                     "WHERE id = CAST(:id AS uuid)"
                 ),
                 {"summary": payload["before"]["summary"], "id": str(fixture["lone"])},
-            )
-            await PostgresMemoryRepository(session).set_tags(
-                fixture["lone"], payload["before"]["tags"]
             )
             await session.commit()
         await _rewind_cursor(committing)
@@ -2203,56 +2232,6 @@ class TestAssociateStatusGuard:
         assert await edge_count(committing, project) == 0
         events = await consolidated_events(committing, project)
         assert [event["payload"]["action"] for event in events] == ["subsume"]
-
-
-# ── refine's before-state is read under the lock, tags included ──────────
-
-
-class TestRefineBeforeState:
-    async def test_a_tag_edit_during_the_compute_phase_is_journalled(
-        self, committing, project, monkeypatch, run_cycle
-    ):
-        """Phase C runs for minutes with no transaction open, so a tag edit can
-        land between the read and the write. `content` is sha-guarded and
-        `summary` is re-read under the lock; tags must be too, or the journal
-        misstates the state an undo restores to and the edit is both clobbered
-        and unrecoverable."""
-        async with committing() as session:
-            await seed_partition(session)
-            target = await seed_memory(
-                session, project=project, content="the sweeper runs hourly"
-            )
-            await put_vector(session, target, [0.0, 1.0, 0.0, 0.0])
-            await PostgresMemoryRepository(session).set_tags(
-                target, ["t212-before"]
-            )
-            await session.commit()
-
-        original = dream.apply_refine
-
-        async def edit_tags_then_apply(session, action, **kwargs):
-            async with committing() as other:
-                await PostgresMemoryRepository(other).set_tags(
-                    action.memory.memory_id, ["t212-edited-during-phase-c"]
-                )
-                await other.commit()
-            monkeypatch.setattr(dream, "apply_refine", original)
-            return await original(session, action, **kwargs)
-
-        monkeypatch.setattr(dream, "apply_refine", edit_tags_then_apply)
-        stub = StubLLM(
-            pair_verdict=verdict("distinct"),
-            refine=refine(summary="s", tags=["t212-after"]),
-        )
-
-        outcome = await run_cycle(committing, stub, judge_fanout=0)
-
-        assert outcome.refined == 1
-        payload = (await consolidated_events(committing, project, target))[0][
-            "payload"
-        ]
-        assert payload["before"]["tags"] == ["t212-edited-during-phase-c"]
-        assert payload["after"]["tags"] == ["t212-after"]
 
 
 # ── the registered runner's own closure ──────────────────────────────────

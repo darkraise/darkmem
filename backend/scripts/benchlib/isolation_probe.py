@@ -1715,7 +1715,7 @@ async def _drive_dream_cycle_digest(ctx: ProbeContext) -> list[Sighting]:
                         metadata={}, tags=(),
                     ),
                     verdict=dream.RefineVerdict(
-                        summary=f"{sentinel(fx.key)} refined note", tags=None
+                        summary=f"{sentinel(fx.key)} refined note"
                     ),
                 ),
                 cycle_id=cycle,

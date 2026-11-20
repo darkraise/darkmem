@@ -117,14 +117,14 @@ an existing invertible kind without stretching its contract:
 
 **Set/extend a TTL has no invertible expression and is not shipped here.**
 ``refine`` is the only invertible kind that could plausibly cover a memory
-column, and its allowlist (``memory_dream._REFINABLE_COLUMNS``) is
-deliberately narrow — ``summary`` only, guarded by three independent layers
-specifically to keep anything **but** derived enrichment unreachable through
-it. Widening that allowlist to admit ``expires_at`` is an edit to
-``memory_dream.py``'s own safety guard, which this lane was told to touch
-only as a reported decision, and it is not one: extending a guard that
-exists to keep one column reachable, to admit an unrelated column, is a
-different guard, not this task's to redesign. Per the brief's R4, the gap is
+column, and its write (``memory_dream.apply_refine``) is deliberately narrow
+— ``summary`` only, guarded by three independent layers specifically to keep
+anything **but** derived enrichment unreachable through it. Widening that
+write to admit ``expires_at`` is an edit to ``memory_dream.py``'s own safety
+guard, which this lane was told to touch only as a reported decision, and it
+is not one: extending a guard that exists to keep one column reachable, to
+admit an unrelated column, is a different guard, not this task's to
+redesign. Per the brief's R4, the gap is
 reported as a Tier-2 amendment (see the task's report) rather than shipped as
 an action that claims undoability it does not have.
 

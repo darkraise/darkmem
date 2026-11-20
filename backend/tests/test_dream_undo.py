@@ -186,6 +186,7 @@ async def committing(setup_database):
                 "DELETE FROM memory_relations WHERE project LIKE 't213-%'",
                 "DELETE FROM memories WHERE project LIKE 't213-%'",
                 "DELETE FROM tags WHERE name LIKE 't213-%'",
+                "DELETE FROM tags WHERE name LIKE 'project/t213-%'",
                 "DELETE FROM config WHERE key = "
                 f"'{undo.RETENTION_CONFIG_KEY}'",
             ):
@@ -375,9 +376,16 @@ async def produce_associate(factory, project, *, cycle_id, prior_block=None,
 
 
 async def produce_refine(factory, project, *, cycle_id, summary="a refined summary",
-                         tags=("t213-alpha",), prior_summary="the old summary",
+                         tags=None, prior_summary="the old summary",
                          prior_tags=("t213-original",),
                          metadata=None) -> tuple[UUID, int]:
+    """One refine and the event id it journalled.
+
+    With ``tags`` it writes the action the refine arm took before it stopped
+    touching tags — summary and tags moved, both journalled, ``fields`` naming
+    what moved — because those events are still in the journal and undo still
+    restores them.
+    """
     content = "the sweeper runs hourly"
     async with factory() as session:
         memory = await seed_memory(
@@ -389,6 +397,14 @@ async def produce_refine(factory, project, *, cycle_id, summary="a refined summa
         async with factory() as session:
             await PostgresMemoryRepository(session).set_tags(memory, list(prior_tags))
             await session.commit()
+    if tags is not None:
+        await _journal_tagged_refine(
+            factory, project, memory, cycle_id=cycle_id, content=content,
+            summary=summary, tags=tags, prior_summary=prior_summary,
+            prior_tags=prior_tags, metadata=metadata,
+        )
+        rows = await journal_rows(factory, project)
+        return memory, int(rows[-1]["event_id"])
     async with factory() as session:
         applied = await dream.apply_refine(
             session,
@@ -397,9 +413,7 @@ async def produce_refine(factory, project, *, cycle_id, summary="a refined summa
                     memory, project=project, content=content,
                     summary=prior_summary, metadata=metadata, tags=prior_tags,
                 ),
-                verdict=dream.RefineVerdict(
-                    summary=summary, tags=tuple(tags) if tags is not None else None
-                ),
+                verdict=dream.RefineVerdict(summary=summary),
             ),
             cycle_id=cycle_id,
             outcome=dream.DreamOutcome(),
@@ -408,6 +422,54 @@ async def produce_refine(factory, project, *, cycle_id, summary="a refined summa
         await session.commit()
     rows = await journal_rows(factory, project)
     return memory, int(rows[-1]["event_id"])
+
+
+async def _journal_tagged_refine(factory, project, memory, *, cycle_id, content,
+                                 summary, tags, prior_summary, prior_tags,
+                                 metadata) -> None:
+    before_marker = journal.refine_marker_of(metadata)
+    marker = {
+        "content_sha": dream.content_sha(content),
+        "at": NOW.isoformat(),
+        "summary_sha": dream.content_sha(summary) if summary is not None else None,
+    }
+    refined = json.loads(json.dumps(metadata or {}))
+    refined.setdefault("dream", {})["refine"] = marker
+    after_summary = summary if summary is not None else prior_summary
+    async with factory() as session:
+        await session.execute(
+            text(
+                "UPDATE memories SET summary = :summary, "
+                "metadata = CAST(:metadata AS jsonb) WHERE id = CAST(:id AS uuid)"
+            ),
+            {"summary": after_summary, "metadata": json.dumps(refined),
+             "id": str(memory)},
+        )
+        await PostgresMemoryRepository(session).set_tags(memory, list(tags))
+        await events_module.record_event(
+            session,
+            event_type=journal.EVENT_TYPE,
+            object_type=journal.OBJECT_TYPE,
+            object_id=memory,
+            project=project,
+            payload={
+                "action": journal.ACTION_REFINE,
+                "before": {
+                    "summary": prior_summary,
+                    "tags": list(prior_tags),
+                    "metadata_dream_refine": before_marker,
+                },
+                "after": {
+                    "summary": after_summary,
+                    "tags": list(tags),
+                    "metadata_dream_refine": marker,
+                },
+                "fields": (["summary"] if summary is not None else []) + ["tags"],
+                "detector": journal.DETECTOR,
+                "cycle_id": cycle_id,
+            },
+        )
+        await session.commit()
 
 
 # ── Step 3: the digest ───────────────────────────────────────────────────
@@ -553,7 +615,7 @@ class TestDigest:
         await produce_refine(committing, project, cycle_id=cycle)
         async with committing() as session:
             actions = await digest.read_cycle_actions(session, cycle)
-        assert actions[0].detail == {"fields": ["summary", "tags"]}
+        assert actions[0].detail == {"fields": ["summary"]}
         assert actions[0].before["summary"] == "the old summary"
         assert actions[0].after["summary"] == "a refined summary"
 
@@ -802,7 +864,9 @@ class TestRefineInverse:
     async def test_summary_and_tags_both_come_back(self, committing, project):
         """T-REF1."""
         cycle = str(new_id())
-        memory, event_id = await produce_refine(committing, project, cycle_id=cycle)
+        memory, event_id = await produce_refine(
+            committing, project, cycle_id=cycle, tags=("t213-alpha",),
+        )
         assert (await memory_row(committing, memory))["summary"] == "a refined summary"
 
         batch = await undo_ids(committing, event_id)
@@ -861,7 +925,9 @@ class TestRefineInverse:
         """T-REF4. Compared exactly, not as a subset: a human's added tag would
         otherwise be silently discarded by the undo."""
         cycle = str(new_id())
-        memory, event_id = await produce_refine(committing, project, cycle_id=cycle)
+        memory, event_id = await produce_refine(
+            committing, project, cycle_id=cycle, tags=("t213-alpha",),
+        )
         async with committing() as session:
             await PostgresMemoryRepository(session).set_tags(
                 memory, ["t213-alpha", "t213-added-by-a-human"]
@@ -875,6 +941,40 @@ class TestRefineInverse:
         assert sorted((await memory_row(committing, memory))["tag_names"]) == [
             "t213-added-by-a-human", "t213-alpha"
         ]
+
+    async def test_undo_restores_tags_from_an_older_refine_event(
+        self, committing, project
+    ):
+        project_tag = f"project/{project}"
+        memory, event_id = await produce_refine(
+            committing, project, cycle_id=str(new_id()),
+            prior_tags=(project_tag, "t213-x"), tags=("t213-x",),
+        )
+        assert list((await memory_row(committing, memory))["tag_names"]) == [
+            "t213-x"
+        ]
+
+        await undo_ids(committing, event_id)
+
+        assert sorted((await memory_row(committing, memory))["tag_names"]) == (
+            sorted([project_tag, "t213-x"])
+        )
+
+    async def test_a_summary_refine_on_a_tagged_memory_is_undoable(
+        self, committing, project
+    ):
+        """A refine journals no tags, so the undo's unchanged-state check must
+        not compare the live tags with tags the event never recorded."""
+        memory, event_id = await produce_refine(
+            committing, project, cycle_id=str(new_id()),
+        )
+
+        batch = await undo_ids(committing, event_id)
+
+        row = await memory_row(committing, memory)
+        assert batch.undone[0].restored == ("summary",)
+        assert row["summary"] == "the old summary"
+        assert list(row["tag_names"]) == ["t213-original"]
 
 
 class TestExclusions:
@@ -1162,8 +1262,12 @@ class TestAtomicity:
             committing, project, cycle_id=cycle
         )
         async with committing() as session:
-            await PostgresMemoryRepository(session).set_tags(
-                memory, ["t213-alpha", "t213-added-by-a-human"]
+            await session.execute(
+                text(
+                    "UPDATE memories SET summary = 'edited by a human' "
+                    "WHERE id = CAST(:id AS uuid)"
+                ),
+                {"id": str(memory)},
             )
             await session.commit()
 
@@ -2157,7 +2261,7 @@ class TestDoors:
                     memory, project=project, content="the sweeper runs hourly",
                     summary="the old summary",
                 ),
-                verdict=dream.RefineVerdict(summary="a refined summary", tags=None),
+                verdict=dream.RefineVerdict(summary="a refined summary"),
             ),
             cycle_id=cycle,
             outcome=dream.DreamOutcome(),
@@ -2197,7 +2301,7 @@ class TestDoors:
                     memory, project=project, content="the sweeper runs hourly",
                     summary="the old summary",
                 ),
-                verdict=dream.RefineVerdict(summary="a refined summary", tags=None),
+                verdict=dream.RefineVerdict(summary="a refined summary"),
             ),
             cycle_id=cycle,
             outcome=dream.DreamOutcome(),
@@ -2298,7 +2402,7 @@ class TestNamedSetIsNeverShrunk:
                     memory, project=project, content="the sweeper runs hourly",
                     summary="the old summary",
                 ),
-                verdict=dream.RefineVerdict(summary="a refined summary", tags=None),
+                verdict=dream.RefineVerdict(summary="a refined summary"),
             ),
             cycle_id=cycle,
             outcome=dream.DreamOutcome(),
@@ -2393,7 +2497,7 @@ class TestNamedSetIsNeverShrunk:
                     memory, project=project, content="the sweeper runs hourly",
                     summary="the old summary",
                 ),
-                verdict=dream.RefineVerdict(summary="a refined summary", tags=None),
+                verdict=dream.RefineVerdict(summary="a refined summary"),
             ),
             cycle_id=cycle,
             outcome=dream.DreamOutcome(),

@@ -527,11 +527,14 @@ def _associate_unchanged(action: ResolvedAction, live: LiveState) -> bool:
 def _refine_unchanged(action: ResolvedAction, live: LiveState) -> bool:
     row = live.memory or {}
     after = action.after
-    live_tags = sorted(row.get("tag_names") or ())
-    after_tags = sorted(after.get("tags") or ())
+    # Only refines journalled while refine still rewrote tags carry them; a
+    # later one never touched the tags, so they are not its state to check.
+    tags_unchanged = "tags" not in after or sorted(
+        row.get("tag_names") or ()
+    ) == sorted(after.get("tags") or ())
     return (
         row.get("summary") == after.get("summary")
-        and live_tags == after_tags
+        and tags_unchanged
         and journal.refine_marker_of(row.get("metadata"))
         == after.get("metadata_dream_refine")
     )

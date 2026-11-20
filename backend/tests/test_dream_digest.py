@@ -87,7 +87,9 @@ class TestRestoredRoundTrip:
         their per-action lists into each other on the read side."""
         cycle = str(new_id())
         _, _, subsume_id = await produce_subsume(committing, project, cycle_id=cycle)
-        memory, refine_id = await produce_refine(committing, project, cycle_id=cycle)
+        memory, refine_id = await produce_refine(
+            committing, project, cycle_id=cycle, tags=("t213-alpha",)
+        )
 
         await undo_ids(committing, subsume_id, refine_id, actor="curator")
 
