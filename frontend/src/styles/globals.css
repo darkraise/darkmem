@@ -237,25 +237,6 @@
   }
 }
 
-/* ── Code Graph: theme-token panel styles ─────────────────── */
-
-.code-graph-root {
-  background: hsl(var(--background));
-  color: hsl(var(--foreground));
-  font-family: var(--font-mono);
-}
-
-.code-graph-toolbar {
-  background: hsl(var(--card) / 0.8);
-  backdrop-filter: blur(12px);
-}
-
-.code-inspector-panel,
-.code-analysis-panel {
-  background: hsl(var(--card) / 0.8);
-  backdrop-filter: blur(8px);
-}
-
 /* --- Atmospheric guest backdrop (ParticleBackground mesh) --- */
 .dm-mesh {
   position: absolute;

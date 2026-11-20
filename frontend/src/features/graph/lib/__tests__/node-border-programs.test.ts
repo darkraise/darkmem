@@ -37,12 +37,6 @@ const cases = [
       (await import("../node-diamond-program"))
         .NodeDiamondProgram as unknown as Program,
   },
-  {
-    label: "bordered circle",
-    load: async () =>
-      (await import("../node-circle-bordered-program"))
-        .NodeCircleBorderedProgram as unknown as Program,
-  },
 ]
 
 describe.each(cases)("$label program", ({ load }) => {
