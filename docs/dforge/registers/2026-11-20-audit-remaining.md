@@ -86,18 +86,18 @@
 | 79 | B4-10 and B6-4: MCP code_symbol probably raises MissingGreenlet on any hit; no result limit | docs/dforge/plans/2026-11-20-audit-remaining.md | A35 (Task 26) | done | eddcc5e |
 | 80 | B4-11: unchanged dependent and debt files are re-embedded on every incremental run | docs/dforge/plans/2026-11-20-audit-remaining.md | A33 (Task 28) | done | 96f9a23 |
 | 81 | B4-12: MCP code_search returns nothing without an embedder, while REST answers from the keyword arm | docs/dforge/plans/2026-11-20-audit-remaining.md | A14 (Task 27) | done | cf10951 |
-| 82 | B4-13: a transient fetch failure deletes the managed clone and re-clones it, with no claim held | docs/dforge/plans/2026-11-20-audit-remaining.md | A36 (Task 29) | doing | - |
+| 82 | B4-13: a transient fetch failure deletes the managed clone and re-clones it, with no claim held | docs/dforge/plans/2026-11-20-audit-remaining.md | A36 (Task 29) | done | 4a02245 |
 | 83 | B4-14: a file whose parse times out or raises is re-detected as drift on every tick | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 30 contracts | doing | - |
 | 84 | B4-15: query-per-item loops in phases 03, 05 and 06 | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 30 contracts | doing | - |
 | 85 | B4-16: phase 08 seeds every file's type environment with every symbol's return type, keyed by function name | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 31 contracts | doing | - |
 | 86 | B4-17: Leiden and process tracing rewrite the repo's whole community/process layer on every run, under non-deterministic keys | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 31 contracts | doing | - |
 | 87 | B4-18: property nodes are keyed by bare name and deleted together with the first owner's file | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 31 contracts | doing | - |
 | 88 | B4-19: failure paths store unsanitised exception text; tokens sit in the git argv | docs/dforge/plans/2026-11-20-audit-remaining.md | A36 (Task 29) | done | 9124abd |
-| 89 | B4-20: a local checkout's fetch lane fast-forwards whichever branch is checked out | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 3 contracts | doing | - |
+| 89 | B4-20: a local checkout's fetch lane fast-forwards whichever branch is checked out | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 3 contracts | done | 4a02245 |
 | 90 | B4-21 and removal 5: the wiki config row is orphaned on repo delete, and the cache check is dead | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 32 contracts | doing | - |
 | 91 | B4-22: process_tracer reads a signature property nothing writes | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 31 contracts | doing | - |
 | 92 | B4-23: code_deriver strips and rewrites every repo's assertions hourly, whether or not HEAD moved | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 30 contracts | doing | - |
-| 93 | B4-24: cancel_repo_task does not check that the task belongs to the repository in the URL | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 29 contracts | doing | - |
+| 93 | B4-24: cancel_repo_task does not check that the task belongs to the repository in the URL | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 29 contracts | done | 4a02245 |
 | 94 | B4-25: doc and comment drift in code_pipeline and repo_allowlist; CodeFile.last_commit_sha is served but never written | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 32 contracts | doing | - |
 | 95 | B4 removals 3, 4, 6, 7: TaskRegistry.get_all_running and cleanup_completed, the CallResolver named_imports/wildcard_imports arguments, RepoManager.get_auth_token, _implements_split's discarded return value | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 32 contracts | doing | - |
 | 96 | B4 removal 8: the CodeFile.last_commit_sha column | docs/dforge/plans/2026-11-20-audit-remaining.md | A47 (Task 32) | doing | - |
