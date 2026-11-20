@@ -929,7 +929,7 @@ app = FastAPI(title="darkmem", version="1.17.0", description="Centralized memory
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins or ["http://localhost:3000", "http://localhost:5173"],
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

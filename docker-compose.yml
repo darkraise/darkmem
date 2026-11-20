@@ -68,6 +68,9 @@ services:
       # transport peer. Set true only when a trusted TLS proxy really is in
       # front — see the note above for why Docker's own NAT does not count.
       - TRUST_PROXY_HEADERS=${TRUST_PROXY_HEADERS:-false}
+      # Browser origins allowed to call the API with the session cookie, as a
+      # JSON list. Empty = same-origin only; the SPA is served by this app.
+      - CORS_ORIGINS=${CORS_ORIGINS:-[]}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       # Hosts allowed to reach /mcp (DNS-rebinding allowlist). This is the HTTP
       # Host header, not the network, so bridge networking does not change it.

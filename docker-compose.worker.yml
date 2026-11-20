@@ -54,6 +54,9 @@ services:
       - JWT_SECRET=${JWT_SECRET:?set JWT_SECRET in .env — see .env.example}
       - COOKIE_SECURE=${COOKIE_SECURE:-false}
       - TRUST_PROXY_HEADERS=${TRUST_PROXY_HEADERS:-false}
+      # Browser origins allowed to call the API with the session cookie, as a
+      # JSON list. Empty = same-origin only; the SPA is served by this app.
+      - CORS_ORIGINS=${CORS_ORIGINS:-[]}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       # Empty = localhost only. A worker has no reason to serve /mcp at all;
       # leave this unset unless an agent genuinely needs to read the snapshot.

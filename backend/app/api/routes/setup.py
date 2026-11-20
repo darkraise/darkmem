@@ -7,6 +7,7 @@ returns 403, and the wizard frontend redirects new visitors to ``/login``.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import sys
@@ -393,7 +394,7 @@ async def setup_finalize(
         # rollbacks (for failed LLM / repo blocks) don't undo it.
         session.add(Config(
             key=ADMIN_PASSWORD_KEY,
-            value={"hash": hash_password(body.password)},
+            value={"hash": await asyncio.to_thread(hash_password, body.password)},
         ))
         await record_event(
             session,

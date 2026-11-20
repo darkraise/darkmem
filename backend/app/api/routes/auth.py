@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -86,40 +87,44 @@ async def auth_login(
     session: AsyncSession = Depends(get_session),
 ):
     ip = _client_ip(request)
+    limiter = login_rate_limiter
 
     # A single shared admin password on a reachable LAN needs an attempt-rate
-    # boundary; bcrypt slows each guess but doesn't bound the rate. Reject early
-    # when the IP is locked out, before touching the DB or hashing.
-    retry_after = login_rate_limiter.retry_after(ip)
+    # boundary; bcrypt slows each guess but doesn't bound the rate. The slot is
+    # reserved before the first await, so concurrent guesses count against the
+    # threshold while they are still in flight.
+    retry_after = limiter.acquire(ip)
     if retry_after is not None:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=f"Too many failed login attempts; retry in {retry_after}s",
             headers={"Retry-After": str(retry_after)},
         )
+    try:
+        result = await session.execute(select(Config).where(Config.key == ADMIN_PASSWORD_KEY))
+        config = result.scalar_one_or_none()
 
-    result = await session.execute(select(Config).where(Config.key == ADMIN_PASSWORD_KEY))
-    config = result.scalar_one_or_none()
+        if not config:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Admin password not set")
 
-    if not config:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Admin password not set")
+        if not await asyncio.to_thread(verify_password, body.password, config.value["hash"]):
+            limiter.record_failure(ip)
+            await _record_audit("auth_login_failed", {"ip": ip})
+            # The acquire gate above already proved this IP was not locked
+            # when the request started, so a non-None retry_after here means
+            # this exact failure is the one that just crossed the threshold —
+            # the transition, not merely the locked state, is what gets audited.
+            retry_after_now = limiter.retry_after(ip)
+            if retry_after_now is not None:
+                await _record_audit(
+                    "auth_lockout",
+                    {"ip": ip, "retry_after_seconds": retry_after_now},
+                )
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid password")
 
-    if not verify_password(body.password, config.value["hash"]):
-        login_rate_limiter.record_failure(ip)
-        await _record_audit("auth_login_failed", {"ip": ip})
-        # The retry_after gate above already proved this IP was not locked
-        # when the request started, so a non-None retry_after here means
-        # this exact failure is the one that just crossed the threshold —
-        # the transition, not merely the locked state, is what gets audited.
-        retry_after_now = login_rate_limiter.retry_after(ip)
-        if retry_after_now is not None:
-            await _record_audit(
-                "auth_lockout",
-                {"ip": ip, "retry_after_seconds": retry_after_now},
-            )
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid password")
-
-    login_rate_limiter.record_success(ip)
+        limiter.record_success(ip)
+    finally:
+        limiter.release(ip)
     await record_event(
         session, event_type="auth_login_success", object_type="system", payload={"ip": ip}
     )
@@ -176,10 +181,10 @@ async def auth_change_password(
     if not config:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Admin password not set")
 
-    if not verify_password(body.current_password, config.value["hash"]):
+    if not await asyncio.to_thread(verify_password, body.current_password, config.value["hash"]):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Current password is incorrect")
 
-    config.value = {"hash": hash_password(body.new_password)}
+    config.value = {"hash": await asyncio.to_thread(hash_password, body.new_password)}
 
     # Stamp the change time so every token issued before now is rejected by
     # require_auth. Without this, outstanding sessions survive a password

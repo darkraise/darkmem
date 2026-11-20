@@ -1169,3 +1169,8 @@ def test_the_worker_points_attachments_dir_at_the_current_generation():
     assert (
         "ATTACHMENTS_DIR=/app/data/attachment-store/current" in service["environment"]
     )
+
+
+@pytest.mark.parametrize("compose", [PROD_COMPOSE, WORKER_COMPOSE], ids=lambda p: p.name)
+def test_compose_files_pass_cors_origins(compose):
+    assert _service_env(compose, APP_SERVICE).get("CORS_ORIGINS") == "${CORS_ORIGINS:-[]}"
