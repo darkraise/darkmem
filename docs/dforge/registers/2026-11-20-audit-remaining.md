@@ -60,7 +60,7 @@
 | 53 | B3a-19: _FACTS_ON_LOSER filters on subject_id/object_id, which have no index (add if merge volume grows) | - | - | deferred | declined in the spec: the reviewer's own condition (merge volume grows) does not hold |
 | 54 | B3b-2: annotate_undoability rebuilds the payload without pass_key, so the digest shows the wrong undoable state | docs/dforge/plans/2026-11-20-audit-remaining.md | A21 (Task 22) | doing | - |
 | 55 | B3b-3: no distinct or duplicate verdict is remembered, so the same top-scoring pairs are re-judged every rotation and later pairs starve | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 23 contracts | doing | - |
-| 56 | B3b-4, B3b-R2 and B3b-R5: refine replaces caller-supplied tags (including project/ tags) with the model's list, with no length validation | docs/dforge/plans/2026-11-20-audit-remaining.md | A20 (Task 21) | doing | - |
+| 56 | B3b-4, B3b-R2 and B3b-R5: refine replaces caller-supplied tags (including project/ tags) with the model's list, with no length validation | docs/dforge/plans/2026-11-20-audit-remaining.md | A20 (Task 21) | done | bb80816 |
 | 57 | B3b-5: CLAUDE.md says groundedness_gate stays closed, but the article surfaces gate on article_claim_gate; stale docstring | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 25 contracts | doing | - |
 | 58 | B3b-6: article gather, hash and staleness key on the subject name only while eligibility keys on name and entity_type | docs/dforge/plans/2026-11-20-audit-remaining.md | A23 (Task 24) | doing | - |
 | 59 | B3b-7: pinned subjects with zero facts fill synthesis_budget on every tick | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 24 contracts | doing | - |
