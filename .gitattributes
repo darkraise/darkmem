@@ -5,3 +5,4 @@
 *.sh text eol=lf
 entrypoint.sh text eol=lf
 docs/superpowers/plans/completed.md merge=union
+docs/dforge/plans/completed.md merge=union
