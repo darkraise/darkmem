@@ -486,6 +486,7 @@ class ProcessingPipeline:
         name_to_embedding: dict[str, list[float]],
         canonical_map: dict[tuple[str, str], str],
         batch_memory_ids: list[UUID] | None = None,
+        embed_error: str | None = None,
     ) -> dict:
         memory_id = entry["memory_id"]
         content = entry["content"]
@@ -502,7 +503,7 @@ class ProcessingPipeline:
             "graph": "pending",
             "entities_count": 0,
             "relations_count": 0,
-            "error": None,
+            "error": None if vector is not None else (embed_error or "Content embedding failed"),
         }
         if isinstance(extraction, Exception):
             status["extract"] = "error"
@@ -951,6 +952,7 @@ class ProcessingPipeline:
         # Phase 1: Content embedding
         contents = [e["content"] for e in entries]
         embedding_fingerprint: str | None = None
+        embed_error: str | None = None
         try:
             with subject_scope(batch_subject):
                 vectors, embedding_fingerprint = await self.llm.embed_batch_chunked(
@@ -973,6 +975,7 @@ class ProcessingPipeline:
             )
         except Exception as e:
             logger.error("Phase 1 content embedding failed: %s: %s", type(e).__name__, e)
+            embed_error = f"Content embedding failed: {type(e).__name__}: {e}"
             vectors = [None] * len(entries)
             embedding_fingerprint = None
 
@@ -990,6 +993,7 @@ class ProcessingPipeline:
                     "Phase 1 fingerprint registration failed for %s: %s: %s",
                     embedding_fingerprint, type(e).__name__, e,
                 )
+                embed_error = f"Embedder registration failed: {type(e).__name__}: {e}"
                 vectors = [None] * len(entries)
                 embedding_fingerprint = None
 
@@ -1205,6 +1209,7 @@ class ProcessingPipeline:
                     extraction, classification,
                     name_to_embedding, canonical_map,
                     batch_memory_ids=batch_memory_ids,
+                    embed_error=embed_error,
                 )
 
         results = await asyncio.gather(

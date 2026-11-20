@@ -288,6 +288,9 @@ async def test_vector_count_mismatch_is_a_phase_one_failure(setup_database, monk
             assert status["embed"] == "error"
             assert status["vector"] == "skipped"
             assert status["graph"] == "skipped"
+            # The reason has to reach the failure row: without it every
+            # embedding outage is recorded as "Unknown error".
+            assert "returned 2 vectors for 3 contents" in status["error"]
 
         async with factory() as s:
             registered = (await s.execute(
