@@ -107,6 +107,7 @@ Nothing is lifted any more, so that walk would return an empty list forever.
 """
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -149,8 +150,22 @@ class DocumentConnections:
 
 
 _DOCUMENT_SQL = text(
-    "SELECT project FROM documents WHERE id = CAST(:id AS uuid)"
+    "SELECT project, content_hash FROM documents WHERE id = CAST(:id AS uuid)"
 )
+
+# The probes cost seconds on a large document and their answer moves only
+# with its content or the fingerprint compared under, so it is kept per
+# (document, content_hash, fingerprint, limit). In-process, which is sound
+# only because there is a single worker (invariant 13). Another document's
+# edit is not a key: its effect on this answer waits for this document's
+# next change, an eviction or a restart.
+MEMO_SIZE = 256
+_memo: OrderedDict[tuple[str, str, str, int], tuple[DocumentConnection, ...]] = OrderedDict()
+
+
+def forget_connections() -> None:
+    """Empty the memo (a test hook)."""
+    _memo.clear()
 
 # Nearest per probe, not the single nearest -- the probe excludes the
 # queried document's own blocks but is not scoped to its project (see the
@@ -233,14 +248,13 @@ async def connections_for_document(
     reader has not thought of, which is the worst place to leak.
     """
     key = str(document_id)
-    project = (await session.execute(
-        _DOCUMENT_SQL, {"id": key}
-    )).scalar_one_or_none()
-    if project is None:
+    document = (await session.execute(_DOCUMENT_SQL, {"id": key})).first()
+    if document is None:
         return DocumentConnections(
             document_id=key, embedded=False, comparable_documents=0, items=(),
         )
 
+    project, content_hash = document.project, document.content_hash
     comparable = int(await session.scalar(
         _COMPARABLE_SQL, {"project": project, "document_id": key},
     ) or 0)
@@ -256,27 +270,43 @@ async def connections_for_document(
             items=(),
         )
 
-    blocks_table = child_table("block_embeddings", fingerprint)
-
-    rows = (await session.execute(
-        text(_connections_sql(blocks_table)),
-        {"document_id": key, "project": project, "limit": limit},
-    )).mappings().all()
+    memo_key = (key, content_hash, fingerprint, limit)
+    items = _memo.get(memo_key)
+    if items is None:
+        items = await _probe(
+            session, document_id=key, project=project, fingerprint=fingerprint, limit=limit,
+        )
+        _memo[memo_key] = items
+        if len(_memo) > MEMO_SIZE:
+            _memo.popitem(last=False)
+    else:
+        _memo.move_to_end(memo_key)
 
     return DocumentConnections(
         document_id=key,
         embedded=True,
         comparable_documents=comparable,
-        items=tuple(
-            DocumentConnection(
-                document_id=row["document_id"],
-                title=row["title"],
-                score=float(row["score"]),
-                block_id=row["block_id"],
-                block_text=row["block_text"],
-                other_block_id=row["other_block_id"],
-                other_block_text=row["other_block_text"],
-            )
-            for row in rows
-        ),
+        items=items,
+    )
+
+
+async def _probe(
+    session: AsyncSession, *, document_id: str, project: str, fingerprint: str, limit: int,
+) -> tuple[DocumentConnection, ...]:
+    blocks_table = child_table("block_embeddings", fingerprint)
+    rows = (await session.execute(
+        text(_connections_sql(blocks_table)),
+        {"document_id": document_id, "project": project, "limit": limit},
+    )).mappings().all()
+    return tuple(
+        DocumentConnection(
+            document_id=row["document_id"],
+            title=row["title"],
+            score=float(row["score"]),
+            block_id=row["block_id"],
+            block_text=row["block_text"],
+            other_block_id=row["other_block_id"],
+            other_block_text=row["other_block_text"],
+        )
+        for row in rows
     )

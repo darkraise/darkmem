@@ -39,7 +39,10 @@ from app.services.block_embeddings import (
 )
 from app.services.block_pipeline import ingest_document
 from app.services.block_query import BlockQueryService
-from app.services.document_ingest import UNCHANGED, DocumentHashConflict, DocumentUriConflict
+from app.services.block_serializer import slice_source
+from app.services.document_ingest import (
+    UNCHANGED, DocumentHashConflict, DocumentTooLarge, DocumentUriConflict,
+)
 from app.services.embedder_registry import child_table, ensure_registered
 from app.services.events import record_event
 
@@ -97,10 +100,6 @@ _PIN_ASSIGNMENT = {True: "pinned_at = now()", False: "pinned_at = NULL"}
 # already did.
 SEARCH_DEFAULT_LIMIT = 20
 SEARCH_MAX_LIMIT = 100
-
-
-class DocumentTooLarge(ValueError):
-    """Refused at the door. The message names which bound was hit."""
 
 
 class DocumentTargetUnresolved(ValueError):
@@ -582,36 +581,25 @@ async def put_document(
                 "re-embedding every block", uri, exc_info=True,
             )
 
-    # `ingest_document` (via `file_document`) opens and RELEASES its own
-    # SAVEPOINT before returning, and a released savepoint's writes merge
-    # into whatever transaction called it rather than staying discardable
-    # on their own. So the block-count refusal below needs its own
-    # SAVEPOINT around both the filing and the check: raising out of this
-    # `async with` rolls the document row, its blocks, and the
-    # `document_filed` event back to before this call, which is what makes
-    # a refusal actually leave the document as it was rather than staging
-    # an oversized, unembedded document for the caller's next commit.
-    async with session.begin_nested():
-        filed = await ingest_document(
-            session,
-            project=project,
-            content=content,
-            uri=uri,
-            source_type=source_type,
-            title=resolved_title,
-            properties=properties,
-            actor=actor,
-            api_key_id=api_key_id,
-            source=source,
-            expected_hash=expected_hash,
-            force_reparse=force_reparse,
-            carry_fingerprint=carry_fingerprint,
-        )
-        if filed.blocks_written > MAX_BLOCKS:
-            raise DocumentTooLarge(
-                f"document parses to {filed.blocks_written} blocks; the "
-                f"bound is {MAX_BLOCKS} blocks"
-            )
+    # The block-count refusal is raised inside the filing's own SAVEPOINT,
+    # before any block insert, so it rolls the row and its journal back
+    # rather than staging an oversized document for the caller's next commit.
+    filed = await ingest_document(
+        session,
+        project=project,
+        content=content,
+        uri=uri,
+        source_type=source_type,
+        title=resolved_title,
+        properties=properties,
+        actor=actor,
+        api_key_id=api_key_id,
+        source=source,
+        expected_hash=expected_hash,
+        force_reparse=force_reparse,
+        carry_fingerprint=carry_fingerprint,
+        max_blocks=MAX_BLOCKS,
+    )
 
     await session.commit()
 
@@ -1171,19 +1159,14 @@ async def document_hash(session: AsyncSession, *, document_id: str) -> str | Non
     )).scalar_one_or_none()
 
 
-# The join carries the document's content so `source` is sliced server-side.
-# Without it every caller would fetch the whole document and slice it itself,
-# which makes an editor's per-block read depend on a second, much larger one.
+# `source` is sliced here from one fetch of `content`, not per row in SQL: a
+# per-row `substring` decompresses the TOASTed content once for every block.
 _BLOCKS = """
     SELECT CAST(b.id AS text) AS id, b.type, b.text, b.order_index,
            CAST(b.parent_id AS text) AS parent_id,
            b.properties,
-           lower(b.char_span) AS span_start, upper(b.char_span) AS span_end,
-           substring(d.content
-                     FROM lower(b.char_span) + 1
-                     FOR upper(b.char_span) - lower(b.char_span)) AS source
+           lower(b.char_span) AS span_start, upper(b.char_span) AS span_end
     FROM blocks b
-    JOIN documents d ON d.id = b.document_id
     WHERE b.document_id = CAST(:document_id AS uuid)
       {clause}
     ORDER BY b.order_index
@@ -1205,7 +1188,6 @@ async def document_blocks(
     `search_sections` and `document_outline`; it runs entirely inside
     whatever transaction the caller already holds.
     """
-    # Qualified now that the statement joins: a bare `id` is ambiguous.
     clause = "AND b.id = ANY(CAST(:ids AS uuid[]))" if block_ids is not None else ""
     params: dict = {"document_id": document_id}
     if block_ids is not None:
@@ -1213,6 +1195,9 @@ async def document_blocks(
     rows = (await session.execute(
         text(_BLOCKS.format(clause=clause)), params
     )).mappings().all()
+    content = (await session.execute(
+        _DOCUMENT_CONTENT, {"document_id": document_id}
+    )).scalar_one_or_none() if rows else None
     return [
         BlockRow(
             block_id=r["id"], type=r["type"], text=r["text"] or "",
@@ -1223,7 +1208,7 @@ async def document_blocks(
                 else None
             ),
             properties=r["properties"],
-            source=r["source"],
+            source=slice_source(content, r["span_start"], r["span_end"]),
         )
         for r in rows
     ]

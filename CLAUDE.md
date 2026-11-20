@@ -1242,9 +1242,10 @@ the same `document_door` functions; targets resolve through
   (`content`, `content_hash`, `blocks`). One service read,
   `document_door.document_content`, serves both doors.
 - `MAX_CONTENT_CHARS` (1,000,000) is checked before any parse or write;
-  `MAX_BLOCKS` (5,000) after parsing, inside a SAVEPOINT around the filing,
-  so `DocumentTooLarge` rolls back the row, blocks and `document_filed`
-  event.
+  `MAX_BLOCKS` (5,000) after parsing and before any block insert, inside
+  the filing's SAVEPOINT, so `DocumentTooLarge` rolls back the row, blocks
+  and `document_filed` event. The parse runs in a worker thread
+  (`asyncio.to_thread`), off the event loop.
 - **`put` takes an optional `expected_hash` compare-and-set** carried in the
   writer's own UPDATE with a rowcount check (never read-then-compare). A
   stale hash answers 409, or a `hash_conflict` envelope

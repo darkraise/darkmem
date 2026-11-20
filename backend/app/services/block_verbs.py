@@ -200,6 +200,10 @@ _PLACE = text(
                  unnest(CAST(:props AS text[])) AS props,
                  unnest(CAST(:parents AS text[])) AS parent) u
     WHERE b.id = u.id
+      AND (b.order_index IS DISTINCT FROM u.ord
+           OR b.char_span IS DISTINCT FROM CAST(CAST(u.span AS text) AS int4range)
+           OR b.properties IS DISTINCT FROM CAST(u.props AS jsonb)
+           OR b.parent_id IS DISTINCT FROM CAST(u.parent AS uuid))
     """
 )
 _INSERT_BLOCK = text(

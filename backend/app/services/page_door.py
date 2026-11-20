@@ -13,6 +13,7 @@ embedder call.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 from dataclasses import dataclass, replace
 from uuid import UUID, uuid4
@@ -20,7 +21,9 @@ from uuid import UUID, uuid4
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.block_serializer import TreeBlock, reproduces_source, serialize_tree
+from app.services.block_serializer import (
+    TreeBlock, reproduces_source, serialize_tree, slice_source,
+)
 from app.services.document_ingest import compute_content_hash
 from app.services.document_parsers import parse_markdown, split_frontmatter
 from app.services.events import record_event
@@ -245,17 +248,13 @@ _GET_PAGE = text(
     FROM pages WHERE id = CAST(:id AS uuid) AND deleted_at IS NULL
     """
 )
-# `source` is sliced server-side the way `document_door._BLOCKS` slices it, so
-# an editor reading one page does not also fetch and slice `content` itself.
+# `source` is sliced in `get_page` from the `content` `_GET_PAGE` already
+# fetched, as `document_door.document_blocks` slices it.
 _GET_BLOCKS = text(
     """
     SELECT b.id, b.parent_id, b.order_index, b.type, b.text, b.properties,
-           lower(b.char_span) AS char_start, upper(b.char_span) AS char_end,
-           substring(p.content
-                     FROM lower(b.char_span) + 1
-                     FOR upper(b.char_span) - lower(b.char_span)) AS source
+           lower(b.char_span) AS char_start, upper(b.char_span) AS char_end
     FROM blocks b
-    JOIN pages p ON p.id = b.page_id
     WHERE b.page_id = CAST(:id AS uuid)
     ORDER BY b.order_index
     """
@@ -560,7 +559,7 @@ async def create_page(
             f"{MAX_CONTENT_CHARS}"
         )
 
-    tree = _flatten_headings(_parse(content)) if content else []
+    tree = _flatten_headings(await asyncio.to_thread(_parse, content)) if content else []
     if content and (
         split_frontmatter(content)[0] is not None
         or not reproduces_source(tree, content, {})
@@ -603,7 +602,13 @@ async def get_page(
         title=row["title"],
         content_hash=row["content_hash"],
         properties=row["properties"],
-        blocks=[dict(block) for block in blocks],
+        blocks=[
+            {
+                **block,
+                "source": slice_source(row["content"], block["char_start"], block["char_end"]),
+            }
+            for block in blocks
+        ],
         content=row["content"] if include_content else None,
     )
 

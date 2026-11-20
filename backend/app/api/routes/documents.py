@@ -467,10 +467,14 @@ class DocumentBlocksResponse(BaseModel):
     horizon: bool = True
 
 
+# The page is cut first and blocks are counted only for the documents on it:
+# a join-and-group over every block in scope before the LIMIT costs a whole
+# corpus scan per page.
 _LIST_SQL = text(
     f"""
     SELECT CAST(d.id AS text) AS id, d.title, d.uri, d.source_type, d.project,
-           d.pinned_at, count(b.id) AS block_count,
+           d.pinned_at,
+           (SELECT count(*) FROM blocks b WHERE b.document_id = d.id) AS block_count,
            ARRAY(
                SELECT t.name FROM document_tags dt
                JOIN tags t ON t.id = dt.tag_id
@@ -478,17 +482,14 @@ _LIST_SQL = text(
                ORDER BY t.name
            ) AS tags,
            -- `read_summary`'s own test: an object under the key with
-           -- non-empty text. `d.properties` needs no GROUP BY entry because
-           -- `d.id`, the primary key, is grouped.
+           -- non-empty text.
            (jsonb_typeof(d.properties -> '{SUMMARY_PROPERTY_KEY}') = 'object'
             AND coalesce(d.properties -> '{SUMMARY_PROPERTY_KEY}' ->> 'text', '') <> '')
                IS TRUE AS has_summary
     FROM documents d
-    LEFT JOIN blocks b ON b.document_id = d.id
     -- CAST because asyncpg cannot infer a bare parameter's type in an
     -- IS NULL comparison (the cross-cutting invariant on raw-SQL params).
     WHERE (CAST(:project AS text) IS NULL OR d.project = CAST(:project AS text))
-    GROUP BY d.id, d.title, d.uri, d.source_type, d.project, d.pinned_at
     ORDER BY d.created_at DESC
     LIMIT :limit OFFSET :offset
     """

@@ -256,6 +256,16 @@ def _reset_embedder_cooldown():
     hybrid_search._embedder_retry_at = 0.0
 
 
+@pytest.fixture(autouse=True)
+def _forget_document_connections():
+    """Connections are memoised process-wide; a test's rolled-back corpus must
+    not answer the next test's read."""
+    from app.services.document_connections import forget_connections
+    forget_connections()
+    yield
+    forget_connections()
+
+
 @pytest_asyncio.fixture
 async def auth_headers(session):
     hashed = hash_password("test-admin-password")

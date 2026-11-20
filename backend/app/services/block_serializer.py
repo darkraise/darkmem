@@ -25,6 +25,7 @@ __all__ = [
     "derive_markers",
     "reproduces_source",
     "serialize_tree",
+    "slice_source",
 ]
 
 DEFAULT_LIST_MARKER = "-"
@@ -419,3 +420,11 @@ def reproduces_source(
         if in_source != in_tree:
             return False
     return True
+
+
+def slice_source(content: str | None, start: int | None, end: int | None) -> str | None:
+    """The block's verbatim source: `content[start:end]`, a code-point slice
+    as Postgres `substring` counts, or `None` without content or a span."""
+    if content is None or start is None or end is None:
+        return None
+    return content[start:end]

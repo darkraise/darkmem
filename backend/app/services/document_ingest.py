@@ -67,6 +67,7 @@ lift in §5). It does not commit; the caller owns the transaction boundary.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -88,6 +89,7 @@ __all__ = [
     "DocumentFileFailure",
     "DocumentFileJob",
     "DocumentHashConflict",
+    "DocumentTooLarge",
     "DocumentUriConflict",
     "DocumentIngest",
     "OVERSIZED_BLOCK_CHARS",
@@ -101,6 +103,10 @@ __all__ = [
 DOCUMENT_FILED_EVENT = "document_filed"
 REVISIONS_PRUNED_EVENT = "document_revisions_pruned"
 OBJECT_TYPE = "document"
+
+class DocumentTooLarge(ValueError):
+    """Refused at the door. The message names which bound was hit."""
+
 
 class DocumentHashConflict(Exception):
     """``expected_hash`` did not match the document's current ``content_hash``.
@@ -219,6 +225,7 @@ async def file_document(
     expected_hash: str | None = None,
     force_reparse: bool = False,
     carry_fingerprint: str | None = None,
+    max_blocks: int | None = None,
 ) -> DocumentIngest:
     """File `content` as a document and replace its blocks, atomically.
     Does not commit.
@@ -248,6 +255,7 @@ async def file_document(
             expected_hash=expected_hash,
             force_reparse=force_reparse,
             carry_fingerprint=carry_fingerprint,
+            max_blocks=max_blocks,
         )
 
 
@@ -268,6 +276,7 @@ async def _file_document_without_savepoint(
     expected_hash: str | None = None,
     force_reparse: bool = False,
     carry_fingerprint: str | None = None,
+    max_blocks: int | None = None,
 ) -> DocumentIngest:
     """`file_document`'s body with the atomic replace taken away.
 
@@ -379,7 +388,15 @@ async def _file_document_without_savepoint(
         if carry_fingerprint is not None else {}
     )
     stripped = await documents_repo.strip_blocks(session, resolved_id)
-    rows = _resolve_tree(parse())
+    # Off the event loop: a megabyte of markdown parses for long enough to
+    # stall every other request on the single worker. Counted before the
+    # insert, so an oversized source writes no block row before the refusal.
+    drafts = await asyncio.to_thread(parse)
+    if max_blocks is not None and len(drafts) > max_blocks:
+        raise DocumentTooLarge(
+            f"document parses to {len(drafts)} blocks; the bound is {max_blocks} blocks"
+        )
+    rows = _resolve_tree(drafts)
     await documents_repo.insert_blocks(session, resolved_id, rows)
     if previous_vectors:
         await carry_document_vectors(session, resolved_id, carry_fingerprint, previous_vectors)
