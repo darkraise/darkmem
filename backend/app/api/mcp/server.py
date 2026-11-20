@@ -9,7 +9,7 @@ from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import Field
-from sqlalchemy import select, text
+from sqlalchemy import select
 
 from app.services.llm import lease_llm
 from app.api.mcp.auth import ApiKeyTokenVerifier, current_api_key_id, current_key_name
@@ -29,7 +29,6 @@ from app.schemas.memory import MemoryBatchCreate, MemoryCreate, MemorySearchRequ
 from app.schemas.research import MAX_FINDINGS_CEILING, ResearchFindingInput
 from app.services.document_door import SEARCH_DEFAULT_LIMIT, SEARCH_MAX_LIMIT
 from app.services.memory import MemoryService
-from app.utils.graph_keys import decompose_key
 
 logger = logging.getLogger(__name__)
 
@@ -1631,48 +1630,44 @@ async def code_search(
         limit: Maximum number of results (default: 10).
     """
     limit = _clamp_limit(limit, default=10)
+    from app.services.code_query import CodeQueryService
+
     with lease_llm(_pipeline.llm if _pipeline is not None else None) as llm:
-        if not _pipeline or not llm:
-            # Return a typed, machine-readable result rather than raising a tool
-            # error so the MCP client can degrade gracefully (e.g. fall back to a
-            # text search) instead of treating an unconfigured embedder as a crash.
-            return json.dumps(_degraded("embedder not configured", results=[]))
-
-        from app.models.code import Repository
-        from app.services.code_query import CodeQueryService
-
-        repo_id: UUID | None = None
-        if repo_name:
-            async with _code_service_context() as session:
-                repo = (await session.execute(
-                    select(Repository).where(Repository.name == repo_name)
-                )).scalar_one_or_none()
-                if not repo:
-                    raise ToolInputError(f"Repository not found: {repo_name}")
-                repo_id = repo.id
-
         async with _code_service_context() as session:
-            answer = await CodeQueryService(session, llm=llm).search_code(
-                query, limit, repo_id, language,
-            )
+            service = CodeQueryService(session, llm=llm)
+            repo_id: UUID | None = None
+            if repo_name:
+                repo, refusal = await _resolve_repo_or_refusal(service, repo_name)
+                if refusal is not None:
+                    return refusal
+                repo_id = repo.id
+            answer = await service.search_code(query, limit, repo_id, language)
 
-        return json.dumps([
-            {
-                "file_path": r["file_path"],
-                "symbol_name": r["symbol_name"],
-                "chunk_content": r["chunk_content"],
-                "language": r["language"],
-                "repo_id": r["repo_id"],
-                "line_start": r["line_start"],
-                "line_end": r["line_end"],
-                # The REST twin serialises the same fused value under the same key
-                # (CodeSearchResult.score = rrf_score); emitting the raw semantic
-                # distance here is what let the two doors rank the same query
-                # differently.
-                "score": r["rrf_score"],
-            }
-            for r in answer.results
-        ])
+    rows = [
+        {
+            "file_path": r["file_path"],
+            "symbol_name": r["symbol_name"],
+            "chunk_content": r["chunk_content"],
+            "language": r["language"],
+            "repo_id": r["repo_id"],
+            "line_start": r["line_start"],
+            "line_end": r["line_end"],
+            # The REST twin serialises the same fused value under the same key
+            # (CodeSearchResult.score = rrf_score); emitting the raw semantic
+            # distance here is what let the two doors rank the same query
+            # differently.
+            "score": r["rrf_score"],
+        }
+        for r in answer.results
+    ]
+    if answer.semantic_skipped or "vector" in answer.failed_arms:
+        # The keyword arm still answered; the envelope says the ranking had
+        # no semantic arm, so an agent does not read a thin list as complete.
+        reason = answer.semantic_skipped or "it failed"
+        return json.dumps(_degraded(
+            f"semantic arm did not run: {reason}", degraded=True, results=rows,
+        ))
+    return json.dumps(rows)
 
 
 @mcp.tool(
@@ -1799,30 +1794,13 @@ async def code_dependencies(
     from app.services.code_query import CodeQueryService
 
     async with _code_service_context() as session:
-        repo, refusal = await _resolve_repo_or_refusal(
-            CodeQueryService(session), repo_name,
-        )
+        service = CodeQueryService(session)
+        repo, refusal = await _resolve_repo_or_refusal(service, repo_name)
         if refusal is not None:
             return refusal
+        edges = await service.import_edges(repo.id, file_path)
 
-        params: dict = {"repo_id": str(repo.id)}
-        extra_filter = ""
-        if file_path:
-            extra_filter = " AND source_key = :file_path"
-            params["file_path"] = file_path
-
-        rows = (await session.execute(
-            text(f"""
-                SELECT source_key AS file, target_key AS module
-                FROM code_edges
-                WHERE repo_id = :repo_id
-                  AND edge_type = 'imports'
-                  {extra_filter}
-            """),
-            params,
-        )).mappings().all()
-
-    return json.dumps([{"file": r["file"], "module": r["module"]} for r in rows])
+    return json.dumps(edges)
 
 
 @mcp.tool(description="Get 360-degree context for a code symbol: callers, callees, heritage, accesses, processes, community.")
@@ -1863,17 +1841,16 @@ async def code_changes(
     Args:
         repo_name: Repository name to analyze.
     """
+    from app.services.code_query import CodeQueryService
+    from app.services.repo_manager import RepoManager
+
     async with _code_service_context() as session:
-        from app.models.code import CodeFile, CodeSymbol, Repository
-        from app.services.repo_manager import RepoManager
+        service = CodeQueryService(session)
+        repo, refusal = await _resolve_repo_or_refusal(service, repo_name)
+        if refusal is not None:
+            return refusal
 
-        repo = (await session.execute(select(Repository).where(Repository.name == repo_name))).scalar_one_or_none()
-        if not repo:
-            raise ToolInputError(f"Repository '{repo_name}' not found")
-
-        manager = RepoManager(session)
-        work_dir = manager.repo_working_dir(repo)
-
+        work_dir = RepoManager(session).repo_working_dir(repo)
         if not work_dir.exists():
             raise ToolInputError("Repository working directory not found")
 
@@ -1898,22 +1875,13 @@ async def code_changes(
         if not changed_files:
             return json.dumps({"changed_files": [], "affected_symbols": [], "message": "No uncommitted changes"})
 
-        affected = []
-        for fp in changed_files:
-            syms = (await session.execute(
-                select(CodeSymbol).join(CodeFile).where(
-                    CodeFile.repo_id == repo.id,
-                    CodeFile.file_path == fp,
-                )
-            )).scalars().all()
-            for s in syms:
-                affected.append({"name": s.name, "kind": s.kind, "file_path": fp, "line_start": s.line_start})
+        affected = await service.symbols_in_files(repo.id, sorted(changed_files))
 
-        return json.dumps({
-            "changed_files": list(changed_files),
-            "affected_symbols": affected,
-            "total_symbols": len(affected),
-        })
+    return json.dumps({
+        "changed_files": list(changed_files),
+        "affected_symbols": affected,
+        "total_symbols": len(affected),
+    })
 
 
 @mcp.tool(
@@ -1928,31 +1896,11 @@ async def code_communities(repo_name: str) -> str:
     from app.services.code_query import CodeQueryService
 
     async with _code_service_context() as session:
-        repo, refusal = await _resolve_repo_or_refusal(
-            CodeQueryService(session), repo_name,
-        )
+        service = CodeQueryService(session)
+        repo, refusal = await _resolve_repo_or_refusal(service, repo_name)
         if refusal is not None:
             return refusal
-
-        rows = (await session.execute(
-            text("""
-                SELECT key, label, properties
-                FROM code_graph_nodes
-                WHERE repo_id = :repo_id AND kind = 'community'
-                ORDER BY label
-            """),
-            {"repo_id": str(repo.id)},
-        )).mappings().all()
-
-    communities = [
-        {
-            "key": r["key"],
-            "label": r["label"],
-            "size": (r["properties"] or {}).get("size") if r["properties"] else None,
-        }
-        for r in rows
-    ]
-    return json.dumps(communities)
+        return json.dumps(await service.communities(repo.id))
 
 
 @mcp.tool(
@@ -1965,47 +1913,13 @@ async def code_communities(repo_name: str) -> str:
 )
 async def code_processes(repo_name: str) -> str:
     from app.services.code_query import CodeQueryService
-    from app.services.process_tracer import process_display_label
 
     async with _code_service_context() as session:
-        repo, refusal = await _resolve_repo_or_refusal(
-            CodeQueryService(session), repo_name,
-        )
+        service = CodeQueryService(session)
+        repo, refusal = await _resolve_repo_or_refusal(service, repo_name)
         if refusal is not None:
             return refusal
-
-        process_rows = (await session.execute(
-            text("""
-                SELECT n.key, n.label, n.properties
-                FROM code_graph_nodes n
-                WHERE n.repo_id = :repo_id AND n.kind = 'process'
-                ORDER BY n.label
-            """),
-            {"repo_id": str(repo.id)},
-        )).mappings().all()
-
-        processes = []
-        for p in process_rows:
-            meta = p["properties"] or {}
-            step_rows = (await session.execute(
-                text("""
-                    SELECT source_key
-                    FROM code_edges
-                    WHERE repo_id = :repo_id
-                      AND target_key = :proc_key
-                      AND edge_type = 'step_in_process'
-                """),
-                {"repo_id": str(repo.id), "proc_key": p["key"]},
-            )).mappings().all()
-            steps = [r["source_key"].split("::")[0] for r in step_rows]
-            processes.append({
-                "name": process_display_label(p["key"]),
-                "kind": meta.get("entry_kind"),
-                "entry_file": meta.get("entry_file"),
-                "steps": steps,
-            })
-
-    return json.dumps(processes)
+        return json.dumps(await service.processes(repo.id))
 
 
 @mcp.tool(description="Find all references to a symbol for cross-file rename. Returns locations and confidence.")
@@ -2018,109 +1932,17 @@ async def code_rename(
         symbol_name: Name of the symbol to rename.
         repo_name: Repository name.
     """
-    from app.models.code import CodeFile, CodeSymbol, Repository
+    from app.services.code_query import CodeQueryService
 
     async with _code_service_context() as session:
-        repo = (await session.execute(select(Repository).where(Repository.name == repo_name))).scalar_one_or_none()
-        if not repo:
-            raise ToolInputError(f"Repository '{repo_name}' not found")
+        service = CodeQueryService(session)
+        repo, refusal = await _resolve_repo_or_refusal(service, repo_name)
+        if refusal is not None:
+            return refusal
+        references = await service.rename_references(repo.id, symbol_name)
 
-        definitions = (await session.execute(
-            select(CodeSymbol, CodeFile.file_path).join(CodeFile).where(
-                CodeFile.repo_id == repo.id,
-                CodeSymbol.name == symbol_name,
-            )
-        )).all()
-
-        if not definitions:
-            raise ToolInputError(f"Symbol '{symbol_name}' not found")
-
-        references = []
-        for sym, fp in definitions:
-            references.append({
-                "file_path": fp,
-                "line": sym.line_start,
-                "kind": "definition",
-                "symbol_kind": sym.kind,
-                "confidence": 1.0,
-            })
-
-        repo_id_str = str(repo.id)
-
-        # Call references
-        call_rows = (await session.execute(
-            text("""
-                SELECT source_key, properties
-                FROM code_edges
-                WHERE repo_id = :repo_id
-                  AND edge_type = 'calls'
-                  AND (target_key = :sym_name OR target_key LIKE :sym_prefix)
-            """),
-            {
-                "repo_id": repo_id_str,
-                "sym_name": symbol_name,
-                "sym_prefix": f"{symbol_name}::%",
-            },
-        )).mappings().all()
-        for r in call_rows:
-            src = r["source_key"]
-            caller_name, caller_fp = decompose_key("symbol", src) if "::" in src else (src, None)
-            props = r["properties"] or {}
-            references.append({
-                "file_path": caller_fp,
-                "line": props.get("line"),
-                "kind": "call",
-                "caller": caller_name,
-                "confidence": props.get("confidence", 0.5),
-            })
-
-        # Heritage references (extends/implements)
-        heritage_rows = (await session.execute(
-            text("""
-                SELECT source_key, edge_type
-                FROM code_edges
-                WHERE repo_id = :repo_id
-                  AND edge_type IN ('extends', 'implements')
-                  AND (target_key = :sym_name OR target_key LIKE :sym_prefix)
-            """),
-            {
-                "repo_id": repo_id_str,
-                "sym_name": symbol_name,
-                "sym_prefix": f"{symbol_name}::%",
-            },
-        )).mappings().all()
-        for r in heritage_rows:
-            src = r["source_key"]
-            child_name, child_fp = decompose_key("symbol", src) if "::" in src else (src, None)
-            references.append({
-                "file_path": child_fp,
-                "line": None,
-                "kind": "heritage",
-                "symbol": child_name,
-                "confidence": 0.95,
-            })
-
-        # Import references
-        import_rows = (await session.execute(
-            text("""
-                SELECT source_key
-                FROM code_edges
-                WHERE repo_id = :repo_id
-                  AND edge_type = 'imports'
-                  AND target_key = :sym_name
-            """),
-            {"repo_id": repo_id_str, "sym_name": symbol_name},
-        )).mappings().all()
-        for r in import_rows:
-            references.append({
-                "file_path": r["source_key"],
-                "line": 0,
-                "kind": "import",
-                "confidence": 0.8,
-            })
-
-    references.sort(key=lambda x: (-x.get("confidence", 0), x.get("file_path") or "", x.get("line") or 0))
-
+    if references is None:
+        raise ToolInputError(f"Symbol '{symbol_name}' not found")
     return json.dumps({
         "symbol": symbol_name,
         "total_references": len(references),

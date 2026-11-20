@@ -81,6 +81,9 @@ class CodeSearchAnswer:
 
     results: list[dict]
     failed_arms: tuple[str, ...] = ()
+    # Why the vector arm was never attempted (no embedder, read-only), as
+    # opposed to attempted and failed.
+    semantic_skipped: str | None = None
 
 
 def _code_hit_key(row: dict) -> tuple[str, str, int]:
@@ -134,11 +137,16 @@ class CodeQueryService:
     ) -> CodeSearchAnswer:
         lists: list[RankedList] = []
         failed: list[str] = []
+        skipped: str | None = None
+        if not self.llm:
+            skipped = "no embedder is configured"
+        elif settings.read_only:
+            # A backup worker makes no external call by ruling, so the vector
+            # arm is skipped outright rather than attempted and failed; the
+            # ILIKE arm below still answers.
+            skipped = "read-only instance"
 
-        # `settings.read_only` skips the vector arm outright rather than
-        # letting it attempt and fail: a backup worker makes no external
-        # call by ruling, and the ILIKE arm below still answers.
-        if self.llm and not settings.read_only:
+        if skipped is None:
             try:
                 vector, fingerprint = await self.llm.embed(query)
                 async with self.session.begin_nested():
@@ -212,6 +220,7 @@ class CodeQueryService:
         return CodeSearchAnswer(
             results=rrf_fuse(lists, limit, key=_code_hit_key),
             failed_arms=tuple(failed),
+            semantic_skipped=skipped,
         )
 
     async def list_symbols(
@@ -932,3 +941,163 @@ class CodeQueryService:
                 if community_row else None
             ),
         }
+
+    async def import_edges(
+        self, repo_id: UUID, file_path: str | None = None,
+    ) -> list[dict]:
+        file_filter = " AND source_key = :file_path" if file_path else ""
+        params: dict = {"repo_id": str(repo_id)}
+        if file_path:
+            params["file_path"] = file_path
+        rows = (await self.session.execute(
+            text(f"""
+                SELECT source_key AS file, target_key AS module
+                FROM code_edges
+                WHERE repo_id = :repo_id
+                  AND edge_type = 'imports'
+                  {file_filter}
+            """),
+            params,
+        )).mappings().all()
+        return [{"file": row["file"], "module": row["module"]} for row in rows]
+
+    async def communities(self, repo_id: UUID) -> list[dict]:
+        rows = (await self.session.execute(
+            text("""
+                SELECT key, label, properties
+                FROM code_graph_nodes
+                WHERE repo_id = :repo_id AND kind = 'community'
+                ORDER BY label
+            """),
+            {"repo_id": str(repo_id)},
+        )).mappings().all()
+        return [
+            {
+                "key": row["key"],
+                "label": row["label"],
+                "size": (row["properties"] or {}).get("size"),
+            }
+            for row in rows
+        ]
+
+    async def processes(self, repo_id: UUID) -> list[dict]:
+        """Each traced process with its steps, in two statements."""
+        nodes = (await self.session.execute(
+            text("""
+                SELECT key, label, properties
+                FROM code_graph_nodes
+                WHERE repo_id = :repo_id AND kind = 'process'
+                ORDER BY label
+            """),
+            {"repo_id": str(repo_id)},
+        )).mappings().all()
+        if not nodes:
+            return []
+        step_rows = (await self.session.execute(
+            text("""
+                SELECT target_key, source_key
+                FROM code_edges
+                WHERE repo_id = :repo_id
+                  AND edge_type = 'step_in_process'
+                  AND target_key = ANY(CAST(:keys AS text[]))
+                ORDER BY target_key, properties -> 'step', source_key
+            """),
+            {"repo_id": str(repo_id), "keys": [node["key"] for node in nodes]},
+        )).mappings().all()
+        steps: dict[str, list[str]] = {}
+        for row in step_rows:
+            steps.setdefault(row["target_key"], []).append(
+                row["source_key"].split("::")[0]
+            )
+        return [
+            {
+                "name": process_display_label(node["key"]),
+                "kind": (node["properties"] or {}).get("entry_kind"),
+                "entry_file": (node["properties"] or {}).get("entry_file"),
+                "steps": steps.get(node["key"], []),
+            }
+            for node in nodes
+        ]
+
+    async def symbols_in_files(
+        self, repo_id: UUID, file_paths: list[str],
+    ) -> list[dict]:
+        rows = (await self.session.execute(
+            select(CodeSymbol.name, CodeSymbol.kind, CodeSymbol.line_start, CodeFile.file_path)
+            .join(CodeFile, CodeSymbol.file_id == CodeFile.id)
+            .where(CodeFile.repo_id == repo_id, CodeFile.file_path.in_(file_paths))
+            .order_by(CodeFile.file_path, CodeSymbol.line_start, CodeSymbol.id)
+        )).all()
+        return [
+            {"name": name, "kind": kind, "file_path": path, "line_start": line}
+            for name, kind, line, path in rows
+        ]
+
+    async def rename_references(
+        self, repo_id: UUID, symbol_name: str,
+    ) -> list[dict] | None:
+        """Every definition of and reference to ``symbol_name``, most certain
+        first, or None when no symbol of that name is defined."""
+        definitions = (await self.session.execute(
+            select(CodeSymbol.line_start, CodeSymbol.kind, CodeFile.file_path)
+            .join(CodeFile, CodeSymbol.file_id == CodeFile.id)
+            .where(CodeFile.repo_id == repo_id, CodeSymbol.name == symbol_name)
+        )).all()
+        if not definitions:
+            return None
+        references: list[dict] = [
+            {
+                "file_path": path, "line": line, "kind": "definition",
+                "symbol_kind": kind, "confidence": 1.0,
+            }
+            for line, kind, path in definitions
+        ]
+
+        # A prefix compare, not LIKE: `_` and `%` are ordinary characters in
+        # a symbol name.
+        prefix = f"{symbol_name}::"
+        edge_rows = (await self.session.execute(
+            text("""
+                SELECT source_key, edge_type, properties
+                FROM code_edges
+                WHERE repo_id = :repo_id
+                  AND edge_type IN ('calls', 'extends', 'implements', 'imports')
+                  AND (
+                    target_key = :name
+                    OR (edge_type <> 'imports'
+                        AND left(target_key, :prefix_len) = :prefix)
+                  )
+            """),
+            {
+                "repo_id": str(repo_id), "name": symbol_name,
+                "prefix": prefix, "prefix_len": len(prefix),
+            },
+        )).mappings().all()
+        for row in edge_rows:
+            source = row["source_key"]
+            if row["edge_type"] == "imports":
+                references.append({
+                    "file_path": source, "line": 0, "kind": "import",
+                    "confidence": 0.8,
+                })
+                continue
+            name, path = (
+                decompose_key("symbol", source) if "::" in source else (source, None)
+            )
+            if row["edge_type"] == "calls":
+                properties = row["properties"] or {}
+                references.append({
+                    "file_path": path, "line": properties.get("line"),
+                    "kind": "call", "caller": name,
+                    "confidence": properties.get("confidence", 0.5),
+                })
+            else:
+                references.append({
+                    "file_path": path, "line": None, "kind": "heritage",
+                    "symbol": name, "confidence": 0.95,
+                })
+
+        references.sort(key=lambda ref: (
+            -ref.get("confidence", 0), ref.get("file_path") or "", ref.get("line") or 0,
+        ))
+        return references

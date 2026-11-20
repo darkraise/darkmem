@@ -730,10 +730,12 @@ PARITY_TABLE: tuple[Surface, ...] = (
         mcp=("code_search",),
         note=(
             "Both doors fuse through CodeQueryService.search_code and publish "
-            "the same rrf_score under the same score key (T1.42c). With no "
-            "embedder configured the doors answer differently on purpose: the "
-            "tool returns doc 12 section 3's typed degradation envelope, the "
-            "route degrades to the keyword arm."
+            "the same rrf_score under the same score key (T1.42c). When the "
+            "semantic arm does not run (no embedder, a read-only instance or "
+            "a failed embed) both doors answer from the keyword arm; the tool "
+            "wraps those rows in doc 12 section 3's degradation envelope with "
+            "degraded true and a reason naming the semantic arm, the route "
+            "answers the plain list."
         ),
     ),
     Surface(

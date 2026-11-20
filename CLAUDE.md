@@ -538,8 +538,10 @@ Code search (`CodeQueryService.search_code`) fuses a vector arm over
 `code_chunk_embeddings__<slug>` with an `ILIKE` arm over `CodeSymbol.name` /
 `source_code` under RRF (no `ts_rank`; the partitions carry no FTS column).
 `RRF_K` is declared only in `app/services/rank_fusion.py`; two AST scans fail
-the build on a second declaration. MCP `code_search` and `code_blast_radius`
-route through this service.
+the build on a second declaration. Every MCP code tool except `code_reindex`
+reads through `CodeQueryService`. When the vector arm does not run (no
+embedder, a read-only instance or a failed embed), MCP `code_search` answers
+from the `ILIKE` arm inside a degradation envelope marked `degraded: true`.
 
 **Chat retrieval is the same path**: `ChatService` goes through
 `LayerCompositionService.search`, whose memory channel is
