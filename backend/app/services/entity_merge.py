@@ -799,7 +799,7 @@ async def _fold_open_facts(session: AsyncSession, renamed: Any, partner: Any) ->
         (renamed, partner) if order(renamed) <= order(partner) else (partner, renamed)
     )
 
-    await session.execute(
+    moved = await session.execute(
         text("""
             UPDATE fact_sources fs
             SET fact_id = CAST(:keeper AS uuid)
@@ -813,6 +813,17 @@ async def _fold_open_facts(session: AsyncSession, renamed: Any, partner: Any) ->
         """),
         {"keeper": keeper["id"], "retired": retired["id"]},
     )
+    if moved.rowcount:
+        # The keeper's evidence grew, so the recompute's fast arm has to hear
+        # of it; without the event its promotion waits for the slow-arm sweep.
+        await record_event(
+            session,
+            event_type="sources_changed",
+            object_type="fact",
+            object_id=UUID(keeper["id"]),
+            project=renamed["project"],
+            payload={"fact_id": keeper["id"], "folded_from": retired["id"]},
+        )
     await session.execute(
         text("DELETE FROM fact_sources WHERE fact_id = CAST(:retired AS uuid)"),
         {"retired": retired["id"]},

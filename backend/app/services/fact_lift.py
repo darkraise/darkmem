@@ -135,12 +135,14 @@ fact into two groups, and the damage is not cosmetic — see ``_canon``.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from uuid import UUID
 
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.fact_sources import CODE_SOURCE_KIND, FactSourceRepository
@@ -332,6 +334,31 @@ _STILL_ASSERTING = text("""
     WHERE m.id = ANY(CAST(:memory_ids AS uuid[]))
 """)
 
+# The pipeline holds a memory's row lock from its enrichment write until the
+# batch commits, and strips and rewrites that memory's graph under it. Taking
+# FOR SHARE on the candidate's memories before `_STILL_ASSERTING` makes the lift
+# wait out a re-extraction in flight and then read the committed graph; a plain
+# read would see the pre-strip graph and add a source the memory no longer
+# asserts. NOWAIT with a bounded retry, never a blocking wait: the pipeline
+# takes the memory lock first and fact locks after it, while a lift tick holds
+# every earlier candidate's fact lock, so blocking here could deadlock the two
+# and Postgres might abort the pipeline's write rather than this tick.
+_SHARE_LOCK_MEMORIES = text("""
+    SELECT id
+    FROM memories
+    WHERE id = ANY(CAST(:memory_ids AS uuid[]))
+    ORDER BY id
+    FOR SHARE NOWAIT
+""")
+_LOCK_NOT_AVAILABLE = "55P03"
+MEMORY_LOCK_WAIT_SECONDS = 5.0
+_MEMORY_LOCK_POLL_SECONDS = 0.05
+
+
+class MemoriesBusy(Exception):
+    """A candidate's memories stayed locked past the wait; it lifts next tick."""
+
+
 # FOR UPDATE, not a bare read: the Tier-B withdrawal sweep expires a fact under
 # the same lock, so holding it from this read through the provenance write is
 # what stops a source landing on a row that is being expired out from under it.
@@ -508,6 +535,21 @@ async def _still_asserting(session: AsyncSession, candidate: _Candidate) -> set[
     }
 
 
+async def _share_lock_memories(session: AsyncSession, memory_ids: list[str]) -> None:
+    deadline = asyncio.get_running_loop().time() + MEMORY_LOCK_WAIT_SECONDS
+    while True:
+        try:
+            async with session.begin_nested():
+                await session.execute(_SHARE_LOCK_MEMORIES, {"memory_ids": memory_ids})
+            return
+        except DBAPIError as exc:
+            if getattr(exc.orig, "sqlstate", None) != _LOCK_NOT_AVAILABLE:
+                raise
+            if asyncio.get_running_loop().time() >= deadline:
+                raise MemoriesBusy(memory_ids) from exc
+        await asyncio.sleep(_MEMORY_LOCK_POLL_SECONDS)
+
+
 async def _lift_one(session: AsyncSession, candidate: _Candidate) -> _LiftedOne:
     """Resolve or mint the fact, add the missing sources, emit the difference.
 
@@ -517,14 +559,16 @@ async def _lift_one(session: AsyncSession, candidate: _Candidate) -> _LiftedOne:
     gained two sources in one tick has two memories to name, not one. The drain
     dedups fact ids.
 
-    The assertion is **re-read here**, inside the savepoint and under the fact's
-    own lock, rather than trusted from the scan's snapshot. See
-    ``_STILL_ASSERTING``: provenance is a claim about what the graph says now,
-    and writing it from a stale snapshot manufactures a witness.
+    The assertion is **re-read here**, inside the savepoint, under a share lock
+    on the asserting memories and the fact's own lock, rather than trusted from
+    the scan's snapshot. See ``_STILL_ASSERTING``: provenance is a claim about
+    what the graph says now, and writing it from a stale snapshot manufactures
+    a witness.
     """
     if not candidate.origins:
         return _LiftedOne()
 
+    await _share_lock_memories(session, sorted(candidate.origins))
     fact_id = await _open_fact_id(session, candidate.triple_key)
     live = await _still_asserting(session, candidate)
     if not live:
@@ -610,6 +654,14 @@ async def run_lift(
         try:
             async with session.begin_nested():
                 lifted = await _lift_one(session, candidate)
+        except MemoriesBusy:
+            logger.info(
+                "fact lifting deferred for %s in project %s: an asserting memory "
+                "is being re-extracted",
+                candidate.triple_key,
+                candidate.project,
+            )
+            continue
         except Exception:
             logger.exception(
                 "fact lifting failed for %s (%s %s %s) in project %s",

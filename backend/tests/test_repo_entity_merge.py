@@ -599,6 +599,64 @@ async def test_the_fold_moves_the_provenance_onto_one_row(session):
     assert [tuple(row) for row in stats] == [(kept, 7)]
 
 
+async def _sources_changed(session, fact_id: str) -> list[dict]:
+    rows = (await session.execute(
+        text("SELECT payload FROM events WHERE event_type = 'sources_changed' "
+             "AND object_id = CAST(:f AS uuid)"),
+        {"f": fact_id},
+    )).scalars().all()
+    return list(rows)
+
+
+async def _colliding_facts_with_sources(session) -> tuple[str, str, str, str]:
+    survivor, loser = await _pair(session)
+    other = await _entity(session, "our-app", "project")
+    kept = await _fact(
+        session, subject_id=other, object_id=survivor,
+        subject_name="our-app", object_name="postgres",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    retired = await _fact(
+        session, subject_id=other, object_id=loser,
+        subject_name="our-app", object_name="postgresql",
+        created_at=datetime(2026, 2, 1, tzinfo=UTC),
+    )
+    for fact_id in (kept, retired):
+        await session.execute(
+            text("""
+                INSERT INTO fact_sources (id, fact_id, source_kind, source_ref,
+                                          origin_key)
+                VALUES (gen_random_uuid(), CAST(:f AS uuid), 'memory',
+                        CAST(:ref AS text), CAST(:ref AS text))
+            """),
+            {"f": fact_id, "ref": str(uuid4())},
+        )
+    await session.flush()
+    return survivor, loser, kept, retired
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fold_fails", [False, True])
+async def test_fact_fold_emits_sources_changed_for_the_keeper(session, monkeypatch, fold_fails):
+    survivor, loser, kept, retired = await _colliding_facts_with_sources(session)
+    if fold_fails:
+        async def _fails(*args, **kwargs):
+            raise RuntimeError("merge aborted after the fold")
+
+        monkeypatch.setattr(merge_mod, "_recompute_technologies", _fails)
+        with pytest.raises(RuntimeError):
+            await merge_entities(session, survivor, loser)
+        assert await _sources_changed(session, kept) == []
+        return
+
+    await merge_entities(session, survivor, loser)
+
+    payloads = await _sources_changed(session, kept)
+    assert len(payloads) == 1
+    assert payloads[0]["fact_id"] == kept
+    assert await _sources_changed(session, retired) == []
+
+
 @pytest.mark.asyncio
 async def test_the_fold_takes_the_earlier_reference_time(session):
     """The union of two open-ended belief windows starts at the earlier of the
