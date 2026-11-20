@@ -9,6 +9,7 @@ from contextvars import ContextVar
 import httpx
 
 from app.config import LLMPurposeConfig
+from app.utils.background import spawn as spawn_background
 from app.services.llm_quirks import (
     assert_can_embed,
     assert_reasoning_effort,
@@ -1052,12 +1053,21 @@ class LLMOrchestrator:
                     content = delta.get("content")
                     if content:
                         yield content
+        except asyncio.CancelledError:
+            ok, error_kind = False, "cancelled"
+            raise
         except Exception as exc:
             ok, error_kind = False, type(exc).__name__
             raise
         finally:
-            await self._report(purpose, cfg, usage_subject, final_payload,
-                               started, ok, error_kind, None)
+            # A disconnected client's cancellation is re-delivered at every
+            # await, which would cancel the write itself; the row is written
+            # by its own task and outlives the one being torn down.
+            await asyncio.shield(spawn_background(
+                self._report(purpose, cfg, usage_subject, final_payload,
+                             started, ok, error_kind, None),
+                name="llm-usage-report",
+            ))
 
     async def close(self):
         self._retiring = True

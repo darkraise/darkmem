@@ -31,7 +31,6 @@ from app.services.layer_composition import (
 from app.utils.scope_labels import scope_labels
 
 MENTION_RE = re.compile(r"@([\w./-]+)")
-CLUSTER_RE = re.compile(r"@cluster:(\d+)")
 
 MAX_HISTORY_MESSAGES = 20
 MAX_PROMPT_CHARS = 24000
@@ -234,6 +233,10 @@ class ChatService:
 
         # Build LLM messages
         llm_messages = await self._build_prompt(conversation_id, content, retrieval)
+        # Retrieval and the prompt are read; ending the transaction here hands
+        # the pooled connection back for the length of the stream. The answer
+        # write below opens its own.
+        await self.session.commit()
 
         # Stream LLM response
         full_response = []
@@ -309,7 +312,7 @@ class ChatService:
         if context.get("mentions"):
             mentions.update(context["mentions"])
 
-        entity_names = [m for m in mentions if not m.startswith("cluster:")]
+        entity_names = list(mentions)
 
         # Everything retrieved here lands in the chat model's context verbatim,
         # so the scope is rendered into each channel's SQL rather than trimmed

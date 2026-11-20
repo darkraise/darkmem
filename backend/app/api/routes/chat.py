@@ -130,11 +130,13 @@ async def chat_completion(
     _read_only=Depends(refuse_when_read_only),
     service: ChatService = Depends(get_chat_service),
 ):
+    context = body.context.model_dump(exclude_none=True) if body.context else None
+
     async def event_stream():
         async for event in service.send_message(
             conversation_id=body.conversation_id,
             content=body.content,
-            context=body.context,
+            context=context,
         ):
             yield f"data: {json.dumps(event)}\n\n"
 

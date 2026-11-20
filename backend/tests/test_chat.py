@@ -51,12 +51,6 @@ class TestMentionParsing:
         assert "PostgreSQL" in matches
         assert "Docker" in matches
 
-    def test_extract_cluster_mentions(self):
-        from app.services.chat import CLUSTER_RE
-        match = CLUSTER_RE.search("Tell me about @cluster:3")
-        assert match is not None
-        assert match.group(1) == "3"
-
     def test_no_mentions(self):
         matches = MENTION_RE.findall("Just a normal question")
         assert len(matches) == 0
@@ -177,3 +171,48 @@ class TestChatServiceRetrieveSourcesId:
 
         with pytest.raises(TypeError):
             await chat_service._retrieve("question")
+
+
+class TestCompletionRequestBounds:
+    """A request the stream can't serve is refused before the user turn lands."""
+
+    @pytest_asyncio.fixture
+    async def stream_never_called(self, monkeypatch):
+        from app.main import app
+
+        class _Refusing:
+            def chat_completion_stream(self, *args, **kwargs):
+                raise AssertionError("the stream must not start")
+
+        monkeypatch.setattr(app.state, "llm", _Refusing(), raising=False)
+
+    @staticmethod
+    async def _message_count(session) -> int:
+        from sqlalchemy import func, select
+
+        return (await session.execute(select(func.count()).select_from(Message))).scalar_one()
+
+    @pytest.mark.asyncio
+    async def test_overlong_content_is_refused(
+        self, client, auth_headers, session, stream_never_called,
+    ):
+        before = await self._message_count(session)
+        response = await client.post(
+            "/api/v1/chat/completions", json={"content": "x" * 32001},
+            headers=auth_headers,
+        )
+        assert response.status_code == 422
+        assert await self._message_count(session) == before
+
+    @pytest.mark.asyncio
+    async def test_non_string_mention_is_refused_before_the_stream(
+        self, client, auth_headers, session, stream_never_called,
+    ):
+        before = await self._message_count(session)
+        response = await client.post(
+            "/api/v1/chat/completions",
+            json={"content": "what about it?", "context": {"mentions": [1]}},
+            headers=auth_headers,
+        )
+        assert response.status_code == 422
+        assert await self._message_count(session) == before
