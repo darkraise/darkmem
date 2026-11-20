@@ -132,7 +132,7 @@
 | 125 | B6-16: several MCP code tools call scalar_one_or_none() on Repository.name, which is not unique | docs/dforge/plans/2026-11-20-audit-remaining.md | A35 (Task 26) | done | eddcc5e |
 | 126 | B6-17: a failed MCP call-log flush discards its popped batch uncounted, and validation-error text may echo content | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 42 contracts | doing | - |
 | 127 | B6-18: a masked secret is resolved by name even when the URL or host changes | docs/dforge/plans/2026-11-20-audit-remaining.md | A10 (Task 3) | done | 9124abd |
-| 128 | B6-19 and B6-D3: system-prompts, repo-allowlist and notifications read-modify-write their config rows without the row lock; about 12 config endpoints repeat the pattern three ways | docs/dforge/plans/2026-11-20-audit-remaining.md | A29 (Task 39) | doing | - |
+| 128 | B6-19 and B6-D3: system-prompts, repo-allowlist and notifications read-modify-write their config rows without the row lock; about 12 config endpoints repeat the pattern three ways | docs/dforge/plans/2026-11-20-audit-remaining.md | A29 (Task 39) | done | 3754ed1 |
 | 129 | B6-20: events partition maintenance rides on pipeline_failure_cleanup, which the UI can disable | docs/dforge/plans/2026-11-20-audit-remaining.md | A32 (Task 41) | doing | - |
 | 130 | B6-21: each open WebSocket runs 2 database queries per second for revalidation, serially inside the send lock | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 42 contracts | doing | - |
 | 131 | B6-22: stale statements: 48 tools, dream jobs called placeholders, the curb row's reader, and LLM_* env vars in CLAUDE.md | docs/dforge/plans/2026-11-20-audit-remaining.md | A51 (Task 69) | doing | - |
