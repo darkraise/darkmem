@@ -394,6 +394,34 @@ async def test_extraction_failure_never_strips_the_prior_graph(setup_database):
         assert await bed.technologies() == ["faiss", "pgvector"]
 
 
+@pytest.mark.asyncio
+async def test_a_degraded_extraction_never_strips_the_prior_graph(setup_database):
+    """The failure shape production actually produces.
+
+    ``ExtractionService.extract`` never raises: an outage, a 429, a timeout and
+    an unparseable reply all come back as an empty ``_error`` result, which the
+    pipeline labels ``partial``. Entering savepoint B with it replaces a good
+    graph with nothing, empties ``technologies`` and withdraws the memory's
+    fact sources.
+    """
+    from app.services.extraction import ExtractionService
+
+    async with savepoint_bed(
+        ["extraction degrades on the second pass"], "savepoint-extdegraded|4",
+    ) as bed:
+        first = (await bed.pipe.process_batch([bed.entry()]))[0]
+        assert first["graph"] == "ok"
+        assert await bed.entity_names() == {"pgvector", "faiss"}
+
+        bed.extraction = ExtractionService._error_result("ConnectError: extractor unreachable")
+        status = (await bed.pipe.process_batch([bed.entry()]))[0]
+
+        assert status["extract"] == "partial"
+        assert status["graph"] == "skipped"
+        assert await bed.entity_names() == {"pgvector", "faiss"}
+        assert await bed.technologies() == ["faiss", "pgvector"]
+
+
 CANON_FP = "savepoint-canon|4"
 
 

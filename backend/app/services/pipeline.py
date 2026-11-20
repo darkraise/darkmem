@@ -668,7 +668,11 @@ class ProcessingPipeline:
                 # Savepoint B: the entity/relationship graph. A failure here rolls
                 # back only the graph; the embedding from savepoint A survives and
                 # the failure is attributed to the graph step, not the vector one.
-                if status["vector"] == "ok" and status["extract"] in ("ok", "partial") and isinstance(extraction, dict):
+                # A `partial` extraction is the extractor's own failure result
+                # (`ExtractionService._error_result`: no entities, no relations),
+                # so it has nothing to write and must not enter the savepoint:
+                # the strip below would replace a good graph with nothing.
+                if status["vector"] == "ok" and status["extract"] == "ok" and isinstance(extraction, dict):
                     try:
                         async with session.begin_nested():
                             # Idempotent re-extraction: strip any prior
