@@ -334,8 +334,9 @@ A memory carries:
 - `technologies` (lowercase Text[]): a denormalised cache of entity names
   whose `entity_type` is in `TECH_TYPES`, consulted by the supersession
   detector and the retrieval filter instead of a join.
-- `confidence` (REAL, default 0.75): used by `_apply_rank_fusion_factor`
-  when `confidence_rank_gamma > 0`.
+- `confidence` (REAL, default 0.75): used by
+  `HybridSearchService.apply_rank_fusion_factor` when
+  `confidence_rank_gamma > 0`.
 
 Entities and relations (`entities` / `entity_relations`) are **not
 memory-scoped**: each row carries a `memory_ids` UUID[] of every asserting
@@ -381,6 +382,9 @@ resets attempts and journals `buffer_requeued`, discard journals
 `buffer_discarded`). The claim SQL bounds its batch with a `WITH ... AS
 MATERIALIZED` CTE: a plain sub-select lets the planner re-execute it per row
 and claim the whole backlog. Don't "simplify" it.
+A tick whose every claimed row failed raises `BufferFlushFailed` after the
+rows are settled, so the run records `error` instead of `ok`; a tick with
+any success reports its counts.
 
 ## Pipeline phases (`ProcessingPipeline.process_batch`)
 
@@ -510,6 +514,9 @@ With `hybrid_search_enabled`, semantic search delegates to
 - With `confidence_rank_gamma > 0`, `rrf_score` is multiplied by
   `(1 + γ·(confidence - 0.75))`; after a rerank it runs with
   `preserve_order=True`.
+- A failed query embed is the semantic arm failing: the keyword arm answers
+  alone, the trace reports `semantic_failed`, and the embedder is not dialled
+  again for `EMBEDDER_RETRY_COOLDOWN_SECONDS` (60). Both sides down raises.
 
 Code search (`CodeQueryService.search_code`) fuses a vector arm over
 `code_chunk_embeddings__<slug>` with an `ILIKE` arm over `CodeSymbol.name` /
@@ -545,7 +552,11 @@ Behavioural flags: `hybrid_search_enabled`, `reranker_enabled`,
 `w_ppr` / `w_dual` at 0. Those two are RRF **list** weights
 (`rank_fusion.LIST_WEIGHT_KEYS`), never `RankArm` multipliers, and both doors
 derive the PPR weight through `rank_fusion.ppr_list_weight`. The dual-level
-channel itself is unbuilt (T2.49); only its flag exists. The ranking arms
+channel is built (`HybridSearchService._dual_level_search`) and inert behind
+its flag. Each arm's artefact job skips its tick while the arm is off:
+`ppr_snapshot` on `ppr_enabled`, `relation_embedding_refresh` on
+`dual_level_enabled`. Arming a flag takes effect on the job's next tick, or
+at once through a manual trigger. The ranking arms
 `w_importance` / `w_heat` / `w_recency` / `w_context_boost` sit at weight 0
 and are provably inert there (`rank_fusion.RANK_ARMS`); each flips only on a
 measured retrieval win reported with its latency/cost twin and recorded in
@@ -684,7 +695,9 @@ never undercuts. State lives in `config` rows `job:<key>`. Manual
 trigger while it's held returns 409. `set_config`
 (`PUT /api/v1/jobs/{key}/config`) validates partial updates against the
 job's `config_schema` (type, min/max, unknown keys rejected) under that
-lock.
+lock. A failed run sends the job-failure notification only when its
+error differs from the previous run's, so an outage announces itself once
+per job rather than once per tick; every run still gets its `job_runs` row.
 
 **Per-job contracts:**
 
@@ -1088,6 +1101,12 @@ are only added (their hash is unchanged, so phase 03 skips them and the
 drain deletes nothing). Deferral and drain journal a `repo_indexed` event and
 surface on `RepoResponse.index_debt`.
 
+A claim (`status` `indexing` or `cloning`) outlives the process that took
+it: a run resets its status only in handlers a cancellation never reaches.
+Boot therefore calls `RepoManager.release_interrupted_runs` before arming
+jobs, moving each claimed repo to `stale` (or `error` when it was never
+indexed). That is safe only under the single-worker invariant.
+
 Debt alone does not trigger a recurring poll at unchanged HEAD. Drain it
 through a later HEAD-triggered run or manual reindex; manual runs bypass
 the unchanged-HEAD shortcut when debt remains.
@@ -1468,9 +1487,9 @@ ids and refuse writes.
   graph-name fallbacks and skips provider health probes,
   clamps `reranker_enabled`, quiets write-on-read paths, and
   skips the semantic search arm, so the worker needs **no external
-  service** (`llm.embed` sits outside `_run_channels`' one-sided-failure
-  guard, so attempting it against an unreachable embedder would raise out of
-  the whole search). Memory and code search answer on their keyword/`ILIKE` arms;
+  service** (attempting it against an unreachable embedder would still answer
+  on the keyword arm, but only after the connect retries, and would report an
+  outage). Memory and code search answer on their keyword/`ILIKE` arms;
   the articles channel reports `semantic_ran=False`; **document search is
   refused** (cosine-only, so empty would read as "no matches"). Doors that
   spend, dial out or write a file are refused by `refuse_when_read_only`
