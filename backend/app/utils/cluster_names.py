@@ -7,7 +7,7 @@ the term is across the view.
 from __future__ import annotations
 
 import math
-import re
+import unicodedata
 from collections import Counter
 
 from app.taxonomy import MEMORY_TYPES
@@ -22,11 +22,10 @@ SEPARATOR = " · "
 _DEFAULT_PROJECT = "default"
 _PROJECT_TAG = "project/"
 _STOPLIST = frozenset(t.lower() for t in MEMORY_TYPES)
-_NON_KEY = re.compile(r"[^a-z0-9]")
 
 
 def _key(term: str) -> str:
-    return _NON_KEY.sub("", term.lower())
+    return "".join(c for c in unicodedata.normalize("NFKC", term).casefold() if c.isalnum())
 
 
 def _effective_project(project: str | None, tags: list[str]) -> str:

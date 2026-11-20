@@ -124,8 +124,9 @@ value, and its entity names. Rules, in order:
 2. **Terms** of a memory: its tags that do not start with `project/`, plus
    the entity names `entity_terms` gives for it, all lowercased; minus any
    value in `MEMORY_TYPES` and any longer than 30 characters.
-3. **Spelling key** of a term: its lowercase letters and digits only, so
-   `claude code` and `claude-code` are one term. Document frequency is the
+3. **Spelling key** of a term: its letters and digits in any script, after
+   NFKC normalisation and case folding, so `claude code` and `claude-code`
+   are one term, and composed and decomposed accented spellings are one term. Document frequency is the
    number of view memories carrying the key.
 4. **Prefix:** the cluster's most common effective project, when it holds at
    least 60% of the cluster's members, is not `default`, and the view's

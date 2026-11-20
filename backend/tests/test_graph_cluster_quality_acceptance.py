@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import random
+import unicodedata
 import uuid
 from collections import Counter
 from datetime import datetime, timedelta, timezone
@@ -354,6 +355,18 @@ def test_A9_spellings_that_differ_in_case_space_or_punctuation_are_one_term():
         + [M("alpha", ["CLAUDE_CODE"])]
     )
     assert _names({0: cluster}) == {"0": "claude-code"}
+
+
+def test_A9_a_term_written_only_in_another_script_names_its_cluster():
+    assert _names({0: [M("alpha", ["日本語"]) for _ in range(3)]}) == {"0": "日本語"}
+
+
+def test_A9_composed_and_decomposed_spellings_are_one_term():
+    composed = "việt"
+    decomposed = "việt"
+    cluster = [M("alpha", [composed]), M("alpha", [decomposed]), M("alpha")]
+    name = _names({0: cluster})["0"]
+    assert unicodedata.normalize("NFC", name) == composed
 
 
 def test_A9_a_tied_spelling_is_chosen_alphabetically():
