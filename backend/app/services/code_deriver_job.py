@@ -25,18 +25,16 @@ in this file already makes (`code_reconcile`, `ppr_snapshot`).
 (`app/services/dream_jobs.py`); this job registers directly in `app/main.py`,
 the same way `ppr_snapshot` and `code_reconcile` do.
 
-**Why re-derive every indexed repo on every tick, with no staleness
-tracking.** `assert_repo_graph` is a pure DB read + write with no model
-call — the LLM-free clause `test_code_deriver.py` enforces structurally —
-and it is idempotent per repo (T2.27's strip-before-rewrite, inherited
-here): re-running it costs a strip-and-rewrite, never a duplicate row.
-Tracking "assertions older than indexed HEAD" would need either a new
-column (schema changes are out of this task's scope this round — T2.98
-owns the baseline) or a `config` row shaped like a per-repo cursor map,
-both of which add real bookkeeping to skip work that already costs nothing
-but a handful of statements per repo. If repo counts ever make that cost
-real, a rotating batch cursor (mirroring `ppr_snapshot`'s) is the next
-step, not this one.
+**Why a repository is re-derived only when its HEAD moved.** Derivation
+reads the code graph an index run wrote, and `last_indexed_commit` already
+says when that graph moved. Each successful derivation stamps the commit it
+read into the `config` row `CODE_DERIVER_STATE_KEY` (repository id to
+commit), in the same transaction as its write, and a tick skips every
+repository whose `last_indexed_commit` equals its stamp, the way
+`citation_reverify` scopes by `reverified_at_sha`. A failed derivation
+stamps nothing, so the next tick retries it. A drift-forced index of
+uncommitted changes leaves `last_indexed_commit` where it was, so its
+import changes reach the derivation at the next commit.
 """
 from __future__ import annotations
 
@@ -46,6 +44,10 @@ CODE_DERIVER_JOB_KEY = "code_deriver"
 # rows) so a derivation failure never reads as, and never overwrites, the
 # index run's own failure state for the same repo.
 CODE_DERIVER_PIPELINE_NAME = "code_deriver"
+
+# Internal bookkeeping, not a job config field: an operator-editable stamp
+# would let a PUT silence derivation for a repository.
+CODE_DERIVER_STATE_KEY = "code_deriver_state"
 
 # Minute-precision, five-field: hourly, staggered off the top-of-hour
 # cleanup jobs (`0 * * * *`) and `ppr_snapshot` (`30 * * * *`) so they don't

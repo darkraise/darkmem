@@ -12,7 +12,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
 
 from app.services.job_registry import FieldDescriptor
@@ -218,7 +218,8 @@ def make_repo_sync_runner(
 
 
 def make_code_deriver_runner(session_factory: async_sessionmaker[AsyncSession]):
-    """Sweep every indexed repository through `assert_repo_graph` (doc 10 §6).
+    """Sweep every indexed repository whose HEAD moved since its last
+    derivation through `assert_repo_graph` (doc 10 §6).
 
     T2.96's production trigger for the T2.27 deriver — see
     `code_deriver_job.py` for why this is a Tier-C job rather than a reindex
@@ -236,15 +237,26 @@ def make_code_deriver_runner(session_factory: async_sessionmaker[AsyncSession]):
     async def run() -> None:
         from app.models.code import Repository
         from app.services.code_deriver import assert_repo_graph
-        from app.services.code_deriver_job import CODE_DERIVER_PIPELINE_NAME
+        from app.services.code_deriver_job import (
+            CODE_DERIVER_PIPELINE_NAME,
+            CODE_DERIVER_STATE_KEY,
+        )
         from app.services.pipeline_failures import PipelineFailureService
 
         async with session_factory() as list_session:
-            repo_ids = (await list_session.execute(
-                select(Repository.id).where(Repository.last_indexed_commit.isnot(None))
-            )).scalars().all()
+            repos = (await list_session.execute(
+                select(Repository.id, Repository.last_indexed_commit)
+                .where(Repository.last_indexed_commit.isnot(None))
+            )).all()
+            state = (await list_session.execute(
+                text("SELECT value FROM config WHERE key = :key"),
+                {"key": CODE_DERIVER_STATE_KEY},
+            )).scalar_one_or_none()
+        derived_at = state if isinstance(state, dict) else {}
 
-        for repo_id in repo_ids:
+        for repo_id, head in repos:
+            if derived_at.get(str(repo_id)) == head:
+                continue
             async with session_factory() as repo_session:
                 failure_svc = PipelineFailureService(repo_session)
                 try:
@@ -256,6 +268,15 @@ def make_code_deriver_runner(session_factory: async_sessionmaker[AsyncSession]):
                     result = await assert_repo_graph(repo_session, repo_id)
                     await failure_svc.resolve(
                         "code_repo", repo_id, CODE_DERIVER_PIPELINE_NAME,
+                    )
+                    await repo_session.execute(
+                        text("""
+                            INSERT INTO config (key, value)
+                            VALUES (:key, jsonb_build_object(CAST(:repo_id AS text), CAST(:head AS text)))
+                            ON CONFLICT (key) DO UPDATE
+                                SET value = config.value || EXCLUDED.value
+                        """),
+                        {"key": CODE_DERIVER_STATE_KEY, "repo_id": str(repo_id), "head": head},
                     )
                     await repo_session.commit()
                     logger.info(

@@ -1,4 +1,4 @@
-"""_delete_file_data must not leak route/tool graph nodes.
+"""Deleting a file's data must not leak route/tool graph nodes.
 
 Route/tool nodes have bare keys (no ::file_path) and no file_path property, so
 neither delete predicate matched them — the handles_route/handles_tool edge was
@@ -40,7 +40,8 @@ async def test_delete_file_data_removes_orphaned_route_node(session):
     await session.flush()
 
     pipe = CodePipeline(session, None, None, None)
-    await pipe._delete_file_data(repo.id, fp)
+    await pipe._delete_files_data(repo.id, [fp])
+    await pipe._sweep_orphan_handlers(repo.id)
 
     remaining = (await session.execute(
         text("SELECT COUNT(*) FROM code_graph_nodes WHERE repo_id = :rid AND kind = 'route'"),

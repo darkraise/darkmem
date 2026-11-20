@@ -299,9 +299,9 @@ async def test_drain_adds_no_graph_deletion_path(session, tmp_path, monkeypatch)
     deleted: list[str] = []
     pipe = _pipeline(session, manager)
 
-    async def _tracking_file_delete(repo_id, file_path):
-        deleted.append(file_path)
-    pipe._delete_file_data = _tracking_file_delete
+    async def _tracking_file_delete(repo_id, file_paths):
+        deleted.extend(file_paths)
+    pipe._delete_files_data = _tracking_file_delete
 
     async def _tracking_wipe(repo_id):
         deleted.append("*")

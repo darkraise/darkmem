@@ -94,6 +94,42 @@ PARALLEL_MIN_BYTES = 512 * 1024
 CROSS_FILE_SKIP_THRESHOLD = 0.03
 CROSS_FILE_HARD_CAP = 2000
 
+# Every edge touching a file: its own file node's edges and every edge whose
+# symbol key names it. The split_part arms use ix_code_edges_source_file and
+# ix_code_edges_target_file.
+_EDGE_DELETE_SQL = """
+    DELETE FROM code_edges
+    WHERE repo_id = :repo_id
+      AND (
+          source_key = ANY(CAST(:files AS text[]))
+          OR target_key = ANY(CAST(:files AS text[]))
+          OR split_part(source_key, '::', 2) = ANY(CAST(:files AS text[]))
+          OR split_part(target_key, '::', 2) = ANY(CAST(:files AS text[]))
+      )
+"""
+
+_NODE_DELETE_SQL = """
+    DELETE FROM code_graph_nodes
+    WHERE repo_id = :repo_id
+      AND (properties->>'file_path' = ANY(CAST(:files AS text[]))
+           OR split_part(key, '::', 2) = ANY(CAST(:files AS text[])))
+"""
+
+# Route/tool nodes have bare keys and no file_path property, so the node
+# delete above can't match them; once their handles_* edge is gone they are
+# phantoms that would otherwise accumulate.
+_ORPHAN_HANDLER_SWEEP_SQL = """
+    DELETE FROM code_graph_nodes n
+    WHERE n.repo_id = :repo_id
+      AND n.kind IN ('route', 'tool')
+      AND NOT EXISTS (
+          SELECT 1 FROM code_edges e
+          WHERE e.repo_id = n.repo_id
+            AND e.target_key = n.key
+            AND e.edge_type IN ('handles_route', 'handles_tool')
+      )
+"""
+
 
 class CodePipeline:
     """Code indexing pipeline.
@@ -139,6 +175,12 @@ class CodePipeline:
         self._stored_bindings: dict[str, dict] = {}
 
         self._parsed: dict[str, dict] = {}
+        # Files whose parse raised or timed out: path -> (content hash, cause).
+        # Phase 03 records each as a code_files row with no symbols, so the
+        # drift scan sees its content as indexed instead of re-detecting it.
+        self._parse_failures: dict[str, tuple[str, str]] = {}
+        self._orphan_sweep_due: bool = False
+        self._heritage_resolver: HeritageResolver | None = None
 
         # Files whose existing chunks were already removed during phase 03
         # (changed-existing files), plus brand-new files that never had chunks.
@@ -669,7 +711,7 @@ class CodePipeline:
             # eager wipe here is safe (it clears only leftover junk from an
             # earlier, never-completed attempt).
             self._force_full = True
-            self._changed_files = _list_all_files(work_dir)
+            self._changed_files = await asyncio.to_thread(_list_all_files, work_dir)
             self._deleted_files = []
             await self._delete_all_repo_data(self._repo.id)
             # Called after the wipe so a leftover CodeFile row from a prior,
@@ -712,7 +754,7 @@ class CodePipeline:
 
             if used_full:
                 self._force_full = True
-                all_files = _list_all_files(work_dir)
+                all_files = await asyncio.to_thread(_list_all_files, work_dir)
                 self._changed_files = all_files
                 self._deleted_files = await self._find_removed_files(all_files)
                 await self._apply_union_files()
@@ -742,13 +784,9 @@ class CodePipeline:
                             len(deps), len(self._debt_deferred),
                         )
 
-        for rel_path in self._deleted_files:
-            try:
-                await self._delete_file_data(self._repo.id, rel_path)
-                self._stats["files_deleted"] += 1
-            except Exception as exc:
-                logger.error("Error deleting data for %s: %s", rel_path, exc)
-                self._stats["errors"].append(f"delete:{rel_path}:{exc}")
+        if self._deleted_files:
+            await self._delete_files_data(self._repo.id, self._deleted_files)
+            self._stats["files_deleted"] += len(self._deleted_files)
 
         await self._fold_index_debt(new_sha)
 
@@ -906,7 +944,7 @@ class CodePipeline:
         self, file_id: UUID,
     ) -> dict[tuple[str, str, str | None, str], tuple[str | None, str]]:
         """Enrichment state of ``file_id``'s current symbols, keyed by
-        ``(name, kind, owner, source-hash)``, read before ``_delete_file_data``
+        ``(name, kind, owner, source-hash)``, read before ``_delete_files_data``
         deletes them (doc 10 §3, T4).
 
         The source-hash in the key is what makes carry-over safe: a symbol
@@ -1029,6 +1067,11 @@ class CodePipeline:
             )
         except asyncio.TimeoutError:
             logger.warning("Parsing %s timed out after %ss; skipping", rel_path, PARSE_TIMEOUT)
+            self._parse_failures[rel_path] = (content_hash, f"timed out after {PARSE_TIMEOUT:g}s")
+            return None
+        except Exception as exc:
+            logger.warning("Parsing %s failed; skipping: %s", rel_path, exc)
+            self._parse_failures[rel_path] = (content_hash, f"{type(exc).__name__}: {exc}")
             return None
         if not parse_result:
             return None
@@ -1076,20 +1119,26 @@ class CodePipeline:
             if fp and fp not in self._parsed:
                 class_file_index.setdefault(name, fp)
 
+        tracked = sorted(self._parsed.keys() | self._parse_failures.keys())
+        stored_hashes: dict[str, tuple[UUID, str | None]] = {}
+        if tracked:
+            for file_id, fp, content_hash in (await self.session.execute(
+                text("""
+                    SELECT id, file_path, content_hash FROM code_files
+                    WHERE repo_id = :repo_id AND file_path = ANY(CAST(:files AS text[]))
+                """),
+                {"repo_id": repo.id, "files": tracked},
+            )).all():
+                stored_hashes[fp] = (file_id, content_hash)
+
+        rewrites: list[str] = []
+        snapshots: dict[str, dict] = {}
         for fp, parsed in self._parsed.items():
             pr = parsed["parse_result"]
-            existing = (
-                await self.session.execute(
-                    select(CodeFile).where(
-                        CodeFile.repo_id == repo.id,
-                        CodeFile.file_path == fp,
-                    )
-                )
-            ).scalar_one_or_none()
-
+            stored = stored_hashes.get(fp)
             if (
-                existing
-                and existing.content_hash == parsed["content_hash"]
+                stored
+                and stored[1] == parsed["content_hash"]
                 and not self._force_full
             ):
                 self._all_file_paths.append(fp)
@@ -1100,12 +1149,35 @@ class CodePipeline:
                     self._all_extracted_imports[fp] = list(pr.imports)
                 self._stats["files_skipped"] += 1
                 continue
+            if stored:
+                snapshots[fp] = await self._snapshot_symbol_enrichment(stored[0])
+            rewrites.append(fp)
 
-            enrichment_snapshot: dict[tuple[str, str, str | None, str], tuple[str | None, str]] = {}
-            if existing:
-                enrichment_snapshot = await self._snapshot_symbol_enrichment(existing.id)
-                await self._delete_file_data(repo.id, fp)
-            # Either we just removed the old chunks (changed-existing) or the
+        # An unchanged file whose parse failed keeps what is indexed for it,
+        # even on a full run: the failure may be a passing timeout.
+        failed: list[str] = []
+        for fp, (content_hash, cause) in sorted(self._parse_failures.items()):
+            self._stats["errors"].append(f"parse_error:{fp}:{cause}")
+            stored = stored_hashes.get(fp)
+            if stored and stored[1] == content_hash:
+                continue
+            failed.append(fp)
+
+        await self._delete_files_data(
+            repo.id, [fp for fp in (*rewrites, *failed) if fp in stored_hashes],
+        )
+
+        for fp in failed:
+            self.session.add(CodeFile(
+                id=uuid4(), repo_id=repo.id, file_path=fp, language=None,
+                content_hash=self._parse_failures[fp][0],
+            ))
+
+        for fp in rewrites:
+            parsed = self._parsed[fp]
+            pr = parsed["parse_result"]
+            enrichment_snapshot = snapshots.get(fp, {})
+            # Either the old chunks were just removed (changed-existing) or the
             # file is brand new and has none; phase 12 need not delete again.
             self._chunks_cleared_in_structure.add(fp)
 
@@ -1117,7 +1189,6 @@ class CodePipeline:
                 content_hash=parsed["content_hash"],
             )
             self.session.add(code_file)
-            await self.session.flush()
 
             symbol_count = 0
             symbol_map: dict[str, UUID] = {}
@@ -1142,6 +1213,7 @@ class CodePipeline:
                     if carried is not None:
                         symbol_obj.summary, symbol_obj.enrichment_status = carried
 
+            await self.session.flush()
             await _store_graph(
                 self.session, repo, fp, pr.symbols, pr.imports,
                 heritage=pr.heritage, properties=pr.properties, routes=pr.routes,
@@ -1158,6 +1230,7 @@ class CodePipeline:
                 self._all_imports[fp] = [imp.source for imp in pr.imports]
                 self._all_extracted_imports[fp] = list(pr.imports)
 
+        await self._sweep_orphan_handlers(repo.id)
         await self.session.commit()
         self._phase_done("03_structure", t0)
 
@@ -1298,14 +1371,19 @@ class CodePipeline:
                 *symbol_table.get(file_path, []), *bindings,
             ]))
 
-        for file_path in self._parsed.keys() | self._binding_context.keys():
-            await self.session.execute(text(
-                "UPDATE code_graph_nodes SET properties = jsonb_set("
-                "COALESCE(properties, '{}'::jsonb), '{binding_metadata}', CAST(:metadata AS jsonb)) "
-                "WHERE repo_id = :repo_id AND kind = 'file' AND key = :file_path"
-            ), {
-                "repo_id": self._repo.id, "file_path": file_path,
-                "metadata": json.dumps(self._stored_bindings[file_path]),
+        bound_files = sorted(self._parsed.keys() | self._binding_context.keys())
+        if bound_files:
+            await self.session.execute(text("""
+                UPDATE code_graph_nodes n SET properties = jsonb_set(
+                    COALESCE(n.properties, '{}'::jsonb), '{binding_metadata}', b.metadata)
+                FROM jsonb_to_recordset(CAST(:rows AS jsonb)) AS b(file_path text, metadata jsonb)
+                WHERE n.repo_id = :repo_id AND n.kind = 'file' AND n.key = b.file_path
+            """), {
+                "repo_id": self._repo.id,
+                "rows": json.dumps([
+                    {"file_path": fp, "metadata": self._stored_bindings[fp]}
+                    for fp in bound_files
+                ]),
             })
 
         for fp, bindings in list(self._named_import_map.items()):
@@ -1447,7 +1525,9 @@ class CodePipeline:
             topological_order=self._topological_order,
         )
 
-        heritage_resolver = HeritageResolver(self.session, self._repo_id_str)
+        heritage_resolver = self._heritage_resolver = HeritageResolver(
+            self.session, self._repo_id_str,
+        )
         call_edges: list[dict] = []
         ordered_files = self._topological_order or list(self._all_calls.keys())
 
@@ -1542,7 +1622,7 @@ class CodePipeline:
 
     async def phase_07_heritage_mro(self) -> None:
         t0 = await self._phase_log("07_heritage_mro")
-        resolver = HeritageResolver(self.session, self._repo_id_str)
+        resolver = self._heritage_resolver or HeritageResolver(self.session, self._repo_id_str)
         result = await resolver.resolve_all()
         self._stats["method_overrides"] = result["overrides"]
         self._stats["method_implements"] = result["implements"]
@@ -1906,6 +1986,7 @@ class CodePipeline:
                 SELECT f.file_path, f.content_hash
                 FROM code_files f
                 WHERE f.repo_id = :repo_id
+                  AND f.language IS NOT NULL
                   AND f.content_hash <> :empty_hash
                   AND NOT (f.file_path = ANY(CAST(:attempted AS text[])))
                   {without_chunks}
@@ -2015,67 +2096,37 @@ class CodePipeline:
 
         logger.info("Cleared all indexed data for repo %s", repo_id)
 
-    async def _delete_file_data(self, repo_id: UUID, file_path: str) -> None:
-        existing = (
-            await self.session.execute(
-                select(CodeFile).where(
-                    CodeFile.repo_id == repo_id,
-                    CodeFile.file_path == file_path,
-                )
-            )
-        ).scalar_one_or_none()
+    async def _delete_files_data(self, repo_id: UUID, file_paths: list[str]) -> None:
+        """Remove every indexed row of these files, one statement per table.
 
-        if existing:
-            await self.session.delete(existing)
-            await self.session.flush()
-
+        Leaves the route/tool orphan sweep to ``_sweep_orphan_handlers``,
+        which runs once per run after the rewrites.
+        """
+        if not file_paths:
+            return
+        files = sorted(set(file_paths))
+        params = {"repo_id": str(repo_id), "files": files}
         await self.session.execute(
             text("""
-                DELETE FROM code_edges
-                WHERE repo_id = :repo_id
-                  AND (
-                      source_key = :file_path
-                      OR target_key = :file_path
-                      OR split_part(source_key, '::', 2) = :file_path
-                      OR split_part(target_key, '::', 2) = :file_path
-                  )
+                DELETE FROM code_files
+                WHERE repo_id = :repo_id AND file_path = ANY(CAST(:files AS text[]))
             """),
-            {
-                "repo_id": str(repo_id),
-                "file_path": file_path,
-            },
+            params,
         )
-        await self.session.execute(
-            text("""
-                DELETE FROM code_graph_nodes
-                WHERE repo_id = :repo_id
-                  AND (properties->>'file_path' = :file_path
-                       OR split_part(key, '::', 2) = :file_path)
-            """),
-            {"repo_id": str(repo_id), "file_path": file_path},
-        )
-
-        # Route/tool nodes have bare keys and no file_path property, so the
-        # predicates above can't match them; the handles_* edge from this file
-        # was just deleted, so remove any route/tool node left with no inbound
-        # handler edge — otherwise phantom routes/processes accumulate.
-        await self.session.execute(
-            text("""
-                DELETE FROM code_graph_nodes n
-                WHERE n.repo_id = :repo_id
-                  AND n.kind IN ('route', 'tool')
-                  AND NOT EXISTS (
-                      SELECT 1 FROM code_edges e
-                      WHERE e.repo_id = n.repo_id
-                        AND e.target_key = n.key
-                        AND e.edge_type IN ('handles_route', 'handles_tool')
-                  )
-            """),
-            {"repo_id": str(repo_id)},
-        )
+        await self.session.execute(text(_EDGE_DELETE_SQL), params)
+        await self.session.execute(text(_NODE_DELETE_SQL), params)
+        self._orphan_sweep_due = True
 
         if self.vector_repo:
-            await self.vector_repo.delete_code_chunks_by_file(repo_id, file_path)
+            await self.vector_repo.delete_code_chunks_by_files(repo_id, files)
+
+    async def _sweep_orphan_handlers(self, repo_id: UUID) -> None:
+        if not self._orphan_sweep_due:
+            return
+        await self.session.execute(
+            text(_ORPHAN_HANDLER_SWEEP_SQL), {"repo_id": str(repo_id)},
+        )
+        self._orphan_sweep_due = False
 
 
 def _resolve_binding_chain(
@@ -2250,7 +2301,7 @@ async def _find_dependent_caller_files(
 
     Incremental reindex parses only changed files. A caller in an unchanged file
     that targets a renamed/moved symbol in a changed file loses its edge
-    (``_delete_file_data`` drops it when the changed file is re-indexed) and
+    (``_delete_files_data`` drops it when the changed file is re-indexed) and
     never regains it until a full reindex. Re-tracing these dependents recreates
     the edge. Returns ``(kept, overflow)``: ``kept`` is re-traced by this run and
     ``overflow`` is the work past the cap, which the caller persists as index
@@ -2380,37 +2431,33 @@ async def _store_graph(
     routes: list[ExtractedRoute] | None = None,
     base_files: dict[str, str] | None = None,
 ) -> None:
+    """Write one file's structure graph in three statements: the nodes kept
+    as first written, the symbol nodes (whose properties a rewrite replaces)
+    and the edges."""
     repo_id = str(repo.id)
     file_key = compose_key("file", file_path)
-
-    await session.execute(
-        text("""
-            INSERT INTO code_graph_nodes (repo_id, kind, key, label, properties)
-            VALUES (:repo_id, 'file', :key, :label, jsonb_build_object('file_path', CAST(:file_path AS text)))
-            ON CONFLICT (repo_id, kind, key) DO NOTHING
-        """),
-        {"repo_id": repo_id, "key": file_key, "label": file_path, "file_path": file_path},
-    )
-
     repo_key = compose_key("module", repo_id)
-    await session.execute(
-        text("""
-            INSERT INTO code_graph_nodes (repo_id, kind, key, label, properties)
-            VALUES (:repo_id, 'module', :key, :key, '{}')
-            ON CONFLICT (repo_id, kind, key) DO NOTHING
-        """),
-        {"repo_id": repo_id, "key": repo_key},
-    )
-    await session.execute(
-        text("""
-            INSERT INTO code_edges (repo_id, source_kind, source_key, target_kind, target_key, edge_type, properties)
-            VALUES (:repo_id, 'module', :src, 'file', :tgt, 'defines', '{}')
-            ON CONFLICT (repo_id, source_kind, source_key, target_kind, target_key, edge_type) DO NOTHING
-        """),
-        {"repo_id": repo_id, "src": repo_key, "tgt": file_key},
-    )
 
-    async def collect_symbols(
+    # First write wins for these, as ON CONFLICT DO NOTHING has it.
+    kept_nodes: dict[tuple[str, str], dict] = {}
+    # Last write wins for symbol nodes; ON CONFLICT DO UPDATE refuses to touch
+    # one row twice in a statement, so duplicates collapse here first.
+    symbol_nodes: dict[str, dict] = {}
+    edges: dict[tuple[str, str, str, str, str], None] = {}
+
+    def keep_node(kind: str, key: str, label: str, props: dict) -> None:
+        kept_nodes.setdefault(
+            (kind, key), {"kind": kind, "key": key, "label": label, "properties": props},
+        )
+
+    def edge(source_kind: str, source_key: str, target_kind: str, target_key: str, edge_type: str) -> None:
+        edges.setdefault((source_kind, source_key, target_kind, target_key, edge_type), None)
+
+    keep_node("file", file_key, file_path, {"file_path": file_path})
+    keep_node("module", repo_key, repo_key, {})
+    edge("module", repo_key, "file", file_key, "defines")
+
+    def collect_symbols(
         sym: ExtractedSymbol,
         parent_name: str | None = None,
         parent_key: str | None = None,
@@ -2418,44 +2465,25 @@ async def _store_graph(
         # Owner-qualify the key so same-named methods of different classes in one
         # file are distinct nodes (owner = the immediate enclosing symbol's name).
         sym_key = compose_key("symbol", sym.name, file_path, owner=parent_name)
-        props = json.dumps({
-            "kind": sym.kind,
-            "line_start": sym.line_start,
-            "line_end": sym.line_end,
-            "visibility": sym.visibility,
-            "file_path": file_path,
-        })
-        await session.execute(
-            text("""
-                INSERT INTO code_graph_nodes (repo_id, kind, key, label, properties)
-                VALUES (:repo_id, 'symbol', :key, :label, CAST(:props AS jsonb))
-                ON CONFLICT (repo_id, kind, key) DO UPDATE
-                    SET properties = EXCLUDED.properties
-            """),
-            {"repo_id": repo_id, "key": sym_key, "label": sym.name, "props": props},
-        )
-        await session.execute(
-            text("""
-                INSERT INTO code_edges (repo_id, source_kind, source_key, target_kind, target_key, edge_type, properties)
-                VALUES (:repo_id, 'file', :src, 'symbol', :tgt, 'defines', '{}')
-                ON CONFLICT (repo_id, source_kind, source_key, target_kind, target_key, edge_type) DO NOTHING
-            """),
-            {"repo_id": repo_id, "src": file_key, "tgt": sym_key},
-        )
+        symbol_nodes.pop(sym_key, None)
+        symbol_nodes[sym_key] = {
+            "kind": "symbol", "key": sym_key, "label": sym.name,
+            "properties": {
+                "kind": sym.kind,
+                "line_start": sym.line_start,
+                "line_end": sym.line_end,
+                "visibility": sym.visibility,
+                "file_path": file_path,
+            },
+        }
+        edge("file", file_key, "symbol", sym_key, "defines")
         if parent_key:
-            await session.execute(
-                text("""
-                    INSERT INTO code_edges (repo_id, source_kind, source_key, target_kind, target_key, edge_type, properties)
-                    VALUES (:repo_id, 'symbol', :src, 'symbol', :tgt, 'contains', '{}')
-                    ON CONFLICT (repo_id, source_kind, source_key, target_kind, target_key, edge_type) DO NOTHING
-                """),
-                {"repo_id": repo_id, "src": parent_key, "tgt": sym_key},
-            )
+            edge("symbol", parent_key, "symbol", sym_key, "contains")
         for child in sym.children:
-            await collect_symbols(child, parent_name=sym.name, parent_key=sym_key)
+            collect_symbols(child, parent_name=sym.name, parent_key=sym_key)
 
     for sym in symbols:
-        await collect_symbols(sym)
+        collect_symbols(sym)
 
     for sym in symbols:
         if sym.kind in ("class", "struct", "interface", "trait"):
@@ -2463,120 +2491,86 @@ async def _store_graph(
             for child in sym.children:
                 if child.kind in ("method", "function"):
                     child_key = compose_key("symbol", child.name, file_path, owner=sym.name)
-                    await session.execute(
-                        text("""
-                            INSERT INTO code_edges (repo_id, source_kind, source_key, target_kind, target_key, edge_type, properties)
-                            VALUES (:repo_id, 'symbol', :src, 'symbol', :tgt, 'has_method', '{}')
-                            ON CONFLICT (repo_id, source_kind, source_key, target_kind, target_key, edge_type) DO NOTHING
-                        """),
-                        {"repo_id": repo_id, "src": parent_key, "tgt": child_key},
-                    )
+                    edge("symbol", parent_key, "symbol", child_key, "has_method")
 
-    if imports:
-        for imp in imports:
-            mod_key = compose_key("module", imp.source)
-            await session.execute(
-                text("""
-                    INSERT INTO code_graph_nodes (repo_id, kind, key, label, properties)
-                    VALUES (:repo_id, 'module', :key, :key, '{}')
-                    ON CONFLICT (repo_id, kind, key) DO NOTHING
-                """),
-                {"repo_id": repo_id, "key": mod_key},
-            )
-            await session.execute(
-                text("""
-                    INSERT INTO code_edges (repo_id, source_kind, source_key, target_kind, target_key, edge_type, properties)
-                    VALUES (:repo_id, 'file', :src, 'module', :tgt, 'imports', '{}')
-                    ON CONFLICT (repo_id, source_kind, source_key, target_kind, target_key, edge_type) DO NOTHING
-                """),
-                {"repo_id": repo_id, "src": file_key, "tgt": mod_key},
-            )
+    for imp in imports or []:
+        mod_key = compose_key("module", imp.source)
+        keep_node("module", mod_key, mod_key, {})
+        edge("file", file_key, "module", mod_key, "imports")
 
-    if heritage:
-        for h in heritage:
-            child_key = compose_key("symbol", h.symbol_name, file_path)
-            # Resolve the base class to the file that actually defines it; a
-            # cross-file base keyed under the child's file points at no node and
-            # silently breaks override / inherited-method detection.
-            base_file = (base_files or {}).get(h.base_name, file_path)
-            parent_key = compose_key("symbol", h.base_name, base_file)
-            await session.execute(
-                text("""
-                    INSERT INTO code_edges (repo_id, source_kind, source_key, target_kind, target_key, edge_type, properties)
-                    VALUES (:repo_id, 'symbol', :src, 'symbol', :tgt, :edge_type, '{}')
-                    ON CONFLICT (repo_id, source_kind, source_key, target_kind, target_key, edge_type) DO NOTHING
-                """),
-                {"repo_id": repo_id, "src": child_key, "tgt": parent_key, "edge_type": h.relation},
-            )
+    for h in heritage or []:
+        child_key = compose_key("symbol", h.symbol_name, file_path)
+        # Resolve the base class to the file that actually defines it; a
+        # cross-file base keyed under the child's file points at no node and
+        # silently breaks override / inherited-method detection.
+        base_file = (base_files or {}).get(h.base_name, file_path)
+        parent_key = compose_key("symbol", h.base_name, base_file)
+        edge("symbol", child_key, "symbol", parent_key, h.relation)
 
-    if properties:
-        for prop in properties:
-            prop_key = compose_key("property", prop.name)
-            prop_props = json.dumps({
-                "type_annotation": prop.type_annotation,
-                "line": prop.line,
-                "visibility": prop.visibility,
-                "owner": prop.owner_name,
-                "file_path": file_path,
+    for prop in properties or []:
+        prop_key = compose_key("property", prop.name)
+        keep_node("property", prop_key, prop_key, {
+            "type_annotation": prop.type_annotation,
+            "line": prop.line,
+            "visibility": prop.visibility,
+            "owner": prop.owner_name,
+            "file_path": file_path,
+        })
+        owner_key = compose_key("symbol", prop.owner_name, file_path)
+        edge("symbol", owner_key, "property", prop_key, "has_property")
+
+    for route in routes or []:
+        if route.kind == "route":
+            route_name = f"{route.method or ''} {route.path}".strip()
+            route_key = compose_key("route", route_name)
+            keep_node("route", route_key, route_key, {
+                "method": route.method, "path": route.path, "framework": route.framework,
             })
-            await session.execute(
-                text("""
-                    INSERT INTO code_graph_nodes (repo_id, kind, key, label, properties)
-                    VALUES (:repo_id, 'property', :key, :key, CAST(:props AS jsonb))
-                    ON CONFLICT (repo_id, kind, key) DO NOTHING
-                """),
-                {"repo_id": repo_id, "key": prop_key, "props": prop_props},
-            )
-            owner_key = compose_key("symbol", prop.owner_name, file_path)
-            await session.execute(
-                text("""
-                    INSERT INTO code_edges (repo_id, source_kind, source_key, target_kind, target_key, edge_type, properties)
-                    VALUES (:repo_id, 'symbol', :src, 'property', :tgt, 'has_property', '{}')
-                    ON CONFLICT (repo_id, source_kind, source_key, target_kind, target_key, edge_type) DO NOTHING
-                """),
-                {"repo_id": repo_id, "src": owner_key, "tgt": prop_key},
-            )
+            edge("file", file_key, "route", route_key, "handles_route")
+        elif route.kind == "tool":
+            tool_key = compose_key("tool", route.path)
+            keep_node("tool", tool_key, tool_key, {"framework": route.framework})
+            edge("file", file_key, "tool", tool_key, "handles_tool")
 
-    if routes:
-        for route in routes:
-            if route.kind == "route":
-                route_name = f"{route.method or ''} {route.path}".strip()
-                route_key = compose_key("route", route_name)
-                route_props = json.dumps({"method": route.method, "path": route.path, "framework": route.framework})
-                await session.execute(
-                    text("""
-                        INSERT INTO code_graph_nodes (repo_id, kind, key, label, properties)
-                        VALUES (:repo_id, 'route', :key, :key, CAST(:props AS jsonb))
-                        ON CONFLICT (repo_id, kind, key) DO NOTHING
-                    """),
-                    {"repo_id": repo_id, "key": route_key, "props": route_props},
-                )
-                await session.execute(
-                    text("""
-                        INSERT INTO code_edges (repo_id, source_kind, source_key, target_kind, target_key, edge_type, properties)
-                        VALUES (:repo_id, 'file', :src, 'route', :tgt, 'handles_route', '{}')
-                        ON CONFLICT (repo_id, source_kind, source_key, target_kind, target_key, edge_type) DO NOTHING
-                    """),
-                    {"repo_id": repo_id, "src": file_key, "tgt": route_key},
-                )
-            elif route.kind == "tool":
-                tool_key = compose_key("tool", route.path)
-                tool_props = json.dumps({"framework": route.framework})
-                await session.execute(
-                    text("""
-                        INSERT INTO code_graph_nodes (repo_id, kind, key, label, properties)
-                        VALUES (:repo_id, 'tool', :key, :key, CAST(:props AS jsonb))
-                        ON CONFLICT (repo_id, kind, key) DO NOTHING
-                    """),
-                    {"repo_id": repo_id, "key": tool_key, "props": tool_props},
-                )
-                await session.execute(
-                    text("""
-                        INSERT INTO code_edges (repo_id, source_kind, source_key, target_kind, target_key, edge_type, properties)
-                        VALUES (:repo_id, 'file', :src, 'tool', :tgt, 'handles_tool', '{}')
-                        ON CONFLICT (repo_id, source_kind, source_key, target_kind, target_key, edge_type) DO NOTHING
-                    """),
-                    {"repo_id": repo_id, "src": file_key, "tgt": tool_key},
-                )
-
+    await session.execute(
+        text("""
+            INSERT INTO code_graph_nodes (repo_id, kind, key, label, properties)
+            SELECT :repo_id, n.kind, n.key, n.label, n.properties
+            FROM jsonb_to_recordset(CAST(:rows AS jsonb))
+                AS n(kind text, key text, label text, properties jsonb)
+            ON CONFLICT (repo_id, kind, key) DO NOTHING
+        """),
+        {"repo_id": repo_id, "rows": json.dumps(list(kept_nodes.values()))},
+    )
+    if symbol_nodes:
+        await session.execute(
+            text("""
+                INSERT INTO code_graph_nodes (repo_id, kind, key, label, properties)
+                SELECT :repo_id, n.kind, n.key, n.label, n.properties
+                FROM jsonb_to_recordset(CAST(:rows AS jsonb))
+                    AS n(kind text, key text, label text, properties jsonb)
+                ON CONFLICT (repo_id, kind, key) DO UPDATE
+                    SET properties = EXCLUDED.properties
+            """),
+            {"repo_id": repo_id, "rows": json.dumps(list(symbol_nodes.values()))},
+        )
+    await session.execute(
+        text("""
+            INSERT INTO code_edges (repo_id, source_kind, source_key, target_kind, target_key, edge_type, properties)
+            SELECT :repo_id, e.source_kind, e.source_key, e.target_kind, e.target_key, e.edge_type, '{}'
+            FROM jsonb_to_recordset(CAST(:rows AS jsonb))
+                AS e(source_kind text, source_key text, target_kind text, target_key text, edge_type text)
+            ON CONFLICT (repo_id, source_kind, source_key, target_kind, target_key, edge_type) DO NOTHING
+        """),
+        {
+            "repo_id": repo_id,
+            "rows": json.dumps([
+                {
+                    "source_kind": sk, "source_key": skey,
+                    "target_kind": tk, "target_key": tkey, "edge_type": et,
+                }
+                for sk, skey, tk, tkey, et in edges
+            ]),
+        },
+    )
     await session.flush()

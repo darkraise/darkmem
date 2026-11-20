@@ -737,6 +737,20 @@ class PostgresVectorRepository:
                 {"rid": repo_id},
             )
 
+    async def delete_code_chunks_by_files(self, repo_id: UUID, file_paths: list[str]):
+        rows = (
+            await self.session.execute(text("SELECT fingerprint FROM embedders"))
+        ).scalars().all()
+        for fp in rows:
+            table = child_table("code_chunk_embeddings", fp)
+            await self.session.execute(
+                text(
+                    f"DELETE FROM {table} WHERE repo_id = :rid "
+                    "AND file_path = ANY(CAST(:paths AS text[]))"
+                ),
+                {"rid": repo_id, "paths": list(file_paths)},
+            )
+
     async def delete_code_chunks_by_file(self, repo_id: UUID, file_path: str):
         rows = (
             await self.session.execute(text("SELECT fingerprint FROM embedders"))

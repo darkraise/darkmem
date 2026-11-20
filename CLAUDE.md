@@ -724,7 +724,9 @@ per job rather than once per tick; every run still gets its `job_runs` row.
 
 - `repo_sync` also runs the working-tree drift scan (the retired
   `code_reconcile`), per repo, only when both `index_on_commit_enabled` and
-  `index_uncommitted` are on (see Code indexing).
+  `index_uncommitted` are on (see Code indexing). The scan runs in a worker
+  thread and rehashes only files whose `(mtime, size)` moved since the
+  previous scan.
 - `llm_usage_cleanup` and `mcp_call_cleanup` prune **by age**,
   `job_run_cleanup` **by row count**, deliberately: a row ceiling would shorten "what did the last N days cost"
   during exactly the busy period worth investigating.
@@ -753,8 +755,10 @@ per job rather than once per tick; every run still gets its `job_runs` row.
   or `worker` destination on the Backups tab). The `age` identity is never
   stored in the database.
 - `code_deriver` is the production trigger for
-  `code_deriver.assert_repo_graph`: hourly over every repo with a non-null
-  `last_indexed_commit`, journalling failures to `pipeline_failures` with
+  `code_deriver.assert_repo_graph`: hourly over every repo whose
+  `last_indexed_commit` differs from the commit its last successful
+  derivation read (the `config` row `code_deriver_state`), journalling
+  failures to `pipeline_failures` with
   `pipeline_name="code_deriver"` so a derivation failure never fails an
   index run. Withdrawal: `RepoManager.delete` calls
   `PostgresGraphRepository.strip_repo_assertions` before removing the repo
@@ -1118,7 +1122,9 @@ all decide membership by it, so a checkout registered by path cannot index
 its `.env`, credential notes or dumps. A directory that is not a work tree is
 walked as before. A tree git cannot read fails the run; it never falls back
 to the walk. Files indexed before this rule leave the index on the next full
-reindex or drift scan.
+reindex or drift scan. A file whose parse raises or times out is recorded as
+a `code_files` row with its content hash, no symbols and a NULL `language`,
+so the drift scan does not report it again until its content changes.
 
 Incremental import resolution uses every surviving indexed repository file,
 and heritage edges resolve base classes against the stored graph as well as

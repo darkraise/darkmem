@@ -159,6 +159,54 @@ class HeritageResolver:
     def __init__(self, session: AsyncSession, repo_id: str):
         self.session = session
         self.repo_id = repo_id
+        self._maps: tuple[
+            dict[str, list[str]],
+            dict[str, dict[str, str]],
+            dict[str, list[tuple[str, str]]],
+        ] | None = None
+
+    async def _inheritance_maps(self) -> tuple[
+        dict[str, list[str]],
+        dict[str, dict[str, str]],
+        dict[str, list[tuple[str, str]]],
+    ]:
+        """The repository's ``extends``/``implements`` parents, their edge
+        types, and each class's ``has_method`` targets as ``(key, name)``.
+
+        Loaded once per resolver: call tracing and the MRO pass add only
+        ``calls`` and ``method_*`` edges, never these.
+        """
+        if self._maps is None:
+            parent_result = await self.session.execute(
+                text("""
+                    SELECT source_key, target_key, edge_type
+                    FROM code_edges
+                    WHERE repo_id = :repo_id AND edge_type IN ('extends', 'implements')
+                """),
+                {"repo_id": self.repo_id},
+            )
+            parent_map: dict[str, list[str]] = {}
+            edge_types: dict[str, dict[str, str]] = {}
+            for row in parent_result.mappings():
+                parent_map.setdefault(row["source_key"], []).append(row["target_key"])
+                edge_types.setdefault(row["source_key"], {})[row["target_key"]] = row["edge_type"]
+
+            method_result = await self.session.execute(
+                text("""
+                    SELECT source_key AS class_key, target_key AS method_key,
+                           split_part(target_key, '::', 1) AS method_name
+                    FROM code_edges
+                    WHERE repo_id = :repo_id AND edge_type = 'has_method'
+                """),
+                {"repo_id": self.repo_id},
+            )
+            method_map: dict[str, list[tuple[str, str]]] = {}
+            for row in method_result.mappings():
+                method_map.setdefault(row["class_key"], []).append(
+                    (row["method_key"], row["method_name"])
+                )
+            self._maps = (parent_map, edge_types, method_map)
+        return self._maps
 
     @staticmethod
     def compute_mro(language: str) -> MROStrategy:
@@ -207,6 +255,7 @@ class HeritageResolver:
 
         Returns (method_key, confidence) at lenient confidence 0.7, or None.
         """
+        parent_map, _edge_types, method_map = await self._inheritance_maps()
         visited: set[str] = set()
         queue = deque([child_class_key])
 
@@ -216,38 +265,14 @@ class HeritageResolver:
                 continue
             visited.add(current)
 
-            method_result = await self.session.execute(
-                text("""
-                    SELECT e.target_key
-                    FROM code_edges e
-                    WHERE e.repo_id = :repo_id
-                      AND e.source_key = :class_key
-                      AND e.edge_type = 'has_method'
-                      AND split_part(e.target_key, '::', 1) = :method_name
-                """),
-                {
-                    "repo_id": self.repo_id,
-                    "class_key": current,
-                    "method_name": method_name,
-                },
-            )
-            row = method_result.fetchone()
-            if row and current != child_class_key:
-                return (row[0], 0.7)
+            if current != child_class_key:
+                for method_key, name in method_map.get(current, ()):
+                    if name == method_name:
+                        return (method_key, 0.7)
 
-            parent_result = await self.session.execute(
-                text("""
-                    SELECT target_key
-                    FROM code_edges
-                    WHERE repo_id = :repo_id
-                      AND source_key = :class_key
-                      AND edge_type IN ('extends', 'implements')
-                """),
-                {"repo_id": self.repo_id, "class_key": current},
-            )
-            for parent_row in parent_result.fetchall():
-                if parent_row[0] not in visited:
-                    queue.append(parent_row[0])
+            for parent in parent_map.get(current, ()):
+                if parent not in visited:
+                    queue.append(parent)
 
         return None
 
@@ -257,37 +282,9 @@ class HeritageResolver:
         Walks the MRO chain for each child class and links child methods to the
         first ancestor method with the same name, skipping already-overridden methods.
         """
-        parent_result = await self.session.execute(
-            text("""
-                SELECT source_key, target_key, edge_type
-                FROM code_edges
-                WHERE repo_id = :repo_id AND edge_type IN ('extends', 'implements')
-            """),
-            {"repo_id": self.repo_id},
-        )
-        parent_map: dict[str, list[str]] = {}
-        edge_types: dict[str, dict[str, str]] = {}
-        for row in parent_result.mappings():
-            parent_map.setdefault(row["source_key"], []).append(row["target_key"])
-            edge_types.setdefault(row["source_key"], {})[row["target_key"]] = row["edge_type"]
-
+        parent_map, edge_types, method_map = await self._inheritance_maps()
         if not parent_map:
             return 0
-
-        method_result = await self.session.execute(
-            text("""
-                SELECT source_key AS class_key, target_key AS method_key,
-                       split_part(target_key, '::', 1) AS method_name
-                FROM code_edges
-                WHERE repo_id = :repo_id AND edge_type = 'has_method'
-            """),
-            {"repo_id": self.repo_id},
-        )
-        method_map: dict[str, list[tuple[str, str]]] = {}
-        for row in method_result.mappings():
-            method_map.setdefault(row["class_key"], []).append(
-                (row["method_key"], row["method_name"])
-            )
 
         override_result = await self.session.execute(
             text("""
