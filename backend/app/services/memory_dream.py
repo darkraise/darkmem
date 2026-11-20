@@ -104,7 +104,6 @@ from app.services.events import record_event
 from app.services.extraction_clean import _content_seed, _loads_extraction
 from app.services.job_registry import FieldDescriptor
 from app.services.supersede import successor_is_newer, supersede
-from app.taxonomy import EXCLUSIVE_RELATION_FAMILIES
 from app.utils.ids import new_id
 
 logger = logging.getLogger(__name__)
@@ -179,7 +178,13 @@ class DreamOutcome:
     pairs_considered: int = 0
     pairs_skipped_no_vector: int = 0
     pairs_suppressed_by_undo: int = 0
+    pairs_skipped_known_distinct: int = 0
+    pairs_skipped_unchanged_edge: int = 0
+    # Nominated pairs the judge fanout left for a later rotation. Memoed and
+    # already-edged pairs leave the nomination, so these move up next time.
+    truncated_pairs: int = 0
     judged: int = 0
+    distinct_remembered: int = 0
     judge_failed: int = 0
     subsumed: int = 0
     associated: int = 0
@@ -542,10 +547,92 @@ async def generate_pairs(
         if subsume_tombstone_blocks(older, newer):
             outcome.pairs_suppressed_by_undo += 1
             continue
+        if distinct_memo_holds(older, newer):
+            outcome.pairs_skipped_known_distinct += 1
+            continue
         pairs.append(PairCandidate(older=older, newer=newer, score=score))
 
+    edged = await _pairs_with_unchanged_edge(session, pairs)
+    outcome.pairs_skipped_unchanged_edge = len(edged)
+    pairs = [pair for pair in pairs if pair.key not in edged]
+
     outcome.pairs_considered = len(pairs)
+    outcome.truncated_pairs = max(0, len(pairs) - judge_fanout)
     return pairs[:judge_fanout]
+
+
+# A judged-distinct pair is remembered on the memory with the smaller id, keyed
+# by the counterpart, beside the undo tombstone and with the same content-keyed
+# shape: once either text changes the verdict is stale and the pair is judged
+# again.
+DISTINCT_MEMO_PATH = ("dream", "distinct")
+
+
+def memo_order(left: MemoryRow, right: MemoryRow) -> tuple[MemoryRow, MemoryRow]:
+    """``(holder, counterpart)``: the memo lives on the smaller id."""
+    if UUID(left.memory_id) < UUID(right.memory_id):
+        return left, right
+    return right, left
+
+
+def distinct_memo_of(metadata: dict | None, counterpart_id: str) -> dict | None:
+    node = metadata
+    for key in (*DISTINCT_MEMO_PATH, str(counterpart_id)):
+        node = node.get(key) if isinstance(node, dict) else None
+    return node if isinstance(node, dict) else None
+
+
+def distinct_memo_holds(older: MemoryRow, newer: MemoryRow) -> bool:
+    holder, counterpart = memo_order(older, newer)
+    memo = distinct_memo_of(holder.metadata, counterpart.memory_id)
+    return (
+        memo is not None
+        and memo.get("a_sha") == holder.content_sha
+        and memo.get("b_sha") == counterpart.content_sha
+    )
+
+
+_NEAR_DUPLICATE_BLOCKS = text("""
+    SELECT CAST(r.source_memory_id AS text) AS source,
+           CAST(r.target_memory_id AS text) AS target,
+           (r.properties #> CAST(:block_path AS text[])) AS block
+    FROM memory_relations r
+    JOIN unnest(CAST(:sources AS uuid[]), CAST(:targets AS uuid[]))
+         AS p(source, target)
+      ON r.source_memory_id = p.source AND r.target_memory_id = p.target
+    WHERE (r.properties #> CAST(:block_path AS text[])) IS NOT NULL
+""")
+
+
+async def _pairs_with_unchanged_edge(
+    session: AsyncSession, pairs: list[PairCandidate]
+) -> set[frozenset[str]]:
+    """Pairs whose near-duplicate edge was written against these two texts."""
+    if not pairs:
+        return set()
+    by_direction = {
+        (pair.newer.memory_id, pair.older.memory_id): pair for pair in pairs
+    }
+    result = await session.execute(
+        _NEAR_DUPLICATE_BLOCKS,
+        {
+            "block_path": [DREAM_PROPERTIES_KEY, NEAR_DUPLICATE_PASS],
+            "sources": [source for source, _ in by_direction],
+            "targets": [target for _, target in by_direction],
+        },
+    )
+    unchanged: set[frozenset[str]] = set()
+    for row in result.mappings():
+        pair = by_direction.get((row["source"], row["target"]))
+        block = row["block"]
+        if (
+            pair is not None
+            and isinstance(block, dict)
+            and block.get("older_sha") == pair.older.content_sha
+            and block.get("newer_sha") == pair.newer.content_sha
+        ):
+            unchanged.add(pair.key)
+    return unchanged
 
 
 # ── Phase C: the judge ───────────────────────────────────────────────────
@@ -925,7 +1012,13 @@ def _score_bucket(score: float) -> int:
 
 
 def near_duplicate_block(
-    *, score: float, verdict: str, existing: dict | None, detected_at: str
+    *,
+    score: float,
+    verdict: str,
+    existing: dict | None,
+    detected_at: str,
+    older_sha: str | None = None,
+    newer_sha: str | None = None,
 ) -> dict:
     """This pass's block, composed from the edge as it was read.
 
@@ -933,6 +1026,9 @@ def near_duplicate_block(
     exists and only defaulted to ``open`` when it does not: it belongs to the
     triage queue, and re-deriving a still-similar pair must never roll a
     human's confirm or dismiss back to the derived default.
+
+    The two content shas are what nomination compares to leave an unchanged,
+    already-judged pair out of the judge's fanout.
     """
     state = (existing or {}).get("hygiene_state") or HYGIENE_STATE_OPEN
     return {
@@ -941,6 +1037,8 @@ def near_duplicate_block(
         "score": score,
         "verdict": verdict,
         "detected_at": detected_at,
+        "older_sha": older_sha,
+        "newer_sha": newer_sha,
     }
 
 
@@ -952,6 +1050,8 @@ def _edge_is_unchanged(existing: dict | None, block: dict) -> bool:
         and existing.get("verdict") == block["verdict"]
         and _score_bucket(float(existing.get("score") or 0.0))
         == _score_bucket(float(block["score"]))
+        and existing.get("older_sha") == block["older_sha"]
+        and existing.get("newer_sha") == block["newer_sha"]
     )
 
 
@@ -1008,6 +1108,8 @@ async def apply_associate(
         verdict=action.verdict.verdict,
         existing=existing_block,
         detected_at=datetime.now(timezone.utc).isoformat(),
+        older_sha=older.content_sha,
+        newer_sha=newer.content_sha,
     )
     if _edge_is_unchanged(existing_block, block):
         outcome.associate_unchanged += 1
@@ -1046,6 +1148,81 @@ async def apply_associate(
         },
     )
     outcome.associated += 1
+    return True
+
+
+@dataclass(frozen=True)
+class DistinctAction:
+    pair: PairCandidate
+    verdict: PairVerdict
+
+    @property
+    def memory_id(self) -> str:
+        return memo_order(self.pair.older, self.pair.newer)[0].memory_id
+
+
+# Three nested `jsonb_set` for the reason `dream_undo`'s tombstone write gives:
+# `create_if_missing` creates only the final path element.
+_WRITE_DISTINCT_MEMO = text("""
+    UPDATE memories
+       SET metadata = jsonb_set(
+               jsonb_set(
+                   jsonb_set(
+                       COALESCE(metadata, CAST('{}' AS jsonb)),
+                       '{dream}',
+                       COALESCE(metadata -> 'dream', CAST('{}' AS jsonb)),
+                       true
+                   ),
+                   '{dream,distinct}',
+                   COALESCE(
+                       metadata -> 'dream' -> 'distinct',
+                       CAST('{}' AS jsonb)
+                   ),
+                   true
+               ),
+               CAST(:memo_path AS text[]),
+               CAST(:memo AS jsonb),
+               true
+           )
+     WHERE id = CAST(:memory_id AS uuid)
+""")
+
+
+async def apply_distinct(
+    session: AsyncSession, action: DistinctAction, *, outcome: DreamOutcome
+) -> bool:
+    """Remember a distinct verdict against the two texts it was reached on.
+
+    Journals nothing: the memo records that nothing happened, and a row per
+    remembered pair would grow the append-only journal with non-transitions.
+    """
+    await _set_local_lock_timeout(session)
+    older, newer = action.pair.older, action.pair.newer
+
+    locked = await _locked(session, older.memory_id)
+    successor = await _locked(session, newer.memory_id)
+    if locked is None or successor is None:
+        outcome.stale_skipped += 1
+        return False
+    if content_sha(locked["content"]) != older.content_sha:
+        outcome.stale_skipped += 1
+        return False
+    if content_sha(successor["content"]) != newer.content_sha:
+        outcome.stale_skipped += 1
+        return False
+
+    holder, counterpart = memo_order(older, newer)
+    await session.execute(
+        _WRITE_DISTINCT_MEMO,
+        {
+            "memory_id": holder.memory_id,
+            "memo_path": [*DISTINCT_MEMO_PATH, counterpart.memory_id],
+            "memo": json.dumps(
+                {"a_sha": holder.content_sha, "b_sha": counterpart.content_sha}
+            ),
+        },
+    )
+    outcome.distinct_remembered += 1
     return True
 
 
@@ -1158,20 +1335,16 @@ async def apply_refine(
 # A second derivation pass on the one `memory_relations` row the UNIQUE forces
 # co-owners onto. It shares nothing with the near-duplicate arm above except
 # the repository and the ordering predicate: its own `pass_key`, its own block
-# shape, its own strip. Three deterministic signals, no model call — so a
+# shape, its own strip. Two deterministic signals, no model call — so a
 # replay over an unchanged corpus and an unchanged config produces the same
 # edge set, which is the whole of Done-when 3.
 
-SIGNAL_CONTRADICTION = "contradiction"
 SIGNAL_ENTITY_OVERLAP = "entity_overlap"
 SIGNAL_EMBEDDING_PROXIMITY = "embedding_proximity"
 
-# D3, and the order is the decision: one pair may fire two signals, and a pair
-# that both overlaps and contradicts is a contradiction. The weaker edge is not
-# also written — two rows for one pair under two names would make a curator
-# guess which to believe.
+# D3, and the order is the decision: one pair may fire both signals, and the
+# block records both under the first one's name.
 SIGNAL_PRECEDENCE: tuple[str, ...] = (
-    SIGNAL_CONTRADICTION,
     SIGNAL_ENTITY_OVERLAP,
     SIGNAL_EMBEDDING_PROXIMITY,
 )
@@ -1181,14 +1354,9 @@ SIGNAL_PRECEDENCE: tuple[str, ...] = (
 # signal carries what those types assert, and `FOLLOWS` from `created_at`
 # ordering would assert narrative succession from the order someone typed.
 SIGNAL_REL_TYPES: dict[str, str] = {
-    SIGNAL_CONTRADICTION: "CONTRADICTS",
     SIGNAL_ENTITY_OVERLAP: "RELATES_TO",
     SIGNAL_EMBEDDING_PROXIMITY: "RELATES_TO",
 }
-
-# A deterministic signal has no similarity to report, so the block carries a
-# fixed score rather than a fabricated one.
-_CONTRADICTION_SCORE = 1.0
 
 SKIPPED_PROXIMITY_FINGERPRINT = "proximity_fingerprint_unresolved"
 
@@ -1271,48 +1439,6 @@ _OVERLAP_CANDIDATES = text("""
 """)
 
 
-# D4's same-endpoint scan. Opposition is *not* "two targets under one family"
-# in general — a service legitimately depends on two libraries — so it fires
-# only over `EXCLUSIVE_RELATION_FAMILIES`, and the succession guard is the
-# memory-level analogue of disjoint validity windows: both memories active,
-# neither superseding the other. A superseded memory is the succession case the
-# lifecycle already models, and firing here would re-litigate a resolved
-# pointer.
-_CONTRADICTION_CANDIDATES = text("""
-    WITH live AS (
-        SELECT r.source_entity_id,
-               r.target_entity_id,
-               r.rel_type,
-               m.id AS memory_id,
-               m.project,
-               m.superseded_by
-        FROM entity_relations r
-        CROSS JOIN LATERAL unnest(r.memory_ids) AS asserted(memory_id)
-        JOIN memories m ON m.id = asserted.memory_id
-        WHERE r.rel_type = ANY(CAST(:families AS text[]))
-          AND cardinality(r.memory_ids) <= CAST(:hot_cap AS int)
-          AND m.status = 'active'
-          AND m.is_archived = false
-          AND (m.expires_at IS NULL OR m.expires_at > now())
-    )
-    SELECT DISTINCT CAST(l1.memory_id AS text) AS ma,
-                    CAST(l2.memory_id AS text) AS mb
-    FROM live l1
-    JOIN live l2
-      ON l2.source_entity_id = l1.source_entity_id
-     AND l2.rel_type = l1.rel_type
-     AND l2.target_entity_id <> l1.target_entity_id
-     AND l2.project = l1.project
-     AND l1.memory_id < l2.memory_id
-    WHERE (l1.memory_id = ANY(CAST(:seeds AS uuid[]))
-           OR l2.memory_id = ANY(CAST(:seeds AS uuid[])))
-      AND l1.superseded_by IS DISTINCT FROM l2.memory_id
-      AND l2.superseded_by IS DISTINCT FROM l1.memory_id
-    ORDER BY 1, 2
-    LIMIT CAST(:limit AS int)
-""")
-
-
 async def overlap_candidates(
     session: AsyncSession,
     *,
@@ -1381,40 +1507,6 @@ async def proximity_candidates(
             if key not in scored or score > scored[key]:
                 scored[key] = score
     return dict(sorted(scored.items())[:limit])
-
-
-async def contradiction_candidates(
-    session: AsyncSession,
-    *,
-    seeds: list[str],
-    families: frozenset[str],
-    hot_entity_cap: int,
-    limit: int,
-) -> dict[tuple[str, str], float]:
-    """Opposed targets under an exclusive family, and never anything wider.
-
-    Returns nothing at all when the family list is empty, which is what it
-    ships as: a derived ``CONTRADICTS`` suppresses the weaker edge under D3 and
-    feeds the fact-level dispute surface, so a loose family both manufactures
-    false disputes and erases true ``RELATES_TO`` edges. Anything wider than a
-    ratified list needs the LLM scan (T2.11), and this pass must not
-    approximate it.
-    """
-    if not seeds or not families or limit <= 0:
-        return {}
-    result = await session.execute(
-        _CONTRADICTION_CANDIDATES,
-        {
-            "seeds": list(seeds),
-            "families": sorted(families),
-            "hot_cap": hot_entity_cap,
-            "limit": limit,
-        },
-    )
-    return {
-        pair_key(row["ma"], row["mb"]): _CONTRADICTION_SCORE
-        for row in result.mappings()
-    }
 
 
 @dataclass(frozen=True)
@@ -1527,12 +1619,8 @@ def _derived_is_unchanged(existing: dict | None, block: dict) -> bool:
 # stored block travels back with the row and `strip_stale_edges` spares any
 # triple resting on a signal this run could not measure. The proximity arm's
 # reachability is additionally top-N per seed rather than a pure key prefix, so
-# "reachable by every arm that ran" is exact for the two SQL arms and means
+# "reachable by every arm that ran" is exact for the overlap arm and means
 # "inside this seed's neighbour fan-out" for that one.
-#
-# Keyed on the triple rather than the pair, because a pair transitioning
-# `RELATES_TO -> CONTRADICTS` under D3 leaves the old triple's block behind
-# otherwise and the pair then shows up twice, defeating D3's purpose.
 _PASS_TRIPLES_IN_WINDOW = text("""
     SELECT CAST(source_memory_id AS text) AS source,
            CAST(target_memory_id AS text) AS target,
@@ -1788,10 +1876,7 @@ async def run_derivation_pass(
 
     No model call anywhere in it. The pass writes `memory_relations` rows and
     nothing else — it never touches `verification_status`, never opens a
-    `review_state`, never calls the ladder. A derived `CONTRADICTS` is a signal
-    *into* fact-level dispute (doc 08 §4.2), never a verdict, and T2.11's scan
-    is blocked on an unqualified judge, so this pass must not become a back
-    door that supplies fact-level dispute while that gate is unmet.
+    `review_state`, never calls the ladder.
     """
     outcome = DerivationOutcome()
     if not seeds or derivation_batch <= 0:
@@ -1810,13 +1895,6 @@ async def run_derivation_pass(
         session,
         seeds=seed_ids,
         threshold=overlap_threshold,
-        hot_entity_cap=hot_entity_cap,
-        limit=arm_limit,
-    )
-    contradiction = await contradiction_candidates(
-        session,
-        seeds=seed_ids,
-        families=EXCLUSIVE_RELATION_FAMILIES,
         hot_entity_cap=hot_entity_cap,
         limit=arm_limit,
     )
@@ -1840,7 +1918,6 @@ async def run_derivation_pass(
 
     decided = merge_candidates({
         SIGNAL_ENTITY_OVERLAP: overlap,
-        SIGNAL_CONTRADICTION: contradiction,
         SIGNAL_EMBEDDING_PROXIMITY: proximity,
     })
     outcome.candidates = len(decided)
@@ -1949,6 +2026,8 @@ async def _judge_pairs(
             actions.append(SubsumeAction(pair=pair, verdict=verdict))
         elif verdict.verdict == "duplicate":
             actions.append(AssociateAction(pair=pair, verdict=verdict))
+        elif verdict.verdict == "distinct":
+            actions.append(DistinctAction(pair=pair, verdict=verdict))
     return actions
 
 
@@ -2004,6 +2083,8 @@ async def _apply(
                 await apply_refine(
                     session, action, cycle_id=cycle_id, outcome=outcome
                 )
+            elif isinstance(action, DistinctAction):
+                await apply_distinct(session, action, outcome=outcome)
     except Exception:
         logger.warning(
             "memory dream: an action failed and was rolled back", exc_info=True
@@ -2156,13 +2237,18 @@ async def run_memory_dream(
             outcome.derivation_skipped_reason = derivation.proximity_skipped_reason
 
         logger.info(
-            "memory dream cycle %s visited %d seed(s): %d pair(s) judged, "
-            "%d subsumed, %d associated (%d unchanged), %d refined, "
+            "memory dream cycle %s visited %d seed(s): %d pair(s) judged "
+            "(%d past the fanout; %d known distinct, %d already edged), "
+            "%d subsumed, %d associated (%d unchanged), %d remembered "
+            "distinct, %d refined, "
             "%d stale-skipped, %d failed; derivation saw %d candidate(s) "
             "(%d truncated): %d derived, %d unchanged, %d stripped, "
             "%d spared as unmeasured%s",
             outcome.cycle_id, outcome.seeds_visited, outcome.judged,
+            outcome.truncated_pairs, outcome.pairs_skipped_known_distinct,
+            outcome.pairs_skipped_unchanged_edge,
             outcome.subsumed, outcome.associated, outcome.associate_unchanged,
+            outcome.distinct_remembered,
             outcome.refined, outcome.stale_skipped, outcome.failed,
             outcome.derivation_candidates, outcome.candidates_truncated,
             outcome.derived, outcome.derivation_unchanged,

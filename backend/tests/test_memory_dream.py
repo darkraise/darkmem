@@ -1152,7 +1152,7 @@ class TestAssociateArm:
 
         assert first.associated == 1
         assert second.associated == 0
-        assert second.associate_unchanged == 1
+        assert second.pairs_skipped_unchanged_edge == 1
         assert await edge_count(committing, project) == 1
         assert len(await consolidated_events(committing, project, newer)) == 1
 
@@ -1272,7 +1272,8 @@ class TestAssociateArm:
 
         await _rewind_cursor(committing)
         second = await run_cycle(committing, stub, refine_batch=0)
-        assert second.associate_unchanged == 1
+        assert second.associated == 0
+        assert second.pairs_skipped_unchanged_edge == 1
 
 
 async def _rewind_cursor(factory) -> None:
@@ -1286,19 +1287,154 @@ async def _rewind_cursor(factory) -> None:
 
 
 async def _bump_score(factory, project) -> None:
-    """Move the stored score out of its bucket so the identical-pass skip does
-    not fire and the merge itself is what the test observes."""
+    """Move the stored score out of its bucket and drop the block's content
+    shas (the shape of an edge written before they were recorded), so neither
+    the nomination skip nor the identical-pass skip fires and the merge itself
+    is what the test observes."""
     async with factory() as session:
         await session.execute(
             text(
                 "UPDATE memory_relations SET properties = jsonb_set("
                 "  properties, '{dream,near_duplicate,score}', "
                 "  CAST('0.5' AS jsonb), true) "
+                "  #- '{dream,near_duplicate,older_sha}' "
+                "  #- '{dream,near_duplicate,newer_sha}' "
                 "WHERE project = CAST(:p AS text)"
             ),
             {"p": project},
         )
         await session.commit()
+
+
+def _pair_calls(stub) -> list[str]:
+    return [
+        call["messages"][-1]["content"]
+        for call in stub.calls
+        if call["messages"][0]["content"] == dream.PAIR_SYSTEM_PROMPT
+    ]
+
+
+async def _set_content(factory, memory_id, content: str) -> None:
+    async with factory() as session:
+        await session.execute(
+            text("UPDATE memories SET content = :c WHERE id = CAST(:id AS uuid)"),
+            {"c": content, "id": str(memory_id)},
+        )
+        await session.commit()
+
+
+@pytest.mark.parametrize("prior_dream_key", [False, True], ids=["no-dream-key", "dream-key"])
+async def test_distinct_verdict_is_remembered_by_content(
+    committing, project, run_cycle, prior_dream_key
+):
+    older, newer, _, _ = await build_pair(committing, project)
+    marker = {"refine": {"content_sha": "elsewhere"}}
+    if prior_dream_key:
+        async with committing() as session:
+            await session.execute(
+                text(
+                    "UPDATE memories SET metadata = CAST(:m AS jsonb) "
+                    "WHERE id = ANY(CAST(:ids AS uuid[]))"
+                ),
+                {"m": json.dumps({"dream": marker}), "ids": [str(older), str(newer)]},
+            )
+            await session.commit()
+    holder, counterpart = sorted((older, newer))
+    stub = StubLLM(pair_verdict=verdict("distinct"), refine=None)
+
+    first = await run_cycle(committing, stub, refine_batch=0)
+
+    assert first.judged == 1
+    holder_row = await memory_row(committing, holder)
+    counterpart_row = await memory_row(committing, counterpart)
+    assert holder_row["metadata"]["dream"]["distinct"] == {
+        str(counterpart): {
+            "a_sha": dream.content_sha(holder_row["content"]),
+            "b_sha": dream.content_sha(counterpart_row["content"]),
+        }
+    }
+    if prior_dream_key:
+        assert holder_row["metadata"]["dream"]["refine"] == marker["refine"]
+    assert "distinct" not in counterpart_row["metadata"].get("dream", {})
+    assert await consolidated_events(committing, project) == []
+
+    await _rewind_cursor(committing)
+    stub.calls.clear()
+    second = await run_cycle(committing, stub, refine_batch=0)
+
+    assert _pair_calls(stub) == []
+    assert second.judged == 0
+    assert second.pairs_skipped_known_distinct == 1
+
+    await _set_content(committing, newer, "the api now listens on port 9000")
+    await _rewind_cursor(committing)
+    third = await run_cycle(committing, stub, refine_batch=0)
+
+    assert third.judged == 1
+    assert len(_pair_calls(stub)) == 1
+
+
+async def test_unchanged_existing_edge_is_not_rejudged(
+    committing, project, run_cycle
+):
+    older, newer, _, _ = await build_pair(committing, project)
+    stub = StubLLM(pair_verdict=verdict("duplicate"), refine=None)
+    first = await run_cycle(committing, stub, refine_batch=0)
+    assert first.associated == 1
+
+    await _rewind_cursor(committing)
+    stub.calls.clear()
+    second = await run_cycle(committing, stub, refine_batch=0)
+
+    assert _pair_calls(stub) == []
+    assert second.judged == 0
+    assert second.pairs_skipped_unchanged_edge == 1
+
+    await _set_content(committing, older, "the api listens on port 8000 behind nginx")
+    await _rewind_cursor(committing)
+    third = await run_cycle(committing, stub, refine_batch=0)
+
+    assert third.judged == 1
+    assert third.associated == 1
+    assert len(await consolidated_events(committing, project, newer)) == 2
+
+
+async def test_pairs_past_the_fanout_are_counted(committing, project, run_cycle):
+    directions = [
+        [1.0, 0.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0, 0.0],
+        [0.0, 0.0, 1.0, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+        [0.6, 0.8, 0.0, 0.0],
+    ]
+    async with committing() as session:
+        await seed_partition(session)
+        for index, vector in enumerate(directions):
+            for half, hours in (("a", 2 * index), ("b", 2 * index + 1)):
+                memory = await seed_memory(
+                    session, project=project, content=f"pair-{index}-{half}",
+                    created_at=NOW + timedelta(hours=hours),
+                )
+                await put_vector(session, memory, vector)
+        await session.commit()
+    stub = StubLLM(pair_verdict=verdict("distinct"), refine=None)
+
+    def judged_pairs() -> set[str]:
+        return {re.search(r"pair-(\d)-", body).group(1) for body in _pair_calls(stub)}
+
+    first = await run_cycle(committing, stub, refine_batch=0, judge_fanout=2)
+    first_pairs = judged_pairs()
+
+    assert first.truncated_pairs == 3
+    assert len(first_pairs) == 2
+
+    await _rewind_cursor(committing)
+    stub.calls.clear()
+    second = await run_cycle(committing, stub, refine_batch=0, judge_fanout=2)
+
+    assert second.pairs_skipped_known_distinct == 2
+    assert second.truncated_pairs == 1
+    assert judged_pairs() and not judged_pairs() & first_pairs
 
 
 # ── Step 6: the refine arm and the content guard ─────────────────────────

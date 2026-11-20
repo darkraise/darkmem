@@ -159,25 +159,6 @@ async def seed_entity(session, *, name: str, memory_ids: list[UUID]) -> UUID:
     return identifier
 
 
-async def seed_relation(
-    session, *, source: UUID, target: UUID, rel_type: str, memory_ids: list[UUID]
-) -> None:
-    await session.execute(
-        text(
-            "INSERT INTO entity_relations "
-            "  (source_entity_id, target_entity_id, rel_type, memory_ids) "
-            "VALUES (CAST(:s AS uuid), CAST(:t AS uuid), :rel_type, "
-            "        CAST(:ids AS uuid[]))"
-        ),
-        {
-            "s": str(source),
-            "t": str(target),
-            "rel_type": rel_type,
-            "ids": [str(value) for value in memory_ids],
-        },
-    )
-
-
 async def seed_partition(session, fingerprint: str = FP) -> str:
     await session.execute(
         text(
@@ -574,31 +555,6 @@ class TestStrip:
         assert outcome.rows_deleted == 1
         assert await all_edges(committing, project) == []
 
-    async def test_the_old_triple_goes_when_a_pair_changes_type(
-        self, committing, project, monkeypatch
-    ):
-        """D3's purpose in the strip: a pair moving `RELATES_TO ->
-        CONTRADICTS` must not be shown twice, which needs a triple-keyed
-        strip rather than a pair-keyed one."""
-        first, second, _ = await build_overlap_pair(committing, project)
-        seeds = await read_seeds(committing, [first, second])
-        await derive(committing, seeds)
-        assert [row["rel_type"] for row in await pass_edges(committing, project)] == [
-            "RELATES_TO"
-        ]
-
-        await seed_opposition(committing, project, first, second)
-        monkeypatch.setattr(
-            dream, "EXCLUSIVE_RELATION_FAMILIES", frozenset({"DEPENDS_ON"})
-        )
-
-        outcome = await derive(committing, seeds)
-
-        assert outcome.derived == 1
-        assert outcome.stripped == 1
-        rows = await pass_edges(committing, project)
-        assert [row["rel_type"] for row in rows] == ["CONTRADICTS"]
-
 
 async def build_proximity_pair(factory, project, *, vector=(1.0, 0.0, 0.0, 0.0)):
     """Two memories that share no entity at all and sit on top of each other in
@@ -728,149 +684,15 @@ class TestASkippedArmStripsNothing:
         assert await pass_edges(committing, project) == []
 
 
-async def seed_opposition(factory, project, first, second, rel_type="DEPENDS_ON"):
-    """One source entity, two different targets, asserted by two memories."""
-    async with factory() as session:
-        source = await seed_entity(
-            session, name=f"t216-src-{project}", memory_ids=[]
-        )
-        left = await seed_entity(
-            session, name=f"t216-left-{project}", memory_ids=[]
-        )
-        right = await seed_entity(
-            session, name=f"t216-right-{project}", memory_ids=[]
-        )
-        await seed_relation(
-            session, source=source, target=left,
-            rel_type=rel_type, memory_ids=[first],
-        )
-        await seed_relation(
-            session, source=source, target=right,
-            rel_type=rel_type, memory_ids=[second],
-        )
-        await session.commit()
+# ── D2's signal types ────────────────────────────────────────────────────
 
 
-# ── D3 precedence and D4's family gate ───────────────────────────────────
-
-
-class TestPrecedenceAndContradiction:
-    async def test_the_shipped_family_list_is_empty_and_derives_nothing(
-        self, committing, project
-    ):
-        """D4 as shipped. The list is a ruling, not a stub: every
-        `RELATIONSHIP_TYPES` member that reads single-valued in isolation is
-        also the normalisation target of a plural historical name, so a stored
-        `rel_type` does not determine single-valuedness. With the list empty
-        the arm cannot fire, and the two-signal shape is deliberate."""
-        from app.taxonomy import EXCLUSIVE_RELATION_FAMILIES
-
-        assert EXCLUSIVE_RELATION_FAMILIES == frozenset()
-
-        async with committing() as session:
-            first = await seed_memory(session, project=project, content="one")
-            second = await seed_memory(
-                session, project=project, content="two",
-                created_at=NOW + timedelta(hours=1),
-            )
-            await session.commit()
-        await seed_opposition(committing, project, first, second)
-        seeds = await read_seeds(committing, [first, second])
-
-        outcome = await derive(committing, seeds, fingerprint=None)
-
-        assert outcome.derived == 0
-        assert await pass_edges(committing, project) == []
-
-    async def test_a_ratified_family_makes_the_arm_fire(
-        self, committing, project, monkeypatch
-    ):
-        """Non-vacuity for the negative above: the arm is wired and works, so
-        the empty list is what makes it inert and not a missing generator."""
-        async with committing() as session:
-            first = await seed_memory(session, project=project, content="one")
-            second = await seed_memory(
-                session, project=project, content="two",
-                created_at=NOW + timedelta(hours=1),
-            )
-            await session.commit()
-        await seed_opposition(committing, project, first, second)
-        monkeypatch.setattr(
-            dream, "EXCLUSIVE_RELATION_FAMILIES", frozenset({"DEPENDS_ON"})
-        )
-        seeds = await read_seeds(committing, [first, second])
-
-        outcome = await derive(committing, seeds, fingerprint=None)
-
-        assert outcome.derived == 1
-        rows = await pass_edges(committing, project)
-        assert [row["rel_type"] for row in rows] == ["CONTRADICTS"]
-
-    async def test_a_superseding_pair_is_not_a_contradiction(
-        self, committing, project, monkeypatch
-    ):
-        """The succession guard, which is the memory-level analogue of the
-        disjoint-validity clause this layer cannot compute: a resolved pointer
-        is not a dispute to re-litigate."""
-        async with committing() as session:
-            first = await seed_memory(session, project=project, content="one")
-            second = await seed_memory(
-                session, project=project, content="two",
-                created_at=NOW + timedelta(hours=1),
-            )
-            await session.commit()
-        await seed_opposition(committing, project, first, second)
-        monkeypatch.setattr(
-            dream, "EXCLUSIVE_RELATION_FAMILIES", frozenset({"DEPENDS_ON"})
-        )
-        async with committing() as session:
-            await session.execute(
-                text(
-                    "UPDATE memories SET status = 'superseded', "
-                    "  superseded_by = CAST(:n AS uuid) "
-                    "WHERE id = CAST(:o AS uuid)"
-                ),
-                {"n": str(second), "o": str(first)},
-            )
-            await session.commit()
-        seeds = await read_seeds(committing, [first, second])
-
-        outcome = await derive(committing, seeds, fingerprint=None)
-
-        assert outcome.derived == 0
-
-    async def test_contradiction_suppresses_the_weaker_edge(
-        self, committing, project, monkeypatch
-    ):
-        """D3. One pair, one edge, typed `CONTRADICTS` — the overlap edge is
-        not also written, or the hygiene and dispute surfaces would show the
-        same pair twice under two names."""
-        first, second, _ = await build_overlap_pair(committing, project)
-        await seed_opposition(committing, project, first, second)
-        monkeypatch.setattr(
-            dream, "EXCLUSIVE_RELATION_FAMILIES", frozenset({"DEPENDS_ON"})
-        )
-        seeds = await read_seeds(committing, [first, second])
-
-        outcome = await derive(committing, seeds, fingerprint=None)
-
-        assert outcome.derived == 1
-        rows = await pass_edges(committing, project)
-        assert len(rows) == 1
-        assert rows[0]["rel_type"] == "CONTRADICTS"
-        block = edges.pass_block_of(rows[0], journal.DERIVATION_PASS)
-        assert block["signal"] == dream.SIGNAL_CONTRADICTION
-        # Both signals fired and are recorded; only one edge exists.
-        assert dream.SIGNAL_ENTITY_OVERLAP in block["signals"]
-
+class TestSignalTypes:
     def test_neither_underived_type_is_reachable(self):
-        """O1, ruled: three signals, three types. `DEPENDS_ON` and `FOLLOWS`
-        stay stored-but-underived — deriving `FOLLOWS` from `created_at`
-        ordering would assert narrative succession from the order someone
-        typed."""
-        assert set(dream.SIGNAL_REL_TYPES.values()) == {
-            "CONTRADICTS", "RELATES_TO"
-        }
+        """O1, ruled. `DEPENDS_ON` and `FOLLOWS` stay stored-but-underived —
+        deriving `FOLLOWS` from `created_at` ordering would assert narrative
+        succession from the order someone typed."""
+        assert set(dream.SIGNAL_REL_TYPES.values()) == {"RELATES_TO"}
         assert set(dream.SIGNAL_REL_TYPES) == set(dream.SIGNAL_PRECEDENCE)
 
 
@@ -1204,11 +1026,8 @@ class TestUndoIntegration:
 
 # ── the scope boundary, asserted structurally ────────────────────────────
 
-# A call counter cannot show a negative, so the boundary is a source scan.
-# A derived `CONTRADICTS` edge is a signal *into* fact-level dispute (doc 08
-# §4.2), never a verdict, and T2.11's scan is blocked on an unqualified judge —
-# so this pass must not become a back door supplying fact-level dispute while
-# that gate is unmet.
+# A call counter cannot show a negative, so the boundary is a source scan: the
+# pass writes `memory_relations` and must never reach the fact layer.
 FACT_LAYER_NAMES: frozenset[str] = frozenset({
     "verification_status",
     "review_state",
