@@ -240,6 +240,7 @@ async def booted(monkeypatch, *, llm_fails: bool):
         enrichment_row_existed = (await s.execute(
             select(Config.key).where(Config.key == "job:code_enrichment")
         )).scalar_one_or_none() is not None
+        projects_before = set((await s.execute(text("SELECT name FROM projects"))).scalars())
     try:
         async with main_module.lifespan(app):
             yield factory
@@ -248,10 +249,16 @@ async def booted(monkeypatch, *, llm_fails: bool):
         app.state._state.update(state_before)
         pipeline_failures.RETRY_HANDLERS.clear()
         pipeline_failures.RETRY_HANDLERS.update(handlers_before)
-        if not enrichment_row_existed:
-            async with factory() as s:
+        async with factory() as s:
+            if not enrichment_row_existed:
                 await s.execute(delete(Config).where(Config.key == "job:code_enrichment"))
-                await s.commit()
+            # The boot seeds the personal project and backfills the registry;
+            # rows it committed would outlive this test.
+            await s.execute(
+                text("DELETE FROM projects WHERE NOT (name = ANY(CAST(:kept AS text[])))"),
+                {"kept": sorted(projects_before)},
+            )
+            await s.commit()
 
 
 from app.models.config import Config  # noqa: E402
