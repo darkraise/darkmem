@@ -92,7 +92,7 @@
 | 85 | B4-16: phase 08 seeds every file's type environment with every symbol's return type, keyed by function name | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 31 contracts | doing | - |
 | 86 | B4-17: Leiden and process tracing rewrite the repo's whole community/process layer on every run, under non-deterministic keys | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 31 contracts | doing | - |
 | 87 | B4-18: property nodes are keyed by bare name and deleted together with the first owner's file | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 31 contracts | doing | - |
-| 88 | B4-19: failure paths store unsanitised exception text; tokens sit in the git argv | docs/dforge/plans/2026-11-20-audit-remaining.md | A36 (Task 29) | doing | - |
+| 88 | B4-19: failure paths store unsanitised exception text; tokens sit in the git argv | docs/dforge/plans/2026-11-20-audit-remaining.md | A36 (Task 29) | done | 9124abd |
 | 89 | B4-20: a local checkout's fetch lane fast-forwards whichever branch is checked out | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 3 contracts | doing | - |
 | 90 | B4-21 and removal 5: the wiki config row is orphaned on repo delete, and the cache check is dead | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 32 contracts | doing | - |
 | 91 | B4-22: process_tracer reads a signature property nothing writes | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 31 contracts | doing | - |
@@ -121,7 +121,7 @@
 | 114 | B6-3: MCP memory_reason, memory_overview and document_search call the LLM or embedder on the read-only backup worker | docs/dforge/plans/2026-11-20-audit-remaining.md | A12 (Task 5) | doing | - |
 | 115 | B6-5: get_session commits after the response is sent, so routes without an explicit commit return 200 before the write is durable | docs/dforge/plans/2026-11-20-audit-remaining.md | A29 (Task 38) | doing | - |
 | 116 | B6-6: the CORS fallback grants credentialed cross-origin access to localhost:3000 and :5173 | docs/dforge/plans/2026-11-20-audit-remaining.md | A8 (Task 1) | done | 1d02a7c |
-| 117 | B6-7: SSH destination user/host go unvalidated into the ssh/scp argv | docs/dforge/plans/2026-11-20-audit-remaining.md | A9 (Task 3) | doing | - |
+| 117 | B6-7: SSH destination user/host go unvalidated into the ssh/scp argv | docs/dforge/plans/2026-11-20-audit-remaining.md | A9 (Task 3) | done | 9124abd |
 | 118 | B6-8: every MCP request and every keyed REST call pays a fresh bcrypt | docs/dforge/plans/2026-11-20-audit-remaining.md | A11 (Task 2) | done | 6eb3cde |
 | 119 | B6-9: min_interval_seconds is persisted into the job row on first save, so raising a floor in code never takes effect | docs/dforge/plans/2026-11-20-audit-remaining.md | A30 (Task 40) | doing | - |
 | 120 | B6-10: PUT /jobs/{key} and its config twin wait on the per-job run lock | docs/dforge/plans/2026-11-20-audit-remaining.md | A30 (Task 40) | doing | - |
@@ -131,7 +131,7 @@
 | 124 | B6-15: code_rename matches with an unescaped LIKE | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 27 contracts | doing | - |
 | 125 | B6-16: several MCP code tools call scalar_one_or_none() on Repository.name, which is not unique | docs/dforge/plans/2026-11-20-audit-remaining.md | A35 (Task 26) | doing | - |
 | 126 | B6-17: a failed MCP call-log flush discards its popped batch uncounted, and validation-error text may echo content | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 42 contracts | doing | - |
-| 127 | B6-18: a masked secret is resolved by name even when the URL or host changes | docs/dforge/plans/2026-11-20-audit-remaining.md | A10 (Task 3) | doing | - |
+| 127 | B6-18: a masked secret is resolved by name even when the URL or host changes | docs/dforge/plans/2026-11-20-audit-remaining.md | A10 (Task 3) | done | 9124abd |
 | 128 | B6-19 and B6-D3: system-prompts, repo-allowlist and notifications read-modify-write their config rows without the row lock; about 12 config endpoints repeat the pattern three ways | docs/dforge/plans/2026-11-20-audit-remaining.md | A29 (Task 39) | doing | - |
 | 129 | B6-20: events partition maintenance rides on pipeline_failure_cleanup, which the UI can disable | docs/dforge/plans/2026-11-20-audit-remaining.md | A32 (Task 41) | doing | - |
 | 130 | B6-21: each open WebSocket runs 2 database queries per second for revalidation, serially inside the send lock | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 42 contracts | doing | - |
