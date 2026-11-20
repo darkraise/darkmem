@@ -6,9 +6,9 @@
 | # | Item | Assigned | Acceptance | State | Note |
 |---|---|---|---|---|---|
 | 1 | B1-1 remainder: split transient from deterministic extraction failures and make transient ones a hard step the buffer retries | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 8 contracts | doing | - |
-| 2 | B1-3: Phase 5 sessions upsert shared entity and relation rows in extraction order and hold the locks until commit (deadlock class) | docs/dforge/plans/2026-11-20-audit-remaining.md | A16 (Task 7) | doing | - |
-| 3 | B1-4: the supersession UPDATE has no status='active' predicate, so two concurrent writers re-point an already-superseded memory | docs/dforge/plans/2026-11-20-audit-remaining.md | A15 (Task 7) | doing | - |
-| 4 | B1-5: predicates written as :mid = ANY(memory_ids) cannot use the GIN index | docs/dforge/plans/2026-11-20-audit-remaining.md | A17 (Task 7) | doing | - |
+| 2 | B1-3: Phase 5 sessions upsert shared entity and relation rows in extraction order and hold the locks until commit (deadlock class) | docs/dforge/plans/2026-11-20-audit-remaining.md | A16 (Task 7) | done | 9e0f324 |
+| 3 | B1-4: the supersession UPDATE has no status='active' predicate, so two concurrent writers re-point an already-superseded memory | docs/dforge/plans/2026-11-20-audit-remaining.md | A15 (Task 7) | done | 9e0f324 |
+| 4 | B1-5: predicates written as :mid = ANY(memory_ids) cannot use the GIN index | docs/dforge/plans/2026-11-20-audit-remaining.md | A17 (Task 7) | done | 9e0f324 |
 | 5 | B1-6: at its 10-second deadline wait_process cancels the in-flight flush, leaving the row claimed and discarding the LLM spend | docs/dforge/plans/2026-11-20-audit-remaining.md | A18 (Task 9) | doing | - |
 | 6 | B1-7: the reprocess and pipeline-failure retry routes are not refused in read-only mode | docs/dforge/plans/2026-11-20-audit-remaining.md | A12 (Task 5) | done | 7d6e56b |
 | 7 | B1-8: if the same-batch reconciliation raises, the backstop overwrites every already-committed status with vector and graph errors | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 8 contracts | doing | - |
