@@ -1044,9 +1044,11 @@ class CodePipeline:
         t0 = await self._phase_log("03_structure")
         repo = self._repo
 
-        # Map each class-like symbol to the file that defines it (across all
-        # parsed files, changed or not) so cross-file base classes resolve to
-        # their real node when heritage edges are written below.
+        # Map each class-like symbol to the file that defines it so cross-file
+        # base classes resolve to their real node when heritage edges are
+        # written below. An incremental run parses only part of the tree, so
+        # the stored graph supplies the classes of every file this run did not
+        # parse, and the parsed files take precedence over it.
         class_file_index: dict[str, str] = {}
         _class_kinds = ("class", "struct", "interface", "trait")
 
@@ -1059,6 +1061,20 @@ class CodePipeline:
 
         for fp, parsed in self._parsed.items():
             _index_classes(parsed["parse_result"].symbols, fp)
+        stored_classes = (await self.session.execute(
+            text("""
+                SELECT label, properties->>'file_path' AS file_path
+                FROM code_graph_nodes
+                WHERE repo_id = :repo_id
+                  AND kind = 'symbol'
+                  AND properties->>'kind' = ANY(CAST(:kinds AS text[]))
+                ORDER BY properties->>'file_path', key
+            """),
+            {"repo_id": repo.id, "kinds": list(_class_kinds)},
+        )).all()
+        for name, fp in stored_classes:
+            if fp and fp not in self._parsed:
+                class_file_index.setdefault(name, fp)
 
         for fp, parsed in self._parsed.items():
             pr = parsed["parse_result"]
@@ -1742,11 +1758,13 @@ class CodePipeline:
         concurrency = (config_row.value if config_row else FEATURE_FLAGS_DEFAULTS).get("pipeline_concurrency", 5)
         sem = asyncio.Semaphore(concurrency)
 
-        file_items = []
-        for fp, parsed in self._parsed.items():
-            pr = parsed["parse_result"]
-            if pr.chunks:
-                file_items.append((fp, pr))
+        # Only the files phase 03 rewrote lost their chunks; a dependent or
+        # debt file parsed for call re-tracing kept its own.
+        file_items = [
+            (fp, parsed["parse_result"])
+            for fp, parsed in self._parsed.items()
+            if fp in self._chunks_cleared_in_structure and parsed["parse_result"].chunks
+        ]
 
         embed_results: dict[str, list[list[float]]] = {}
 
@@ -1794,6 +1812,17 @@ class CodePipeline:
 
         await asyncio.gather(*[_embed_one(fp, pr) for fp, pr in file_items])
 
+        # A file whose embed failed keeps its new content hash, so no later
+        # incremental run would parse it again; fill those gaps here.
+        gap_items = await self._embedding_gaps(
+            next(iter(embed_fingerprint.values()), None),
+            attempted={fp for fp, _pr in file_items},
+        )
+        if gap_items:
+            total_chunks += sum(len(pr.chunks) for _fp, pr in gap_items)
+            await asyncio.gather(*[_embed_one(fp, pr) for fp, pr in gap_items])
+            file_items.extend(gap_items)
+
         # Register every distinct fingerprint observed before writing rows.
         if embed_fingerprint:
             from app.services.embedder_registry import (  # noqa: PLC0415
@@ -1838,6 +1867,71 @@ class CodePipeline:
 
         self._stats["chunks_stored"] = chunk_count
         self._phase_done("12_embeddings", t0)
+
+    async def _embedding_gaps(
+        self, fingerprint: str | None, attempted: set[str],
+    ) -> list[tuple[str, object]]:
+        """Indexed files with no chunk row under the active fingerprint,
+        parsed, at most one debt batch of them per run.
+
+        A file this run already tried is left for the next run, so an
+        embedder outage costs one failed call per file per run.
+        """
+        from app.services.embedder_registry import child_table, parse_fingerprint
+
+        if fingerprint is None:
+            try:
+                _vector, fingerprint = await self.llm.embed(_FINGERPRINT_PROBE_TEXT)
+            except Exception as exc:
+                logger.warning("Embedding gap scan skipped: %s", exc)
+                return []
+        try:
+            parse_fingerprint(fingerprint)
+        except ValueError:
+            return []
+
+        table = child_table("code_chunk_embeddings", fingerprint)
+        exists = (await self.session.execute(
+            text("SELECT to_regclass(CAST(:name AS text)) IS NOT NULL"),
+            {"name": table},
+        )).scalar_one()
+        without_chunks = (
+            f"AND NOT EXISTS (SELECT 1 FROM {table} c "
+            "WHERE c.repo_id = f.repo_id AND c.file_path = f.file_path)"
+            if exists else ""
+        )
+        limit = await index_debt.drain_batch_size(self.session, DEPENDENT_RETRACE_CAP)
+        rows = (await self.session.execute(
+            text(f"""
+                SELECT f.file_path, f.content_hash
+                FROM code_files f
+                WHERE f.repo_id = :repo_id
+                  AND f.content_hash <> :empty_hash
+                  AND NOT (f.file_path = ANY(CAST(:attempted AS text[])))
+                  {without_chunks}
+                ORDER BY f.file_path
+                LIMIT :limit
+            """),
+            {
+                "repo_id": self._repo.id, "empty_hash": _EMPTY_CONTENT_HASH,
+                "attempted": sorted(attempted), "limit": limit,
+            },
+        )).all()
+
+        gaps = []
+        for file_path, content_hash in rows:
+            parsed = (
+                self._parsed.get(file_path)
+                or self._binding_context.get(file_path)
+                or await self._parse_one(self._work_dir, file_path)
+            )
+            # The tree moved under an indexed file: its symbols and chunks
+            # are re-written together when a run indexes the new content.
+            if parsed is None or parsed["content_hash"] != content_hash:
+                continue
+            if parsed["parse_result"].chunks:
+                gaps.append((file_path, parsed["parse_result"]))
+        return gaps
 
     async def phase_13_enrich_symbols(self) -> None:
         t0 = await self._phase_log("13_enrich_symbols")
@@ -2128,6 +2222,11 @@ def _list_all_files(work_dir: Path) -> list[str]:
 # one. When exceeded, the overflow is logged (not silently dropped).
 DEPENDENT_RETRACE_CAP = 500
 
+# An empty file yields no chunk, so it never counts as an embedding gap.
+_EMPTY_CONTENT_HASH = hashlib.sha256(b"").hexdigest()
+# Embedded only to learn which fingerprint the active embedder writes under.
+_FINGERPRINT_PROBE_TEXT = "darkmem code_chunk_embeddings active-fingerprint probe"
+
 
 def _cross_file_benefit(total_calls: int, resolved_calls: int) -> float:
     """Estimated benefit (fraction of unresolved calls) of running phase 08.
@@ -2182,30 +2281,41 @@ async def _find_dependent_caller_files(
 async def _diff_files(
     work_dir: Path, old_sha: str, new_sha: str
 ) -> tuple[list[str], list[str]]:
+    # -z keeps paths verbatim: without it git quotes and octal-escapes any
+    # path with a non-ASCII byte, a quote or a tab, and the quoted form
+    # matches no file on disk and no indexed row.
     result = await RepoManager._run_git(
-        work_dir, ["git", "diff", "--name-status", old_sha, new_sha]
+        work_dir, ["git", "diff", "--name-status", "-z", old_sha, new_sha]
     )
     changed: list[str] = []
     deleted: list[str] = []
-    for line in result.strip().splitlines():
-        if not line:
+    fields = result.split("\0")
+    index = 0
+    while index < len(fields):
+        status = fields[index]
+        index += 1
+        if not status:
             continue
-        parts = line.split("\t")
-        if len(parts) < 2:
-            continue
-        status = parts[0].strip()
-        # Rename (R###) and copy (C###) entries carry two paths:
-        # "STATUS\told_path\tnew_path". The new path is what was indexed;
-        # for a rename the old path no longer exists and must be deleted.
-        if status[:1] in ("R", "C") and len(parts) >= 3:
-            old_path, new_path = parts[1].strip(), parts[2].strip()
+        # Rename (R###) and copy (C###) entries carry two paths, old then
+        # new. The new path is what was indexed; for a rename the old path no
+        # longer exists and must be deleted.
+        if status[:1] in ("R", "C"):
+            if index + 1 >= len(fields):
+                break
+            old_path, new_path = fields[index], fields[index + 1]
+            index += 2
             changed.append(new_path)
             if status[:1] == "R":
                 deleted.append(old_path)
-        elif status.startswith("D"):
-            deleted.append(parts[1].strip())
+            continue
+        if index >= len(fields):
+            break
+        path = fields[index]
+        index += 1
+        if status.startswith("D"):
+            deleted.append(path)
         else:
-            changed.append(parts[1].strip())
+            changed.append(path)
     return changed, deleted
 
 

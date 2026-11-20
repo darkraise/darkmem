@@ -1121,11 +1121,16 @@ to the walk. Files indexed before this rule leave the index on the next full
 reindex or drift scan.
 
 Incremental import resolution uses every surviving indexed repository file,
-while parsing, rewriting, embedding and phase-08 benefit accounting retain
-their incremental work subset. Direct binding metadata persists on file
-graph nodes; missing legacy metadata is reconstructed through the checked
-parser without rewriting or embedding unchanged files. Code-search fusion
-identity is `(repo_id, file_path, line_start)`, never path/line alone.
+and heritage edges resolve base classes against the stored graph as well as
+the parsed files, while parsing, rewriting and phase-08 benefit accounting
+retain their incremental work subset. Embedding covers only the files a run
+rewrote, plus up to one debt batch of indexed files with no chunk row under
+the active fingerprint, so a failed embed is filled by the next run. The
+diff is read with `git diff -z`, so quoted paths are never mis-parsed.
+Direct binding metadata persists on file graph nodes; missing legacy
+metadata is reconstructed through the checked parser without rewriting or
+embedding unchanged files. Code-search fusion identity is
+`(repo_id, file_path, line_start)`, never path/line alone.
 
 `POST /repos/{id}/reindex` accepts `{full, enrich_symbols, generate_wiki}`,
 all default false. An unchanged HEAD short-circuits unless `full=true` **or

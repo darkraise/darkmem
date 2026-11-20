@@ -194,7 +194,7 @@ async def test_embedding_reports_chunks_embedded_of_total(session, tmp_path, mon
     pipe._repo = repo
     pipe._repo_id_str = str(repo.id)
     pipe._stats = {"errors": []}
-    pipe._chunks_cleared_in_structure = set()
+    pipe._chunks_cleared_in_structure = {"a.py", "b.py"}
     from app.services.code_parser import parse_file
     pipe._parsed = {
         fp: {"parse_result": parse_file(fp, (tmp_path / fp).read_text())}
