@@ -1,6 +1,8 @@
 import json
 from typing import NamedTuple
 
+import httpx
+
 from app.services.llm import LLMOrchestrator, LLMTruncationError
 from app.services import prompt as prompt_constants
 
@@ -20,6 +22,27 @@ from app.services.extraction_clean import (
 
 
 # ── Extraction service ───────────────────────────────────────────────
+
+#: A provider failure the same request may not repeat. Everything else (an
+#: unparseable or truncated reply, a 4xx) fails identically on a retry, since
+#: extraction is seeded.
+_TRANSIENT_STATUS = frozenset({408, 429})
+
+
+def is_transient_failure(error: BaseException) -> bool:
+    """Whether ``error``, or anything in its cause chain, is worth retrying."""
+    seen: set[int] = set()
+    current: BaseException | None = error
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, (httpx.TransportError, TimeoutError, ConnectionError)):
+            return True
+        if isinstance(current, httpx.HTTPStatusError):
+            status = current.response.status_code
+            return status in _TRANSIENT_STATUS or status >= 500
+        current = current.__cause__ or current.__context__
+    return False
+
 
 class ExtractionRequest(NamedTuple):
     """Everything the model is asked, and nothing else.
@@ -144,8 +167,14 @@ class ExtractionService:
             return self._error_result(f"Invalid JSON: {e}")
         except Exception as e:
             logger.error("Extraction failed: %s: %s", type(e).__name__, e)
-            return self._error_result(f"{type(e).__name__}: {e}")
+            return self._error_result(
+                f"{type(e).__name__}: {e}", transient=is_transient_failure(e),
+            )
 
     @staticmethod
-    def _error_result(msg: str) -> dict:
-        return {"entities": [], "relationships": [], "memory_type": "fact", "importance": 0.5, "_error": msg}
+    def _error_result(msg: str, *, transient: bool = False) -> dict:
+        return {
+            "entities": [], "relationships": [], "memory_type": "fact", "importance": 0.5,
+            "_error": msg,
+            "_error_kind": "transient" if transient else "deterministic",
+        }

@@ -505,17 +505,19 @@ class ProcessingPipeline:
             "relations_count": 0,
             "error": None if vector is not None else (embed_error or "Content embedding failed"),
         }
-        if isinstance(extraction, Exception):
-            status["extract"] = "error"
-            status["error"] = f"Extraction failed: {extraction}"
-            extraction = None
-        elif isinstance(extraction, dict):
+        if isinstance(extraction, dict):
             status["extract"] = "ok"
             status["entities_count"] = len(extraction.get("entities", []))
             status["relations_count"] = len(extraction.get("relationships", []))
             if extraction.get("_error"):
-                status["extract"] = "partial"
-                status["error"] = status["error"] or f"Extraction degraded: {extraction['_error']}"
+                # The buffer retries a transient failure and settles a
+                # deterministic one, which a retry would only repeat.
+                kind = extraction.get("_error_kind", "deterministic")
+                status["extract"] = "error"
+                status["extract_failure"] = kind
+                status["error"] = status["error"] or (
+                    f"Extraction failed ({kind}): {extraction['_error']}"
+                )
 
             # Apply canonical_map to entity names and relationship endpoints.
             # The map is keyed by (name_lower, entity_type) so a canonical rewrite
@@ -669,7 +671,7 @@ class ProcessingPipeline:
                 # Savepoint B: the entity/relationship graph. A failure here rolls
                 # back only the graph; the embedding from savepoint A survives and
                 # the failure is attributed to the graph step, not the vector one.
-                # A `partial` extraction is the extractor's own failure result
+                # A failed extraction is the extractor's own failure result
                 # (`ExtractionService._error_result`: no entities, no relations),
                 # so it has nothing to write and must not enter the savepoint:
                 # the strip below would replace a good graph with nothing.
@@ -1037,15 +1039,12 @@ class ProcessingPipeline:
 
         async def run_extract(entry: dict, with_classification: bool = False):
             async with semaphore:
-                try:
-                    return await self.extraction.extract(
-                        entry["content"], system_prompt=ext_prompt,
-                        relation_rescue=relation_rescue,
-                        with_classification=with_classification,
-                        usage_subject=_entry_subject(entry),
-                    )
-                except Exception as exc:
-                    return exc
+                return await self.extraction.extract(
+                    entry["content"], system_prompt=ext_prompt,
+                    relation_rescue=relation_rescue,
+                    with_classification=with_classification,
+                    usage_subject=_entry_subject(entry),
+                )
 
         # Pick the classifier implementation (LLM-backed, or in-process ML when
         # the classification purpose's classifier_kind is 'local'). Cached for a
@@ -1263,38 +1262,43 @@ class ProcessingPipeline:
                 if isinstance(extraction, dict)
                 and statuses[str(entry["memory_id"])]["graph"] == "ok"
             }
-            async with self.session_factory() as session:
-                stored = (await session.execute(
-                    select(Memory.id, Memory.content, Memory.created_at, Memory.project)
-                    .where(Memory.id.in_(batch_memory_ids))
-                    .order_by(Memory.created_at, Memory.id)
-                )).all()
-                for memory_id, content, created_at, project in stored:
-                    relations = replacements.get(str(memory_id), [])
-                    if not any(is_supersession_trigger(relation.get("type")) for relation in relations):
-                        continue
-                    try:
-                        async with session.begin_nested():
-                            await detect_supersessions(
-                                session, new_memory_id=memory_id,
-                                new_memory_text=content, new_memory_created_at=created_at,
-                                project=project, new_relations=relations,
-                                candidate_memory_ids=batch_memory_ids,
-                            )
-                    except Exception as error:
-                        status = statuses[str(memory_id)]
-                        status["graph"] = "error"
-                        status["error"] = status["error"] or f"Batch supersession failed: {error}"
-                        logger.exception("Batch supersession failed for %s", memory_id)
-                projects = {str(row.id): row.project for row in stored}
-                for entry, status in zip(entries, normalized):
-                    await record_event(
-                        session, event_type="extracted", object_type="memory",
-                        object_id=UUID(str(entry["memory_id"])),
-                        project=projects.get(str(entry["memory_id"]), entry.get("project")),
-                        payload={**status, "outcome": _derive_outcome(status)},
-                    )
-                await session.commit()
+            # Every status here was committed by its own Phase 5 write; a
+            # failure reading them back must not relabel them as failed writes.
+            try:
+                async with self.session_factory() as session:
+                    stored = (await session.execute(
+                        select(Memory.id, Memory.content, Memory.created_at, Memory.project)
+                        .where(Memory.id.in_(batch_memory_ids))
+                        .order_by(Memory.created_at, Memory.id)
+                    )).all()
+                    for memory_id, content, created_at, project in stored:
+                        relations = replacements.get(str(memory_id), [])
+                        if not any(is_supersession_trigger(relation.get("type")) for relation in relations):
+                            continue
+                        try:
+                            async with session.begin_nested():
+                                await detect_supersessions(
+                                    session, new_memory_id=memory_id,
+                                    new_memory_text=content, new_memory_created_at=created_at,
+                                    project=project, new_relations=relations,
+                                    candidate_memory_ids=batch_memory_ids,
+                                )
+                        except Exception as error:
+                            status = statuses[str(memory_id)]
+                            status["graph"] = "error"
+                            status["error"] = status["error"] or f"Batch supersession failed: {error}"
+                            logger.exception("Batch supersession failed for %s", memory_id)
+                    projects = {str(row.id): row.project for row in stored}
+                    for entry, status in zip(entries, normalized):
+                        await record_event(
+                            session, event_type="extracted", object_type="memory",
+                            object_id=UUID(str(entry["memory_id"])),
+                            project=projects.get(str(entry["memory_id"]), entry.get("project")),
+                            payload={**status, "outcome": _derive_outcome(status)},
+                        )
+                    await session.commit()
+            except Exception:
+                logger.exception("Same-batch reconciliation failed; keeping the committed statuses")
 
         return normalized
 

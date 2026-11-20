@@ -378,7 +378,11 @@ capture journals `capture_flagged` with signal names only. The
 `buffer_max_attempts`, `buffer_claim_visibility_seconds`,
 `buffer_done_retention_hours`) are its `config_schema`, in the `config` row
 `job:buffer_flush`. A failed batch retries row-at-a-time so the poisonous
-row settles alone into `error` with a real `last_error`; a flush overrunning
+row settles alone into `error` with a real `last_error`. A transient
+extraction failure (a timeout, a connection error, HTTP 408, 429 or 5xx) is
+retried by the buffer within `buffer_max_attempts`; a deterministic one (an
+unparseable or truncated reply) settles the row `done` with the vector
+written, no graph and an `extraction` failure row. A flush overrunning
 its deadline returns the batch to `pending`, refunds the attempt and shrinks
 the next claim. `error` rows are kept until resolved (the sweep deletes only
 `done`) and are triaged over `GET /api/v1/memory-buffer` (REST only; requeue

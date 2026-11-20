@@ -16,10 +16,12 @@ the session-end schema reset is its only cleanup.
 """
 from __future__ import annotations
 
+import json
 import uuid
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 
+import httpx
 import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -57,7 +59,6 @@ class Bed:
     fingerprint: str
     broadcasts: list[tuple[str, dict]] = field(default_factory=list)
     extraction: dict = field(default_factory=lambda: dict(EXTRACTION))
-    extraction_error: Exception | None = None
 
     @property
     def memory_id(self) -> uuid.UUID:
@@ -133,8 +134,6 @@ async def savepoint_bed(
         bed.extraction = dict(extraction)
 
     async def _extract(content, system_prompt=None, **kwargs):
-        if bed.extraction_error is not None:
-            raise bed.extraction_error
         return dict(bed.extraction)
 
     bed.pipe.extraction.extract = _extract  # type: ignore[method-assign]
@@ -369,54 +368,53 @@ async def test_savepoint_b_failure_leaves_the_prior_graph_standing(
         assert await bed.technologies() == ["faiss", "pgvector"]
 
 
-@pytest.mark.asyncio
-async def test_extraction_failure_never_strips_the_prior_graph(setup_database):
-    """The routine path: savepoint B is never entered, so nothing is stripped.
+class _ExtractionLLM:
+    """The extraction purpose's provider: answers ``reply`` until ``error`` is set."""
 
-    An extraction failure is an ordinary outcome, not a decision to empty the
-    memory's graph. With the strip outside the savepoints it ran and committed
-    on this path, silently discarding a good graph whenever the extractor had a
-    bad day.
+    def __init__(self, reply: dict):
+        self.reply = json.dumps(reply)
+        self.error: Exception | None = None
+
+    async def chat_completion(self, purpose, **kwargs):
+        if self.error is not None:
+            raise self.error
+        return self.reply
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("failure", "kind"),
+    [
+        (httpx.ConnectError("extractor unreachable"), "transient"),
+        (None, "deterministic"),
+    ],
+    ids=["outage", "unparseable"],
+)
+async def test_extraction_failure_never_strips_the_prior_graph(setup_database, failure, kind):
+    """An extraction failure is an ordinary outcome, not a decision to empty the
+    memory's graph: savepoint B is never entered, so nothing is stripped,
+    ``technologies`` keeps its value and no fact source is withdrawn. Driven
+    through the real ``ExtractionService``, which reports every failure as an
+    ``_error`` result rather than raising.
     """
     async with savepoint_bed(
-        ["extraction fails on the second pass"], "savepoint-extfail|4",
+        ["extraction fails on the second pass"], f"savepoint-extfail-{kind}|4",
     ) as bed:
+        del bed.pipe.extraction.extract
+        llm = _ExtractionLLM(EXTRACTION)
+        bed.pipe.extraction.llm = llm
         first = (await bed.pipe.process_batch([bed.entry()]))[0]
         assert first["graph"] == "ok"
         assert await bed.entity_names() == {"pgvector", "faiss"}
 
-        bed.extraction_error = RuntimeError("extractor unreachable")
+        if failure is None:
+            llm.reply = "no json here"
+        else:
+            llm.error = failure
         status = (await bed.pipe.process_batch([bed.entry()]))[0]
 
         assert status["extract"] == "error"
-        assert status["graph"] == "skipped"
-        assert await bed.entity_names() == {"pgvector", "faiss"}
-        assert await bed.technologies() == ["faiss", "pgvector"]
-
-
-@pytest.mark.asyncio
-async def test_a_degraded_extraction_never_strips_the_prior_graph(setup_database):
-    """The failure shape production actually produces.
-
-    ``ExtractionService.extract`` never raises: an outage, a 429, a timeout and
-    an unparseable reply all come back as an empty ``_error`` result, which the
-    pipeline labels ``partial``. Entering savepoint B with it replaces a good
-    graph with nothing, empties ``technologies`` and withdraws the memory's
-    fact sources.
-    """
-    from app.services.extraction import ExtractionService
-
-    async with savepoint_bed(
-        ["extraction degrades on the second pass"], "savepoint-extdegraded|4",
-    ) as bed:
-        first = (await bed.pipe.process_batch([bed.entry()]))[0]
-        assert first["graph"] == "ok"
-        assert await bed.entity_names() == {"pgvector", "faiss"}
-
-        bed.extraction = ExtractionService._error_result("ConnectError: extractor unreachable")
-        status = (await bed.pipe.process_batch([bed.entry()]))[0]
-
-        assert status["extract"] == "partial"
+        assert status["extract_failure"] == kind
         assert status["graph"] == "skipped"
         assert await bed.entity_names() == {"pgvector", "faiss"}
         assert await bed.technologies() == ["faiss", "pgvector"]
@@ -893,3 +891,37 @@ async def test_a_phase_escape_still_gives_every_entry_an_outcome(
         failures = await _failure_rows(bed)
         assert set(failures) == {str(m) for m in bed.memory_ids}
         assert all(resolved is False for _, resolved in failures.values())
+
+
+@pytest.mark.asyncio
+async def test_reconciliation_failure_keeps_committed_statuses(
+    setup_database, monkeypatch, caplog
+):
+    import logging
+
+    import app.services.pipeline as pipeline_module
+    from app.models.memory import Memory
+
+    real_select = pipeline_module.select
+
+    def failing_reconciliation_select(*columns):
+        if len(columns) > 1 and columns[0] is Memory.id and columns[1] is Memory.content:
+            raise RuntimeError("reconciliation read failed")
+        return real_select(*columns)
+
+    monkeypatch.setattr(pipeline_module, "select", failing_reconciliation_select)
+    async with savepoint_bed(["older", "newer"], "savepoint-reconcile-read|4") as bed:
+        with caplog.at_level(logging.ERROR, logger="app.services.pipeline"):
+            results = await bed.pipe.process_batch([bed.entry(index) for index in range(2)])
+
+        assert [(r["vector"], r["graph"]) for r in results] == [("ok", "ok"), ("ok", "ok")]
+        async with bed.factory() as s:
+            failed_steps = (await s.execute(
+                text("SELECT failed_step FROM pipeline_failures "
+                     "WHERE entity_id = ANY(:ids) AND resolved_at IS NULL"),
+                {"ids": bed.memory_ids},
+            )).scalars().all()
+        assert not {"vector_write", "graph_write"} & set(failed_steps)
+        logged = [r for r in caplog.records if "reconciliation read failed" in r.getMessage()
+                  or (r.exc_info and "reconciliation read failed" in str(r.exc_info[1]))]
+        assert len(logged) == 1

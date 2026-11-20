@@ -150,12 +150,20 @@ _REPLAY_VIA_ASSOCIATION: frozenset[str] = frozenset({"tags"})
 FLUSH_TIMEOUTS_KEY = "flush_timeouts"
 _BUFFER_BOOKKEEPING_KEYS: frozenset[str] = frozenset({"memory_id", FLUSH_TIMEOUTS_KEY})
 
-# A partial extraction is degraded, not failed: the vector and the content are
-# written and only the graph is thin, so re-claiming the row would burn attempts
-# on work that already landed. Only the four hard steps return the row.
+# Only the four hard steps return the row. A deterministic extraction failure
+# (an unparseable or truncated reply to a seeded request) is not one: the
+# vector and the content are written, and a retry would only repeat the reply,
+# so the row settles and the memory's failure row carries it to triage.
 _HARD_FAILURE_STEPS: frozenset[str] = frozenset(
     {"content_embedding", "extraction", "vector_write", "graph_write"}
 )
+
+
+def _returns_the_row(status: dict) -> bool:
+    step = derive_memory_failed_step(status)
+    if step == "extraction" and status.get("extract_failure") == "deterministic":
+        return False
+    return step in _HARD_FAILURE_STEPS
 
 
 def _assert_replay_coverage(fields: tuple[str, ...] = REPLAYED_METADATA_FIELDS) -> None:
@@ -886,9 +894,10 @@ async def _replay(
     done: list[uuid.UUID] = []
     failures: list[tuple[uuid.UUID, str]] = []
     for capture, status in zip(captures, statuses):
-        step = derive_memory_failed_step(status if isinstance(status, dict) else {})
-        if step in _HARD_FAILURE_STEPS:
-            message = (status or {}).get("error") or f"pipeline failed at {step}"
+        status = status if isinstance(status, dict) else {}
+        if _returns_the_row(status):
+            step = derive_memory_failed_step(status)
+            message = status.get("error") or f"pipeline failed at {step}"
             failures.append((capture.buffer_id, str(message)))
         else:
             done.append(capture.buffer_id)

@@ -27,9 +27,11 @@ rather than relying on the conftest `session` fixture's rollback.
 from __future__ import annotations
 
 import asyncio
+import json
 import uuid
 from datetime import datetime, timezone
 
+import httpx
 import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -56,7 +58,7 @@ from app.services.buffer_flush import (
 )
 from app.services.job_registry import Job, JobRegistry, is_valid_cron
 from app.services.memory_buffer import REPLAYED_METADATA_FIELDS, enqueue
-from app.services.pipeline import _flag_cache_reset
+from app.services.pipeline import ProcessingPipeline, _flag_cache_reset
 from tests.conftest import test_engine
 from tests.test_pipeline_phase1 import FakeEmbedder, cleanup, make_pipeline, seed_memories  # noqa: F401
 
@@ -1144,3 +1146,121 @@ async def test_an_empty_buffer_is_a_cheap_no_op(setup_database):
     stats = await flush_once(factory(), pipeline)
     assert stats["claimed"] == 0
     assert pipeline.batches == []
+
+
+# ── Extraction failure classes ──────────────────────────────────────
+
+
+class ExtractionLLM:
+    """The extraction purpose's provider: raises ``error`` or answers ``reply``."""
+
+    def __init__(self, *, error: Exception | None = None, reply: str | None = None):
+        self.error = error
+        self.reply = reply if reply is not None else json.dumps(EXTRACTION)
+
+    async def chat_completion(self, purpose, **kwargs):
+        if self.error is not None:
+            raise self.error
+        return self.reply
+
+
+def _rate_limited() -> Exception:
+    request = httpx.Request("POST", "http://llm.test/v1/chat/completions")
+    response = httpx.Response(429, request=request, text="slow down")
+    try:
+        raise httpx.HTTPStatusError("429", request=request, response=response)
+    except httpx.HTTPStatusError as e:
+        try:
+            raise RuntimeError("LLM extraction call failed (429): slow down") from e
+        except RuntimeError as wrapped:
+            return wrapped
+
+
+async def _graph_rows(memory_id: uuid.UUID) -> int:
+    async with factory()() as s:
+        return (await s.execute(
+            text("SELECT count(*) FROM entities "
+                 "WHERE memory_ids @> ARRAY[CAST(:m AS uuid)]"),
+            {"m": str(memory_id)},
+        )).scalar_one()
+
+
+def _real_extraction_pipeline(fingerprint: str, llm: ExtractionLLM):
+    pipe = ProcessingPipeline(FakeEmbedder([fingerprint]), factory())
+    pipe.extraction.llm = llm
+    return pipe
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        httpx.ReadTimeout("read timed out"),
+        _rate_limited(),
+        httpx.ConnectError("connection refused"),
+    ],
+    ids=["timeout", "rate-limited", "connection"],
+)
+async def test_transient_extraction_failure_is_retried(setup_database, error):
+    fingerprint = "buffer-transient|4"
+    _flag_cache_reset()
+    buffer_ids = await seed_buffer(1)
+    memory_ids: list[uuid.UUID] = []
+    llm = ExtractionLLM(error=error)
+    try:
+        pipe = _real_extraction_pipeline(fingerprint, llm)
+        stats = await flush_once(factory(), pipe)
+        row = (await buffer_rows(buffer_ids))[buffer_ids[0]]
+        memory_ids = [uuid.UUID(row["metadata"]["memory_id"])]
+        assert stats["failed"] == 1
+        assert row["status"] == "pending"
+        assert row["attempts"] == 1
+        assert await _graph_rows(memory_ids[0]) == 0
+
+        llm.error = None
+        stats = await flush_once(factory(), pipe)
+        row = (await buffer_rows(buffer_ids))[buffer_ids[0]]
+        assert stats["done"] == 1
+        assert row["status"] == "done"
+        assert await _graph_rows(memory_ids[0]) == 1
+    finally:
+        await drop_buffer(buffer_ids)
+        await cleanup(factory(), memory_ids, [fingerprint], ENTITY_NAMES)
+
+
+async def test_deterministic_extraction_failure_settles_without_retry(setup_database):
+    fingerprint = "buffer-deterministic|4"
+    _flag_cache_reset()
+    buffer_ids = await seed_buffer(1)
+    memory_ids: list[uuid.UUID] = []
+    try:
+        pipe = _real_extraction_pipeline(fingerprint, ExtractionLLM(reply="no json here"))
+        stats = await flush_once(factory(), pipe)
+        row = (await buffer_rows(buffer_ids))[buffer_ids[0]]
+        memory_ids = [uuid.UUID(row["metadata"]["memory_id"])]
+        assert stats["done"] == 1
+        assert row["status"] == "done"
+        assert row["attempts"] == 1
+
+        async with factory()() as s:
+            child = child_table("memory_embeddings", fingerprint)
+            embedded = (await s.execute(
+                text(f"SELECT count(*) FROM {child} WHERE memory_id = CAST(:m AS uuid)"),
+                {"m": str(memory_ids[0])},
+            )).scalar_one()
+            extract = (await s.execute(
+                text("SELECT payload->>'extract' FROM events "
+                     "WHERE event_type = 'extracted' AND object_id = CAST(:m AS uuid)"),
+                {"m": str(memory_ids[0])},
+            )).scalars().all()
+            failures = (await s.execute(
+                text("SELECT failed_step FROM pipeline_failures "
+                     "WHERE entity_id = CAST(:m AS uuid)"),
+                {"m": str(memory_ids[0])},
+            )).scalars().all()
+        assert embedded == 1
+        assert extract == ["error"]
+        assert failures == ["extraction"]
+        assert await _graph_rows(memory_ids[0]) == 0
+    finally:
+        await drop_buffer(buffer_ids)
+        await cleanup(factory(), memory_ids, [fingerprint], ENTITY_NAMES)
