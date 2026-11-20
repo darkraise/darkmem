@@ -31,14 +31,24 @@ changes no code.
   stable) after `igraph.set_random_number_generator(random.Random(42))`. A
   fresh `Random` never touches Python's global `random` state, and the call
   is serialised because `_KNN_EXECUTOR` has one worker under invariant 13.
-- **Naming parameters** (my call): the hub cutoff (25% of the view), the
-  prefix share (60%), the stoplist (`MEMORY_TYPES`), the entity types, the
+- **Naming parameters** (my call): the prefix share (60%), the stoplist (`MEMORY_TYPES`), the entity types, the
   40-character budget (`ISLAND_LABEL_MAX_CHARS` on the frontend) and three
   terms at most. Each is a module constant beside the namer.
 - **`get_louvain_clustered_vectors` keeps its name** (my call): six test call
   sites use it, and the rename buys nothing a reader needs.
 - **State boards:** none (my call; touch depth, a text-only change on a
   surface that already has boards).
+- **No hub cutoff (pre-execution ruling, 2026-11-20).** The approved draft
+  also excluded terms carried by more than 25% of the view. That cut the
+  defining term of any cluster holding over a quarter of a small view, and
+  without it the names on the newest-1,000 view, the whole corpus and the
+  cross-project views are identical (`measure3-hub100.out` against
+  `measure2.out`): the score's document-frequency factor already keeps hub
+  terms such as `darkraise-framework` down. Ruled by the pre-execution
+  ruling seat (`.dforge/rulings-preexec-2-report.md`). Its gap (a
+  single-project view could name clusters after the project itself) is
+  closed by rule 5's sole-project clause, measured in `measure4.out` on the
+  darkmem, darkload and darkraise-ai-plugins scopes.
 - **Out of scope, reported:** 5 active production memories hold the literal
   `project/darkraise-modder` in `project`. The namer treats it as a project
   name like any other; the data fix belongs to the owner.
@@ -106,8 +116,9 @@ value, and its entity names. Rules, in order:
    clustered memories span more than one effective project.
 5. **Score** of a key in a cluster: (members carrying it / cluster size) x
    ln(1 + mean size of the view's clusters / document frequency). Eligible only when at
-   least 2 members carry it, its document frequency is at most 25% of the
-   view, and it is not the prefix's key.
+   least 2 members carry it and it is not the prefix's key, nor, when the
+   view's clustered memories share one effective project, that project's
+   key.
 6. **Pick** up to 3 keys by score, ties by key. Skip a key that contains, or
    is contained in, a chosen key, or shares its first 6 characters with one.
 7. **Display** each key as its most frequent spelling in the cluster, ties
@@ -209,7 +220,7 @@ A4. [demo, high] Running the shipped `knn_graph` plus `cluster_labels` over the 
 A5. [test, high] A memory whose `project` is `default` counts toward the project in its first `project/` tag when choosing a prefix.
 A6. [test, high] A cluster whose most common effective project holds at least 60% of its members starts with that project's name; below 60%, or when that project is `default`, the name has no prefix.
 A7. [test, high] When every clustered memory in the view shares one effective project, no name has a prefix.
-A8. [test, neg, high] A name never contains a term carried by more than 25% of the view's memories, a `MEMORY_TYPES` value, a term carried by fewer than 2 of the cluster's members, or its own prefix a second time.
+A8. [test, neg, high] A name never contains a `MEMORY_TYPES` value, a term carried by fewer than 2 of the cluster's members, its own prefix a second time, or, in a view whose clustered memories share one effective project, that project's name.
 A9. [test, high] Spellings that differ only in case, spaces or punctuation are one term, shown in the cluster's most frequent spelling; a term sharing its first 6 characters with a chosen term, or contained in one, is skipped.
 A10. [test, high] A name is at most 40 characters unless the prefix plus the first term already exceed it; terms are dropped whole, never cut.
 A11. [test, high] A cluster with no prefix and no eligible term is named `Cluster <id>`, and every cluster id in `clusters` has a non-empty name in `cluster_names`.
