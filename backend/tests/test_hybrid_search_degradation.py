@@ -16,6 +16,7 @@ import contextlib
 
 import pytest
 
+from app.services import hybrid_search
 from app.services.hybrid_search import HybridSearchService
 
 
@@ -74,3 +75,80 @@ async def test_search_degrades_gracefully_when_only_one_side_fails():
     # Keyword side returned no rows, but the call must not raise — a one-sided
     # failure is acceptable degradation, just an empty (not errored) result.
     assert await svc.search("anything") == []
+
+
+class _DownLLM:
+    """The embedder is unreachable: every query embed raises, and is counted."""
+
+    def __init__(self):
+        self.calls = 0
+
+    async def embed(self, query):
+        self.calls += 1
+        raise ConnectionError("All connection attempts failed")
+
+
+class _KeywordRow:
+    memory_id = "018f0000-0000-7000-8000-000000000001"
+    rank = 0.5
+    content = "ollama moved hosts"
+    project = "default"
+    status = "active"
+
+
+class _KeywordOnlySession(_StubSession):
+    """Only the keyword statement ever arrives, and it matches one row."""
+
+    def __init__(self):
+        self.statements = 0
+
+    async def execute(self, *args, **kwargs):
+        self.statements += 1
+        return [_KeywordRow()]
+
+
+@pytest.fixture
+def quiet_search(monkeypatch):
+    """No access-counter flush and no cooldown carried between tests."""
+    monkeypatch.setattr(HybridSearchService, "_record_access", staticmethod(lambda rows: None))
+    monkeypatch.setattr(hybrid_search, "_embedder_retry_at", 0.0)
+
+
+async def test_search_answers_on_keyword_when_the_embedder_is_unreachable(quiet_search):
+    session = _KeywordOnlySession()
+    rows = await HybridSearchService(_DownLLM(), session).search("ollama")
+
+    assert [row["memory_id"] for row in rows] == [_KeywordRow.memory_id]
+    assert session.statements == 1
+
+
+async def test_trace_names_the_semantic_arm_failed_when_the_embedder_is_unreachable(quiet_search):
+    trace = await HybridSearchService(_DownLLM(), _KeywordOnlySession()).search_with_trace("ollama")
+
+    assert [row["memory_id"] for row in trace.results] == [_KeywordRow.memory_id]
+    assert trace.semantic_ran is True
+    assert trace.semantic_failed is True
+    assert trace.keyword_failed is False
+
+
+async def test_search_raises_when_the_embedder_and_the_keyword_side_are_both_down(quiet_search):
+    with pytest.raises(RuntimeError, match="both semantic and keyword"):
+        await HybridSearchService(_DownLLM(), _BoomSession()).search("anything")
+
+
+async def test_an_unreachable_embedder_is_not_dialled_again_inside_the_cooldown(
+    quiet_search, monkeypatch,
+):
+    clock = [1000.0]
+    monkeypatch.setattr(hybrid_search.time, "monotonic", lambda: clock[0])
+    llm = _DownLLM()
+    svc = HybridSearchService(llm, _KeywordOnlySession())
+
+    await svc.search("first")
+    trace = await svc.search_with_trace("second")
+    assert llm.calls == 1
+    assert trace.semantic_failed is True
+
+    clock[0] += hybrid_search.EMBEDDER_RETRY_COOLDOWN_SECONDS
+    await svc.search("third")
+    assert llm.calls == 2

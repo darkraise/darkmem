@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass, field, replace
 from uuid import UUID
 
@@ -35,6 +36,13 @@ from app.utils.scope_labels import SCOPE_LABEL_COLUMNS, SCOPE_LABEL_JOIN, scope_
 logger = logging.getLogger(__name__)
 
 __all__ = ["RRF_K", "ChannelTrace", "HybridSearchService"]
+
+#: After a failed query embed, searches answer on the keyword arm alone for
+#: this long before the embedder is dialled again. `LLMOrchestrator` spends
+#: about 30 seconds in connect retries against an unreachable host, and paying
+#: that on every search would turn an embedder outage into a search outage.
+EMBEDDER_RETRY_COOLDOWN_SECONDS = 60.0
+_embedder_retry_at = 0.0
 
 
 @dataclass(frozen=True)
@@ -176,19 +184,9 @@ class HybridSearchService:
         themselves.
         """
         fetch_n = fusion_fetch_depth(limit)
-        # Owner ruling 2026-09-03: a backup worker is for viewing and
-        # backup/restore only, so it must not depend on a third machine being
-        # reachable. The semantic arm is SKIPPED rather than attempted and
-        # caught -- `llm.embed` sits outside `_run_channels`' one-sided-failure
-        # guard, so an unreachable embedder does not degrade to keyword, it
-        # raises out of the whole search. Skipping keeps the keyword arm
-        # answering and makes the posture a decision rather than an accident.
-        if settings.read_only:
-            vector, fingerprint = None, None
-        else:
-            vector, fingerprint = await self.llm.embed(query)
+        vector, fingerprint, embed_failed = await self._embed_query(query)
         semantic_results, keyword_results, _, _ = await self._run_channels(
-            query, vector, fingerprint, fetch_n, filters,
+            query, vector, fingerprint, fetch_n, filters, semantic_failed=embed_failed,
         )
         ppr_results = await self._ppr_search(
             semantic_results, filters, ppr_weight, fetch_n,
@@ -221,19 +219,9 @@ class HybridSearchService:
         plain ``search`` path above never builds ``channel_scores``.
         """
         fetch_n = fusion_fetch_depth(limit)
-        # Owner ruling 2026-09-03: a backup worker is for viewing and
-        # backup/restore only, so it must not depend on a third machine being
-        # reachable. The semantic arm is SKIPPED rather than attempted and
-        # caught -- `llm.embed` sits outside `_run_channels`' one-sided-failure
-        # guard, so an unreachable embedder does not degrade to keyword, it
-        # raises out of the whole search. Skipping keeps the keyword arm
-        # answering and makes the posture a decision rather than an accident.
-        if settings.read_only:
-            vector, fingerprint = None, None
-        else:
-            vector, fingerprint = await self.llm.embed(query)
+        vector, fingerprint, embed_failed = await self._embed_query(query)
         semantic_results, keyword_results, semantic_failed, keyword_failed = await self._run_channels(
-            query, vector, fingerprint, fetch_n, filters,
+            query, vector, fingerprint, fetch_n, filters, semantic_failed=embed_failed,
         )
         ppr_results = await self._ppr_search(
             semantic_results, filters, ppr_weight, fetch_n,
@@ -270,15 +258,42 @@ class HybridSearchService:
             semantic_ran=not settings.read_only,
         )
 
+    async def _embed_query(self, query: str) -> tuple[list[float] | None, str | None, bool]:
+        """``(vector, fingerprint, failed)`` for the semantic arm.
+
+        An embedder that cannot be reached is the semantic arm failing, the
+        same as its statement failing: the keyword arm still answers and the
+        trace names the side that broke. ``failed`` carries that into
+        :meth:`_run_channels`, so both sides down still raises.
+
+        Owner ruling 2026-09-03: a backup worker is for viewing and
+        backup/restore only, so it must not depend on a third machine being
+        reachable. There the arm is SKIPPED rather than attempted and caught,
+        which keeps the posture a decision rather than an accident and reports
+        the arm as not asked instead of broken.
+        """
+        global _embedder_retry_at
+        if settings.read_only:
+            return None, None, False
+        if time.monotonic() < _embedder_retry_at:
+            return None, None, True
+        try:
+            vector, fingerprint = await self.llm.embed(query)
+        except Exception as e:
+            logger.error("Query embedding failed; answering on the keyword arm alone: %s", e)
+            _embedder_retry_at = time.monotonic() + EMBEDDER_RETRY_COOLDOWN_SECONDS
+            return None, None, True
+        return vector, fingerprint, False
+
     async def _run_channels(
         self,
         query: str,
-        vector: list[float],
-        fingerprint: str,
+        vector: list[float] | None,
+        fingerprint: str | None,
         fetch_n: int,
         filters: MemoryFilter | None,
+        semantic_failed: bool = False,
     ) -> tuple[list[dict], list[dict], bool, bool]:
-        semantic_failed = False
         keyword_failed = False
 
         # Each side runs inside its own SAVEPOINT. Both share one session, and
@@ -289,8 +304,9 @@ class HybridSearchService:
         # everything it does after the search. The facts channel carries the
         # same idiom (``facts_channel._run_arms``) and they change together.
         if vector is None:
-            # Not asked, rather than asked and broke -- the distinction
-            # `layer_composition` already draws. Under the read-only posture
+            # No vector is either "not asked" or "asked and broke" -- the
+            # distinction `layer_composition` already draws -- and the caller
+            # says which through `semantic_failed`. Under the read-only posture
             # the embedder is deliberately never called, so reporting this arm
             # as *failed* would put an outage in the trace that never happened
             # and would let a keyword-only answer look like a half-broken one.

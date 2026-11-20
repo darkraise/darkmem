@@ -380,28 +380,32 @@ async def test_search_answers_without_an_embedder_under_the_flag(monkeypatch):
     """The point of the whole ruling: the viewer must not need a third machine.
 
     Under the flag the semantic arm is skipped entirely rather than attempted
-    and caught -- `llm.embed` sits OUTSIDE `_run_channels`' one-sided-failure
-    guard, so an unreachable embedder does not degrade to keyword, it raises
-    out of the whole search. Skipping is also the honest reading of "disable
-    the features that need external services": not attempted, so not a
+    and caught. An attempt against an unreachable embedder would still answer
+    on the keyword arm, but only after the connect retries, and the trace
+    would report an outage. Skipping is the honest reading of "disable the
+    features that need external services": not attempted, so not a
     degradation to explain.
     """
     from app.services.hybrid_search import HybridSearchService
 
-    class _ExplodingLLM:
+    class _CountingLLM:
+        calls = 0
+
         async def embed(self, _query):
-            raise AssertionError(
-                "read-only search must not reach the embedder at all"
-            )
+            # A raise here would be caught as a failed arm, so the call is
+            # counted instead.
+            type(self).calls += 1
+            return [0.0], "model|1"
 
     monkeypatch.setattr(settings, "read_only", True)
-    service = HybridSearchService(session=None, llm=_ExplodingLLM())
+    service = HybridSearchService(session=None, llm=_CountingLLM())
 
     captured = {}
 
-    async def _channels(query, vector, fingerprint, fetch_n, filters):
+    async def _channels(query, vector, fingerprint, fetch_n, filters, semantic_failed=False):
         captured["vector"] = vector
         captured["fingerprint"] = fingerprint
+        captured["semantic_failed"] = semantic_failed
         return [], [{"id": "kw", "score": 1.0}], False, False
 
     monkeypatch.setattr(service, "_run_channels", _channels)
@@ -410,7 +414,9 @@ async def test_search_answers_without_an_embedder_under_the_flag(monkeypatch):
 
     results = await service.search("anything", limit=5)
 
+    assert _CountingLLM.calls == 0, "read-only search reached the embedder"
     assert captured["vector"] is None, "the semantic arm was handed a vector"
+    assert captured["semantic_failed"] is False, "a skipped arm was reported as failed"
     assert results, "keyword-only search returned nothing"
 
 
