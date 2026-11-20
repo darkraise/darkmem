@@ -5,3 +5,7 @@
 
 | # | Item | Assigned | Acceptance | State | Note |
 |---|---|---|---|---|---|
+| 1 | Switching graph Regions off leaves the region outlines and chips drawn beside the centre names until a repaint | - | - | deferred | final review follow-up: pre-existing in the regions feature; this branch changes no frontend file |
+| 2 | Two clusters can receive the same computed name (e.g. both carry only the tag retrieval); the filter panel then lists two identical rows | - | - | deferred | final review follow-up: spec Naming rules 1-9 set no uniqueness rule and the old tag fallback had none; needs a spec rule (tie-break term or suffix) |
+| 3 | A chosen term that is part of the prefix (darkraise under prefix darkraise-modder) is not skipped, so a name can partly repeat its prefix | - | - | deferred | final review follow-up: matches spec rules 5-6 as written; extend rule 6's overlap test to the prefix key in the spec first |
+| 4 | Measure entity_terms_for_memories latency on an all_memories view (up to GRAPH_MAX_NODES ids); only the 1,000-id page view was measured | - | - | deferred | final review follow-up: reviewer recommendation, not a finding |
