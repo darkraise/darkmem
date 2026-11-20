@@ -34,6 +34,7 @@ import { topHubs } from "@/features/graph/lib/hubs"
 import { memoryEdgeSize, restEdgeSize } from "@/features/graph/lib/memory-edge-width"
 import {
   createNodeGlowProgram,
+  drawnDiscRadius,
   glowDiscScale,
   trackDensityGain,
   type GlowClock,
@@ -49,6 +50,7 @@ import { memorySizes } from "@/features/graph/lib/memory-size"
 import {
   islandLabelAlpha,
   islandLabelInputs,
+  islandLabelText,
   placeIslandLabels,
 } from "@/features/graph/lib/island-labels"
 import {
@@ -62,9 +64,12 @@ import {
   drawFramedHull,
   drawRegionChip,
   hullTopAnchor,
+  placeRegionChips,
+  REGION_CHIP_FONT_PX,
+  REGION_PAD_PX,
   regionChipLabel,
 } from "@/features/graph/lib/graph-geometry"
-import type { HullMode } from "@/features/graph/lib/graph-geometry"
+import type { HullMode, RegionChipInput } from "@/features/graph/lib/graph-geometry"
 import type { SizeMode } from "@/features/graph/lib/graph-utils"
 import {
   resolveNodeColor,
@@ -494,12 +499,13 @@ export function Graph2DRenderer({
     // chrome and labels are placed off the disc as drawn.
     const drawnDisc = <T extends { size: number }>(data: T): T => ({
       ...data,
-      size:
-        data.size *
+      size: drawnDiscRadius(
+        data.size,
         glowDiscScale((data as { brightness?: number }).brightness, clockRef.current, {
           additive: tokensRef.current.isDark,
           memoryCanvas: true,
         }),
+      ),
     })
     const sigmaSettings: Partial<Settings> = {
       antiAliasingFeather: 2,
@@ -810,38 +816,55 @@ export function Graph2DRenderer({
         runnerRef.current?.isRunning() ?? false,
         performance.now(),
       )
+      const tk = tokensRef.current
+      const chips: RegionChipInput[] = []
+      const chipColors = new Map<string, string>()
+      hullCtx.font = `500 ${REGION_CHIP_FONT_PX}px ${tk.fontMono}`
       for (const [groupKey, members] of hullGroups) {
         const color = resolveGroupColor(groupKey, paletteRef.current)
-        const hull = drawFramedHull(
+        const outline = drawFramedHull(
           hullCtx,
           sigmaRef.current,
           hullCache.shape(groupKey),
           color,
-          0.06,
-          0.28,
+          0.07,
+          0.3,
         )
-        // The zone always draws; only its name gates on zoom.
-        if (zoomRatioRef.current < LABEL_ZOOM_RATIO) {
-          const anchor = hullTopAnchor(hull)
-          if (anchor) {
-            const tk = tokensRef.current
-            drawRegionChip(
-              hullCtx,
-              anchor,
-              regionChipLabel(
-                clusterNamesRef.current[groupKey] ?? groupKey,
-                members.length,
-              ),
-              {
-                fill: tk.background,
-                stroke: hexToRgba(color, 0.5),
-                text: tk.mutedForeground,
-                font: tk.fontMono,
-              },
-            )
-          }
-        }
+        const top = hullTopAnchor(outline)
+        if (!top) continue
+        const text = regionChipLabel(
+          islandLabelText(clusterNamesRef.current[groupKey] ?? `Cluster ${groupKey}`),
+          members.length,
+        )
+        chipColors.set(groupKey, color)
+        chips.push({
+          key: groupKey,
+          text,
+          count: members.length,
+          width: Math.round(hullCtx.measureText(text).width + 14),
+          top: { x: top.x, y: top.y - REGION_PAD_PX },
+          left: Math.min(...outline.map((p) => p.x)) - REGION_PAD_PX,
+          right: Math.max(...outline.map((p) => p.x)) + REGION_PAD_PX,
+          bottom: Math.max(...outline.map((p) => p.y)) + REGION_PAD_PX,
+        })
       }
+      // With Regions on, the chips are the clusters' only names; they recede
+      // behind a selection as the island names do.
+      hullCtx.save()
+      hullCtx.globalAlpha = islandLabelAlpha(selectedNodeIdRef.current !== null)
+      for (const chip of placeRegionChips(chips, {
+        width: w,
+        height: h,
+        top: TOOLBAR_BAND_PX,
+      })) {
+        drawRegionChip(hullCtx, chip, {
+          fill: tk.background,
+          stroke: hexToRgba(chipColors.get(chip.key) ?? tk.foreground, 0.5),
+          text: tk.mutedForeground,
+          font: tk.fontMono,
+        })
+      }
+      hullCtx.restore()
 
       const borderTargets = new Set<string>()
       if (hoveredNodeRef.current) borderTargets.add(hoveredNodeRef.current)
@@ -906,6 +929,7 @@ export function Graph2DRenderer({
       }
       islandCtx.setTransform(dpr, 0, 0, dpr, 0, 0)
       islandCtx.clearRect(0, 0, width, height)
+      if (hullModeRef.current !== "none") return
       const alpha = islandLabelAlpha(selectedNodeIdRef.current !== null)
       const islands = islandLabelInputs(
         r.layout.groups,

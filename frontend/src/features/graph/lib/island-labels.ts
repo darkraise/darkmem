@@ -35,8 +35,8 @@ export function islandLabelText(name: string): string {
 /** Island names give way to a selection rather than compete with it. */
 export const ISLAND_LABEL_FOCUS_ALPHA = 0.35
 
-/** Names stay at every zoom and with Regions on: a region chip hangs off its
- *  hull's top edge and is often off screen, so it cannot stand in for them. */
+/** Names stay at every zoom. With Regions on, the region chips name the
+ *  clusters instead and this layer draws nothing. */
 export function islandLabelAlpha(hasSelection: boolean): number {
   return hasSelection ? ISLAND_LABEL_FOCUS_ALPHA : 1
 }

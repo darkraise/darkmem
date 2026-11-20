@@ -113,6 +113,14 @@ function meanSize(graph: SizedGraph, ids: readonly string[]): number {
 export const CRISP_RATIO = 0.3
 export const CRISP_MIN_PX = 1.5
 
+/** The memory canvas draws no disc narrower than this many screen pixels:
+ *  its size spread and crisp cap would otherwise shrink the lightest
+ *  memories to specks that alias against the background. */
+export const MIN_DISC_PX = 2
+/** A memory disc's edge fades over this share of its radius (and never less
+ *  than a pixel), centred on the radius, so large discs stay soft. */
+export const SOFT_EDGE = 0.3
+
 export function crispStyle(
   nodeRadiusPx: number,
   spacingPx: number,
@@ -203,12 +211,16 @@ varying vec2 v_diffVector;
 varying float v_radius;
 varying float v_outer;
 varying float v_alpha;
+varying float v_feather;
 
 const float bias = 255.0 / 254.0;
 const float SPREAD = ${GLOW_SPREAD.toFixed(1)};
 const float TAU = 6.283185307179586;
 // glowDiscScale mirrors LIGHT_CRISP and the role branches below.
 const float LIGHT_CRISP = 1.5;
+// MIN_DISC_PX and SOFT_EDGE mirror the exports of the same names.
+const float MIN_DISC_PX = ${MIN_DISC_PX.toFixed(1)};
+const float SOFT_EDGE = ${SOFT_EDGE.toFixed(2)};
 
 void main() {
   float radius = a_size * u_correctionRatio / u_sizeRatio * 2.0;
@@ -220,6 +232,14 @@ void main() {
   // No glow surrounds a light-theme disc, so it may take more of its spacing.
   if (a_brightness > 0.9) radius *= min(1.0, LIGHT_CRISP * u_coreScale);
   else if (a_brightness > 0.5) radius *= min(1.0, LIGHT_CRISP * u_satelliteScale);
+  #endif
+  // One screen pixel: sigma draws a node of size s at s * 2 * correctionRatio.
+  float px = 2.0 * u_correctionRatio;
+  #ifdef SOFT_DISC
+  radius = max(radius, MIN_DISC_PX * px);
+  v_feather = max(px, SOFT_EDGE * radius);
+  #else
+  v_feather = u_correctionRatio;
   #endif
   float outer = radius * SPREAD;
   // The triangle's incircle is half its circumradius, so the vertices sit at
@@ -256,8 +276,6 @@ void main() {
 `
 
 const FRAGMENT_SHADER = /* glsl */ `
-// highp: the vertex stage declares u_correctionRatio too, and GLSL refuses to
-// link stages that disagree on a shared uniform's precision.
 precision highp float;
 
 varying vec4 v_color;
@@ -265,8 +283,7 @@ varying vec2 v_diffVector;
 varying float v_radius;
 varying float v_outer;
 varying float v_alpha;
-
-uniform float u_correctionRatio;
+varying float v_feather;
 
 const vec4 transparent = vec4(0.0, 0.0, 0.0, 0.0);
 const float GLOW_STRENGTH = 0.45;
@@ -277,8 +294,11 @@ void main(void) {
   #ifdef PICKING_MODE
   gl_FragColor = dist > v_radius ? transparent : v_color;
   #else
-  float feather = u_correctionRatio;
-  float disc = 1.0 - smoothstep(v_radius - feather, v_radius, dist);
+  #ifdef SOFT_DISC
+  float disc = 1.0 - smoothstep(v_radius - 0.5 * v_feather, v_radius + 0.5 * v_feather, dist);
+  #else
+  float disc = 1.0 - smoothstep(v_radius - v_feather, v_radius, dist);
+  #endif
   float shape = disc;
   #ifndef LIGHT_MODE
   float t = max(dist - v_radius, 0.0) / max(v_outer - v_radius, 1e-6);
@@ -304,6 +324,13 @@ type GlowDisplayData = NodeDisplayData & { brightness?: number; phase?: number }
  * drawn, not the unscaled `size`, which on a dense view is several times
  * wider. Keep it in step with the shader's role branches above.
  */
+/** The memory-canvas disc radius the shader draws for a node of `sizePx`
+ *  screen pixels at this frame's role scale, floor included, for the canvas
+ *  chrome that rings it. */
+export function drawnDiscRadius(sizePx: number, scale: number): number {
+  return Math.max(MIN_DISC_PX, sizePx * scale)
+}
+
 export function glowDiscScale(
   brightness: number | undefined,
   clock: GlowClock,
@@ -333,7 +360,8 @@ export function createNodeGlowProgram(opts: {
 }): NodeProgramType {
   const { additive, clock, memoryCanvas = false } = opts
   const prefix =
-    (additive ? "" : "#define LIGHT_MODE\n") + (memoryCanvas ? "#define CRISP_LIGHT\n" : "")
+    (additive ? "" : "#define LIGHT_MODE\n") +
+    (memoryCanvas ? "#define CRISP_LIGHT\n#define SOFT_DISC\n" : "")
 
   return class NodeGlowProgram extends NodeCircleProgram {
     getDefinition() {

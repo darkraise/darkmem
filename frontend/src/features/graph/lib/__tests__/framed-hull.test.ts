@@ -5,6 +5,7 @@ import {
   createHullShapeCache,
   drawFramedHull,
   framedHullVertices,
+  roundedHullCorners,
   type HullMode,
 } from "../graph-geometry"
 
@@ -69,6 +70,86 @@ describe("drawFramedHull", () => {
     const ctx = fakeContext()
     expect(drawFramedHull(ctx, sigma, [POSITIONS.a!], "#336699", 0.06, 0.28)).toHaveLength(1)
     expect(ctx.fill).not.toHaveBeenCalled()
+  })
+})
+
+describe("roundedHullCorners", () => {
+  const TAU = 2 * Math.PI
+  const sweep = (c: { from: number; to: number }) => c.to - c.from
+  // Each arc starts on the previous edge's outward normal and ends on the next
+  // one's, so the outline turns once, smoothly, with no kink or loop.
+  const joinsSmoothly = (corners: ReturnType<typeof roundedHullCorners>) => {
+    for (let i = 0; i < corners.length; i++) {
+      const next = corners[(i + 1) % corners.length]!
+      const d = (corners[i]!.to - next.from) % TAU
+      expect(Math.min(Math.abs(d), TAU - Math.abs(d))).toBeCloseTo(0, 9)
+    }
+  }
+
+  it("turns a square through four quarter arcs, once round", () => {
+    const corners = roundedHullCorners([
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 10, y: 10 },
+      { x: 0, y: 10 },
+    ])
+    expect(corners).toHaveLength(4)
+    for (const c of corners) expect(sweep(c)).toBeCloseTo(Math.PI / 2, 9)
+    joinsSmoothly(corners)
+  })
+
+  it("draws the same outline whichever way the hull winds", () => {
+    const cw = roundedHullCorners([
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 5, y: 8 },
+    ])
+    const ccw = roundedHullCorners([
+      { x: 5, y: 8 },
+      { x: 10, y: 0 },
+      { x: 0, y: 0 },
+    ])
+    const total = (cs: typeof cw) => cs.reduce((s, c) => s + sweep(c), 0)
+    expect(total(cw)).toBeCloseTo(TAU, 9)
+    expect(total(ccw)).toBeCloseTo(TAU, 9)
+    for (const c of [...cw, ...ccw]) expect(sweep(c)).toBeGreaterThanOrEqual(0)
+    joinsSmoothly(cw)
+    joinsSmoothly(ccw)
+  })
+
+  it("keeps closely spaced vertices smooth, with tiny arcs rather than spikes", () => {
+    const corners = roundedHullCorners([
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100.5, y: 0.4 },
+      { x: 100, y: 60 },
+      { x: 0, y: 60 },
+    ])
+    for (const c of corners) {
+      expect(sweep(c)).toBeGreaterThanOrEqual(0)
+      expect(sweep(c)).toBeLessThan(Math.PI)
+    }
+    joinsSmoothly(corners)
+  })
+
+  it("gives two points a capsule and one point a circle", () => {
+    const capsule = roundedHullCorners([
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+    ])
+    expect(capsule.map(sweep)).toEqual([Math.PI, Math.PI].map((v) => expect.closeTo(v, 9)))
+    const circle = roundedHullCorners([{ x: 3, y: 4 }])
+    expect(circle).toEqual([{ x: 3, y: 4, from: 0, to: TAU }])
+    expect(roundedHullCorners([])).toEqual([])
+  })
+
+  it("draws the outline as arcs only, with a solid stroke", () => {
+    const { sigma } = fakeSigma()
+    const ctx = fakeContext()
+    drawFramedHull(ctx, sigma, framedHullVertices(sigma, ["a", "b", "c", "d"]), "#336699", 0.06, 0.28)
+    expect(ctx.arc).toHaveBeenCalledTimes(4)
+    expect(ctx.bezierCurveTo).not.toHaveBeenCalled()
+    expect(ctx.setLineDash).not.toHaveBeenCalled()
   })
 })
 

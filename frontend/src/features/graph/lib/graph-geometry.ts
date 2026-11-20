@@ -187,6 +187,59 @@ export function framedHullVertices(sigma: Sigma, memberIds: string[]): Point[] {
   return points.length < 3 ? points : convexHull(points)
 }
 
+/** Screen pixels a region outline keeps clear of its outermost members. */
+export const REGION_PAD_PX = 22
+
+export interface HullCorner {
+  x: number
+  y: number
+  /** Canvas angles (y down), swept clockwise on screen from `from` to `to`. */
+  from: number
+  to: number
+}
+
+/**
+ * The corners of a convex hull grown by a padding: the shape every point
+ * within that distance of the hull covers. Its outline is the hull's edges pushed out along
+ * their normals, joined by a circular arc round each vertex, so it is smooth
+ * and convex at any vertex spacing. Two points give a capsule, one a circle.
+ */
+export function roundedHullCorners(points: readonly Point[]): HullCorner[] {
+  const pts: Point[] = []
+  for (const p of points) {
+    const last = pts[pts.length - 1]
+    if (!last || Math.hypot(p.x - last.x, p.y - last.y) > 1e-6) pts.push(p)
+  }
+  if (pts.length > 1) {
+    const first = pts[0]!
+    const last = pts[pts.length - 1]!
+    if (Math.hypot(first.x - last.x, first.y - last.y) <= 1e-6) pts.pop()
+  }
+  if (pts.length === 0) return []
+  if (pts.length === 1) return [{ ...pts[0]!, from: 0, to: 2 * Math.PI }]
+  let area2 = 0
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i]!
+    const b = pts[(i + 1) % pts.length]!
+    area2 += a.x * b.y - b.x * a.y
+  }
+  // Walk the hull clockwise on screen, so each edge's outward normal is (dy, -dx).
+  if (area2 < 0) pts.reverse()
+  const n = pts.length
+  const normal = (a: Point, b: Point) => Math.atan2(-(b.x - a.x), b.y - a.y)
+  const corners: HullCorner[] = []
+  for (let i = 0; i < n; i++) {
+    const prev = pts[(i - 1 + n) % n]!
+    const cur = pts[i]!
+    const next = pts[(i + 1) % n]!
+    const from = normal(prev, cur)
+    let to = normal(cur, next)
+    while (to < from) to += 2 * Math.PI
+    corners.push({ x: cur.x, y: cur.y, from, to })
+  }
+  return corners
+}
+
 export function drawFramedHull(
   ctx: CanvasRenderingContext2D,
   sigma: Sigma,
@@ -197,37 +250,19 @@ export function drawFramedHull(
 ): Point[] {
   const positions = framed.map((p) => sigma.framedGraphToViewport(p))
   if (positions.length < 2) return positions
-
-  if (positions.length === 2) {
-    const [a, b] = positions as [Point, Point]
-    const cx = (a.x + b.x) / 2
-    const cy = (a.y + b.y) / 2
-    const dx = b.x - a.x
-    const dy = b.y - a.y
-    const dist = Math.sqrt(dx * dx + dy * dy) / 2 + 30
-    ctx.save()
-    ctx.beginPath()
-    ctx.ellipse(cx, cy, dist, dist * 0.6, Math.atan2(dy, dx), 0, Math.PI * 2)
-    ctx.fillStyle = hexToRgba(color, fillAlpha)
-    ctx.fill()
-    ctx.strokeStyle = hexToRgba(color, strokeAlpha)
-    ctx.lineWidth = 1.5
-    ctx.stroke()
-    ctx.restore()
-    return positions
-  }
-
-  const hull = expandHull(positions, 25)
   ctx.save()
-  drawSmoothClosed(ctx, hull)
+  ctx.beginPath()
+  for (const c of roundedHullCorners(positions)) {
+    ctx.arc(c.x, c.y, REGION_PAD_PX, c.from, c.to, false)
+  }
+  ctx.closePath()
   ctx.fillStyle = hexToRgba(color, fillAlpha)
   ctx.fill()
   ctx.strokeStyle = hexToRgba(color, strokeAlpha)
   ctx.lineWidth = 1
-  ctx.setLineDash([5, 4])
   ctx.stroke()
   ctx.restore()
-  return hull
+  return positions
 }
 
 /**
@@ -284,38 +319,89 @@ export function createHullShapeCache<M>(
   }
 }
 
+export const REGION_CHIP_HEIGHT = 17
+export const REGION_CHIP_FONT_PX = 10
+const CHIP_GAP = 6
+const CHIP_MARGIN = 4
+
+export interface RegionChipInput {
+  key: string
+  text: string
+  count: number
+  /** Chip width in pixels, text measured plus padding. */
+  width: number
+  /** The region outline's top point and extents, in viewport pixels. */
+  top: Point
+  left: number
+  right: number
+  bottom: number
+}
+
+export interface PlacedRegionChip {
+  key: string
+  text: string
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 /**
- * A region's name, hung off the top of its territory.
- *
- * The zone always draws; only this gates on zoom. The territory is the
- * structure and stays legible at any scale — a name too small to read is
- * only clutter.
+ * Where each region's chip goes this frame: just inside the outline's top,
+ * above its topmost members, larger regions first. Inside, not hung above:
+ * packed regions touch, and a chip in the gap reads as its neighbour's. A chip is pulled inside the canvas edges and below
+ * the toolbar band; one that hits a placed chip moves below it. A chip that
+ * no longer overlaps its own region's extent (the region is off screen), that
+ * would fall below the canvas, or that still collides, is dropped.
  */
+export function placeRegionChips(
+  chips: readonly RegionChipInput[],
+  viewport: { width: number; height: number; top?: number },
+): PlacedRegionChip[] {
+  const top = viewport.top ?? 0
+  const h = REGION_CHIP_HEIGHT
+  const ordered = [...chips].sort((a, b) => b.count - a.count || a.key.localeCompare(b.key))
+  const placed: PlacedRegionChip[] = []
+  const hit = (x: number, y: number, w: number) =>
+    placed.find(
+      (p) =>
+        x < p.x + p.width + CHIP_MARGIN &&
+        p.x < x + w + CHIP_MARGIN &&
+        y < p.y + p.height + CHIP_MARGIN &&
+        p.y < y + h + CHIP_MARGIN,
+    )
+  for (const chip of ordered) {
+    const w = chip.width
+    if (w + 2 * CHIP_MARGIN > viewport.width) continue
+    const x = Math.min(Math.max(chip.top.x - w / 2, CHIP_MARGIN), viewport.width - w - CHIP_MARGIN)
+    let y = Math.max(chip.top.y + CHIP_GAP, top + CHIP_MARGIN)
+    const other = hit(x, y, w)
+    if (other) y = other.y + other.height + CHIP_MARGIN
+    const offRegion = y + h > chip.bottom || x + w < chip.left || x > chip.right
+    if (offRegion || y + h > viewport.height - CHIP_MARGIN || hit(x, y, w)) continue
+    placed.push({ key: chip.key, text: chip.text, x, y, width: w, height: h })
+  }
+  return placed
+}
+
 export function drawRegionChip(
   ctx: CanvasRenderingContext2D,
-  anchor: Point,
-  text: string,
+  chip: PlacedRegionChip,
   opts: { fill: string; stroke: string; text: string; font: string },
 ): void {
   ctx.save()
-  ctx.font = `500 10px ${opts.font}`
-  const w = Math.round(ctx.measureText(text).width + 14)
-  const h = 17
-  const x = anchor.x - w / 2
-  const y = anchor.y - h - 8
-
+  ctx.font = `500 ${REGION_CHIP_FONT_PX}px ${opts.font}`
   ctx.beginPath()
-  ctx.roundRect(x, y, w, h, 8.5)
+  ctx.roundRect(chip.x, chip.y, chip.width, chip.height, chip.height / 2)
   ctx.fillStyle = opts.fill
   ctx.fill()
   ctx.strokeStyle = opts.stroke
   ctx.lineWidth = 1
   ctx.stroke()
-
   ctx.fillStyle = opts.text
   ctx.textAlign = "center"
   ctx.textBaseline = "middle"
-  ctx.fillText(text, x + w / 2, y + h / 2 + 0.5)
+  ctx.fillText(chip.text, chip.x + chip.width / 2, chip.y + chip.height / 2 + 0.5)
   ctx.restore()
 }
 

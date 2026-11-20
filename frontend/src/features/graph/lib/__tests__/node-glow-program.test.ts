@@ -77,6 +77,37 @@ describe("node glow program", () => {
     expect(src(false)).not.toMatch(/#define CRISP_LIGHT/)
   })
 
+  it("softens only the memory canvas's discs, with a 2 px floor and a radius-scaled feather", async () => {
+    const { createNodeGlowProgram, MIN_DISC_PX, SOFT_EDGE } = await import("../node-glow-program")
+    const def = (memoryCanvas: boolean, additive: boolean) => {
+      const proto = createNodeGlowProgram({ additive, clock: { time: 0 }, memoryCanvas })
+        .prototype as unknown as Proto
+      return proto.getDefinition.call(proto) as unknown as {
+        VERTEX_SHADER_SOURCE: string
+        FRAGMENT_SHADER_SOURCE: string
+      }
+    }
+    for (const additive of [true, false]) {
+      expect(def(true, additive).VERTEX_SHADER_SOURCE).toMatch(/#define SOFT_DISC\n/)
+      expect(def(true, additive).FRAGMENT_SHADER_SOURCE).toMatch(/#define SOFT_DISC\n/)
+      expect(def(false, additive).VERTEX_SHADER_SOURCE).not.toMatch(/#define SOFT_DISC/)
+    }
+    const vertex = def(true, true).VERTEX_SHADER_SOURCE
+    expect(vertex).toContain(`const float MIN_DISC_PX = ${MIN_DISC_PX.toFixed(1)};`)
+    expect(vertex).toContain(`const float SOFT_EDGE = ${SOFT_EDGE.toFixed(2)};`)
+    // sigma draws a size-s node at s * 2 * correctionRatio, so that is a pixel.
+    expect(vertex).toContain("float px = 2.0 * u_correctionRatio;")
+    expect(MIN_DISC_PX).toBeGreaterThan(1)
+    expect(SOFT_EDGE).toBeGreaterThan(0)
+  })
+
+  it("rings a memory disc at the radius the shader draws, never under the 2 px floor", async () => {
+    const { drawnDiscRadius, MIN_DISC_PX } = await import("../node-glow-program")
+    expect(drawnDiscRadius(12, 0.5)).toBe(6)
+    expect(drawnDiscRadius(3, 0.4)).toBe(MIN_DISC_PX)
+    expect(drawnDiscRadius(0, 1)).toBe(MIN_DISC_PX)
+  })
+
   it("never touches the blend function on the picking pass", async () => {
     const proto = await load(true)
     const gl = fakeGl()
