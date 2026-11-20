@@ -139,11 +139,15 @@ describe("mermaidForProcess", () => {
 
   it("escapes names that would break the node syntax", () => {
     const mermaid = mermaidForProcess(
-      { ...backendGraph.processes[0]!, steps: ['get["x"]::a.ts', "Map<K>::a.ts"] },
+      {
+        ...backendGraph.processes[0]!,
+        steps: ['get["x"]::a.ts', "Map<K>::a.ts", "use{T}&U::a.ts"],
+      },
       { ...backendGraph, nodes: [] },
     )
     expect(mermaid).toContain('n0["get#91;&quot;x&quot;#93;"]')
     expect(mermaid).toContain('n1["Map&lt;K&gt;"]')
+    expect(mermaid).toContain('n2["use#123;T#125;&amp;U"]')
   })
 
   it("draws a one-step process as its single node", () => {
