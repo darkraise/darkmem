@@ -137,23 +137,22 @@ async def test_stored_local_row_classifies_with_the_llm(
 
 @pytest.mark.asyncio
 async def test_health_reports_classifier_unavailable(
-    client, session, torch_missing,
+    client, setup_database, torch_missing,
 ):
+    # /health reads the row on a session of its own, so the row is committed.
+    factory = _factory()
     original_llm = getattr(app.state, "llm", None)
     app.state.llm = None
     try:
-        await _classification_row(session, kind="local")
+        await _set_classifier_kind(factory, "local")
         response = await client.get("/health")
         assert response.status_code == 200
         assert response.json()["classifier_unavailable"] is True
 
-        await session.execute(text(
-            "UPDATE llm_purpose_configs SET classifier_kind = 'llm' "
-            "WHERE purpose = 'classification'"
-        ))
-        await session.flush()
+        await _set_classifier_kind(factory, "llm")
         response = await client.get("/health")
         assert response.status_code == 200
         assert response.json()["classifier_unavailable"] is False
     finally:
         app.state.llm = original_llm
+        await _clear_classification_row(factory)

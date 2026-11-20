@@ -5,8 +5,7 @@ import math
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import FastAPI
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,7 +24,6 @@ from app.api.websocket import websocket_endpoint
 from sqlalchemy.exc import DBAPIError
 
 from app.config import settings
-from app.database import get_session
 from app.schemas.envelope import ErrorDetail, ErrorEnvelope
 from app.services.board_parse import BoardRefusal
 from app.services.events import reconcile_event_partitions
@@ -1135,7 +1133,7 @@ app.mount("/mcp", _mcp_app)
 
 
 @app.get("/health")
-async def health(session: AsyncSession = Depends(get_session)):
+async def health():
     import httpx
     from starlette.responses import JSONResponse
     from app.database import async_session_factory
@@ -1185,12 +1183,12 @@ async def health(session: AsyncSession = Depends(get_session)):
         if ml_runtime.ml_extra_available():
             return False
         try:
-            kind = (await session.execute(text(
-                "SELECT classifier_kind FROM llm_purpose_configs "
-                "WHERE purpose = 'classification'"
-            ))).scalar_one_or_none()
+            async with async_session_factory() as session:
+                kind = (await session.execute(text(
+                    "SELECT classifier_kind FROM llm_purpose_configs "
+                    "WHERE purpose = 'classification'"
+                ))).scalar_one_or_none()
         except Exception:
-            await session.rollback()
             return False
         return kind == "local"
 
