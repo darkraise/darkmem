@@ -25,6 +25,7 @@ from sqlalchemy import select
 
 from app.models.memory import MemoryBuffer
 from app.services.buffer_flush import (
+    BUFFER_FLUSH_DEADLINE_SECONDS,
     ClaimedFlushResult,
     flush_claimed,
     release_interrupted_claims,
@@ -36,6 +37,9 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_POLL_INTERVAL_SECONDS = 0.05
 SHUTDOWN_GRACE_SECONDS = 5.0
+# Each continuing flush holds a connection and an LLM lease; past this many a
+# capture answers the plain ack and leaves its row to the scheduled flush.
+MAX_CONTINUING_FLUSHES = 8
 
 _SETTLED_BUFFER_STATUSES = ("done", "error")
 
@@ -66,20 +70,27 @@ async def drain_continuing_flushes(grace_seconds: float = SHUTDOWN_GRACE_SECONDS
 async def _flush_on_own_session(
     session_factory, pipeline, *, buffer_ids: list[uuid.UUID], worker: str, max_attempts: int,
 ) -> ClaimedFlushResult:
+    # The scheduled flush's own deadline: a run that outlived the claim
+    # visibility window would have its rows reclaimed and replayed twice.
     try:
-        async with session_factory() as session:
-            return await flush_claimed(
-                session, pipeline, buffer_ids=buffer_ids, worker=worker,
-                max_attempts=max_attempts,
-            )
-    except asyncio.CancelledError:
-        async with session_factory() as session:
-            await release_interrupted_claims(
-                session, buffer_ids, worker=worker,
-                message="flush interrupted by shutdown",
-            )
-            await session.commit()
+        async with asyncio.timeout(BUFFER_FLUSH_DEADLINE_SECONDS):
+            async with session_factory() as session:
+                return await flush_claimed(
+                    session, pipeline, buffer_ids=buffer_ids, worker=worker,
+                    max_attempts=max_attempts,
+                )
+    except TimeoutError:
+        await _release(session_factory, buffer_ids, worker, "inline flush passed its deadline")
         raise
+    except asyncio.CancelledError:
+        await _release(session_factory, buffer_ids, worker, "flush interrupted by shutdown")
+        raise
+
+
+async def _release(session_factory, buffer_ids, worker: str, message: str) -> None:
+    async with session_factory() as session:
+        await release_interrupted_claims(session, buffer_ids, worker=worker, message=message)
+        await session.commit()
 
 
 def _forget(task: asyncio.Task) -> None:
@@ -123,7 +134,7 @@ async def drive(
     `clock`/`sleep` are injectable so the timeout path is testable without a
     real wall-clock wait (Ruling 2).
     """
-    if not buffer_ids:
+    if not buffer_ids or len(_continuing) >= MAX_CONTINUING_FLUSHES:
         return frozenset()
 
     deadline = clock() + timeout_seconds

@@ -259,6 +259,8 @@ async def test_memory_id_predicates_use_the_gin_index(session):
     await graph.create_relationship(
         "gin-a", "gin-b", "USES", {}, 0.5, mid, source_type="tool", target_type="tool",
     )
+    await session.execute(text("ANALYZE entities"))
+    await session.execute(text("ANALYZE entity_relations"))
 
     captured: list[tuple[str, object]] = []
 

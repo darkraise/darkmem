@@ -503,3 +503,57 @@ async def test_hard_failed_replay_answers_the_ack(client, auth_headers, session)
     assert len(pipeline.batches) == 1
     assert response.status_code == 202
     assert response.json()["status"] == "accepted"
+
+
+async def test_a_capture_past_the_continuing_cap_is_left_to_the_scheduled_flush(
+    setup_database, monkeypatch,
+):
+    monkeypatch.setattr(wait_process, "MAX_CONTINUING_FLUSHES", 0)
+    buffer_ids = await seed_buffer(1)
+    pipeline = RecordingPipeline()
+    try:
+        settled = await wait_process.drive(
+            factory(), pipeline, buffer_ids=buffer_ids,
+            timeout_seconds=0.2, max_attempts=5,
+        )
+        assert settled == frozenset()
+        assert pipeline.batches == []
+        assert wait_process.continuing_flushes() == frozenset()
+        row = (await buffer_rows(buffer_ids))[buffer_ids[0]]
+        assert (row["status"], row["attempts"]) == ("pending", 0)
+    finally:
+        await drop_buffer(buffer_ids)
+
+
+async def test_a_continuing_flush_past_its_deadline_releases_its_rows(
+    setup_database, monkeypatch,
+):
+    monkeypatch.setattr(wait_process, "BUFFER_FLUSH_DEADLINE_SECONDS", 0.3)
+    buffer_ids = await seed_buffer(1)
+    pipeline = RecordingPipeline()
+
+    async def _hangs(entries):
+        pipeline.batches.append(list(entries))
+        await asyncio.Event().wait()
+
+    pipeline.process_batch = _hangs
+    memory_id = None
+    try:
+        settled = await wait_process.drive(
+            factory(), pipeline, buffer_ids=buffer_ids,
+            timeout_seconds=0.05, max_attempts=5, poll_interval_seconds=0.01,
+        )
+        assert settled == frozenset()
+        await asyncio.gather(*wait_process.continuing_flushes(), return_exceptions=True)
+        row = (await buffer_rows(buffer_ids))[buffer_ids[0]]
+        memory_id = uuid.UUID(row["metadata"]["memory_id"])
+        assert (row["status"], row["attempts"], row["claimed_by"]) == ("pending", 0, None)
+        assert "deadline" in row["last_error"]
+    finally:
+        if memory_id is not None:
+            async with factory()() as s:
+                await s.execute(
+                    text("DELETE FROM memories WHERE id = CAST(:i AS uuid)"), {"i": str(memory_id)},
+                )
+                await s.commit()
+        await drop_buffer(buffer_ids)
