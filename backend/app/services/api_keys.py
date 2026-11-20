@@ -45,8 +45,10 @@ record that it happened.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import secrets
+import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -89,6 +91,15 @@ MARK_USED_INTERVAL = timedelta(seconds=60)
 # database round trip at all. The UPDATE's own predicate repeats the window,
 # which keeps the throttle honest across a restart.
 _last_marked: dict[uuid.UUID, datetime] = {}
+
+# Verified credentials, keyed by sha256 of the presented token so no plaintext
+# is held, mapped to (principal, expires_at, cached_at). In-process state: it
+# relies on the single worker (invariant 13) and on restore-cycle.sh stopping
+# the app before it swaps the database underneath it.
+VERIFY_CACHE_SECONDS = 60.0
+_verified: dict[str, tuple["KeyPrincipal", datetime | None, float]] = {}
+_revoked_ids: set[uuid.UUID] = set()
+_cache_clock = time.monotonic
 
 
 @dataclass(frozen=True)
@@ -214,6 +225,21 @@ async def authenticate(
     if parsed is None:
         return None
     key_id, secret = parsed
+    moment = now or datetime.now(timezone.utc)
+
+    digest = hashlib.sha256(raw.encode()).hexdigest()
+    hit = _verified.get(digest)
+    if hit is not None:
+        principal, expires_at, cached_at = hit
+        if principal.api_key_id in _revoked_ids:
+            _verified.pop(digest, None)
+            return None
+        if expires_at is not None and expires_at <= moment:
+            _verified.pop(digest, None)
+            return None
+        if _cache_clock() - cached_at < VERIFY_CACHE_SECONDS:
+            return principal
+        _verified.pop(digest, None)
 
     row = (
         await session.execute(select(ApiKey).where(ApiKey.key_id == key_id))
@@ -236,17 +262,27 @@ async def authenticate(
     if not await asyncio.to_thread(verify_secret, secret, key_hash):
         return None
 
-    moment = now or datetime.now(timezone.utc)
     if row_revoked_at is not None:
         return None
     if row_expires_at is not None and row_expires_at <= moment:
         return None
 
-    return KeyPrincipal(
+    principal = KeyPrincipal(
         api_key_id=row_id,
         name=row_name,
         scopes=read_scopes(row_scopes),
     )
+    # A revoke that committed while this verify ran must not be undone by
+    # caching the principal it read before the revoke.
+    if row_id not in _revoked_ids:
+        _verified[digest] = (principal, row_expires_at, _cache_clock())
+    return principal
+
+
+def forget_revoked_key(api_key_id: uuid.UUID) -> None:
+    """Refuse a revoked key's cached entries; each is evicted on its next hit,
+    which answers without a bcrypt verify."""
+    _revoked_ids.add(api_key_id)
 
 
 async def issue_key(
@@ -361,6 +397,9 @@ async def revoke_key(
 
     row.revoked_at = now or datetime.now(timezone.utc)
     await session.flush()
+    # Marked before the caller commits: a revoke that then rolls back keeps the
+    # key refused in this process until restart, which fails closed.
+    forget_revoked_key(row.id)
     await record_event(
         session,
         event_type=API_KEY_REVOKED,
