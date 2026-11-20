@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { Alert, AlertDescription } from "darkraise-ui/components/alert"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import {
   Tabs,
@@ -55,19 +56,37 @@ function PurposesPanel() {
               : "flex flex-col gap-2.5",
           )}
         >
-          {binding.purposes.map((purpose) => (
-            <PurposeItem
-              key={purpose.purpose}
-              purpose={purpose}
-              layout={layout}
-              onEdit={() => setEditing(purpose)}
-              onShowPrompt={
-                promptKeyForPurpose(purpose.purpose)
-                  ? () => setPromptFor(purpose)
-                  : undefined
-              }
-            />
-          ))}
+          {binding.purposes.map((purpose) => {
+            const item = (
+              <PurposeItem
+                key={purpose.purpose}
+                purpose={purpose}
+                layout={layout}
+                onEdit={() => setEditing(purpose)}
+                onShowPrompt={
+                  promptKeyForPurpose(purpose.purpose)
+                    ? () => setPromptFor(purpose)
+                    : undefined
+                }
+              />
+            )
+            if (
+              purpose.purpose !== "classification" ||
+              !binding.classifierUnavailable
+            ) {
+              return item
+            }
+            return (
+              <div key={purpose.purpose} className="flex flex-col gap-2">
+                {item}
+                <Alert variant="warning">
+                  <AlertDescription>
+                    Local classifier unavailable, using the LLM classifier
+                  </AlertDescription>
+                </Alert>
+              </div>
+            )
+          })}
           {binding.tierCPurposes.map((purpose) => (
             <TierCPurposeItem
               key={purpose.purpose}

@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from "react"
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query"
 import { apiFetch } from "@/lib/api"
+import { DEMO } from "@/lib/demo-flag"
 import { useProjectScopedKey } from "@/lib/query-keys"
 import { useProjectStore } from "@/stores/project-store"
 
@@ -16,6 +17,8 @@ export interface HealthStatus {
   status: string
   pipeline: boolean
   services: { pgvector: boolean; llm: boolean }
+  /** A stored `classifier_kind=local` this install cannot load (no torch). */
+  classifier_unavailable: boolean
 }
 
 export interface PipelineLog {
@@ -71,6 +74,7 @@ export function useHealth() {
       return res.json()
     },
     refetchInterval: 30000,
+    enabled: !DEMO,
   })
 }
 

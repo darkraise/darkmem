@@ -8,6 +8,7 @@ import type {
   LLMPurposeName,
 } from "@/features/settings/types"
 import {
+  useHealth,
   useLlmConfig,
   useUpdateLlmConfig,
   type LlmPurposeConfig,
@@ -110,6 +111,9 @@ export interface LLMTabBinding {
    *  llm-tier-c-purposes.ts). `synthesis` moved into `purposes` above. */
   tierCPurposes: TierCPurposeView[]
   classifierKind: "llm" | "local"
+  /** `/health` says the stored `local` classifier cannot load here, so
+   *  classification runs on the LLM classifier. Never true in demo mode. */
+  classifierUnavailable: boolean
   /** null = not live-bound in this mode (real mode has no buckets endpoint
    *  yet — there is no backend table for these, demo or otherwise). */
   buckets: DemoCodeBucket[] | null
@@ -152,6 +156,7 @@ export function useLLMTabBinding(): LLMTabBinding {
 
   const query = useLlmConfig(!DEMO)
   const update = useUpdateLlmConfig()
+  const health = useHealth()
 
   if (DEMO) {
     return {
@@ -161,6 +166,7 @@ export function useLLMTabBinding(): LLMTabBinding {
         ...DEMO_TIER_C_CONNECTION[p.purpose],
       })),
       classifierKind: demo.classifier_kind,
+      classifierUnavailable: false,
       buckets: demo.buckets,
       savePurpose: (purpose, patch) => {
         saveDemoPurpose(purpose, patch)
@@ -197,6 +203,7 @@ export function useLLMTabBinding(): LLMTabBinding {
     purposes,
     tierCPurposes,
     classifierKind,
+    classifierUnavailable: health.data?.classifier_unavailable ?? false,
     buckets: null,
     savePurpose: (purpose, patch) => {
       update.mutate(

@@ -16,7 +16,14 @@ import { EmptyState, listItemClass } from "@/components/darkmem"
 import { cn } from "darkraise-ui/lib"
 import { groupFailuresByStep, isPoison } from "@/demo/activity"
 import type { DemoPipelineFailure } from "@/features/activity/types"
+import {
+  useDiscardBufferItem,
+  useMemoryBufferItems,
+  useRequeueBufferItem,
+} from "@/hooks/api/use-memory-buffer-api"
+import { DEMO } from "@/lib/demo-flag"
 import { usePipelineTriage } from "../use-pipeline-triage"
+import { FailedCapturesSection } from "./failed-captures-section"
 import { ModuleSurface } from "./module-surface"
 
 function FailureRow({
@@ -140,6 +147,22 @@ function FailureRow({
   )
 }
 
+function FailedCaptures() {
+  const { items, total, isLoading, isError } = useMemoryBufferItems()
+  const discard = useDiscardBufferItem()
+  const requeue = useRequeueBufferItem()
+  return (
+    <FailedCapturesSection
+      items={items}
+      total={total}
+      isLoading={isLoading}
+      isError={isError}
+      onRequeue={requeue.mutateAsync}
+      onDiscard={discard.mutateAsync}
+    />
+  )
+}
+
 export function TriageTab() {
   const { failures, isLoading, isError, retry, retryAll, forget } =
     usePipelineTriage()
@@ -210,6 +233,8 @@ export function TriageTab() {
           ))
         )}
       </ModuleSurface>
+      {/* The demo store holds no buffer rows to triage. */}
+      {!DEMO && <FailedCaptures />}
     </div>
   )
 }
