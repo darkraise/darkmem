@@ -396,7 +396,12 @@ bounds its batch with a `WITH ... AS MATERIALIZED` CTE: a plain sub-select
 lets the planner re-execute it per row and claim the whole backlog. Don't "simplify" it.
 A tick whose every claimed row failed raises `BufferFlushFailed` after the
 rows are settled, so the run records `error` instead of `ok`; a tick with
-any success reports its counts.
+any success reports its counts. A boot whose LLM setup raises leaves no
+pipeline: captures still queue, the flush records `skipped_reason` once,
+`GET /health` answers 200 with `pipeline_state: failed_at_boot` (otherwise
+`ok`, `not_configured` before setup or `read_only`), and the first
+configuration save that installs an orchestrator builds the pipeline, so the
+queue drains on the next tick.
 
 ## Pipeline phases (`ProcessingPipeline.process_batch`)
 
@@ -841,8 +846,10 @@ stays non-raising so capture, extraction and auth survive a journal failure.
 vocabularies beside the writer, **not** in `app.taxonomy`: an unknown value
 logs a warning rather than being rewritten. Widening is taxonomy-first. The
 table is RANGE-partitioned by month; every partition goes through the SQL
-function `events_ensure_partition` (boot reconciliation plus a maintenance
-arm on `pipeline_failure_cleanup`). Append-only is enforced by three trigger
+function `events_ensure_partition`, keeping the current month and three
+ahead: at boot (outside the LLM setup, so a failed one still reconciles),
+hourly from the job registry's own maintenance tick, which no job switch
+disables, and on `pipeline_failure_cleanup`. Append-only is enforced by three trigger
 kinds: row-level UPDATE/DELETE and statement-level TRUNCATE guards on the
 parent, and a per-child TRUNCATE guard stamped by `events_ensure_partition`.
 Readers: `GET /events`, `/events/timeline`, `/events/calendar` (its bucket

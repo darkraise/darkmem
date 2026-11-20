@@ -128,7 +128,7 @@ def _replace_orchestrator(request: Request, new_llm) -> None:
     """Atomically install ``new_llm`` as the active orchestrator.
 
     Updates ``app.state.llm``, swaps every reference inside the
-    pipeline, and schedules the previous orchestrator's client to be
+    pipeline (or builds the pipeline a failed boot left missing), and schedules the previous orchestrator's client to be
     closed as a background task so its keep-alive connections don't
     leak. Without this teardown, every Save on the LLM Providers page
     leaked an ``httpx.AsyncClient``; under load that produced sporadic
@@ -140,6 +140,10 @@ def _replace_orchestrator(request: Request, new_llm) -> None:
     pipeline = getattr(request.app.state, "pipeline", None)
     if pipeline is not None:
         _swap_pipeline_llm(pipeline, new_llm)
+    elif getattr(request.app.state, "pipeline_boot_error", None):
+        from app.main import install_pipeline
+
+        install_pipeline(request.app, new_llm)
     if old_llm is not None and old_llm is not new_llm:
         spawn(_close_orchestrator_safely(old_llm), name="close-orchestrator")
 

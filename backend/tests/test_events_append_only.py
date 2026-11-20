@@ -164,9 +164,11 @@ async def test_reconcile_is_idempotent(session):
 
     assert first == second
     assert after_first == after_second
-    # The baseline already created exactly what reconcile wants, so a boot on a
-    # fresh database adds nothing.
-    assert before == after_first
+    # The baseline creates two months; reconcile keeps three ahead, so a boot
+    # on a fresh database adds the rest and drops nothing.
+    assert set(before) <= set(after_first)
+    assert set(first) <= set(after_first)
+    assert len(first) == 4
 
 
 @pytest.mark.asyncio

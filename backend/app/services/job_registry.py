@@ -27,6 +27,9 @@ process's latest run, else the job's newest ``job_runs`` row; a run
 writes no config row. Keys an older build stored in the row are
 ignored and dropped on the next save.
 
+The registry also owns one tick no job switch reaches: once an hour,
+while armed, it keeps the ``events`` partitions three months ahead.
+
 Manual trigger semantics: ``trigger(key)`` schedules an out-of-band
 run that does NOT wait for the next tick and does NOT conflict with
 the loop — it acquires the same per-job ``asyncio.Lock`` the loop
@@ -181,11 +184,21 @@ class Job:
         return {fd.key: fd.default for fd in self.config_schema}
 
 
+MAINTENANCE_INTERVAL_SECONDS = 3600
+
+
 class JobRegistry:
-    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        *,
+        maintenance_sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+    ) -> None:
         self._session_factory = session_factory
         self._jobs: dict[str, Job] = {}
         self._stopped = False
+        self._maintenance_sleep = maintenance_sleep
+        self._maintenance_task: asyncio.Task | None = None
 
     @property
     def session_factory(self) -> async_sessionmaker[AsyncSession]:
@@ -299,11 +312,22 @@ class JobRegistry:
     # ── lifecycle ───────────────────────────────────────────────────
 
     async def start_all(self) -> None:
+        if self._maintenance_task is None or self._maintenance_task.done():
+            self._maintenance_task = asyncio.create_task(self._maintenance_loop())
         for key in self._jobs:
             await self._restart_loop(key)
 
     async def stop_all(self) -> None:
         self._stopped = True
+        if self._maintenance_task is not None:
+            self._maintenance_task.cancel()
+            try:
+                await self._maintenance_task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.exception("Job registry maintenance loop raised during shutdown")
+            self._maintenance_task = None
         for job in self._jobs.values():
             if job.task is not None and not job.task.done():
                 job.task.cancel()
@@ -344,6 +368,26 @@ class JobRegistry:
         job.task = asyncio.create_task(self._loop(key))
 
     # ── loop ────────────────────────────────────────────────────────
+
+    async def _maintenance_loop(self) -> None:
+        """Keep the `events` partitions ahead once an hour, outside every job.
+
+        A job can be disabled from the Jobs screen; running out of partitions
+        stops journalling, and the strict callers' writes with it, so this
+        tick belongs to the registry itself.
+        """
+        from app.services.events import reconcile_event_partitions
+
+        while not self._stopped:
+            await self._maintenance_sleep(MAINTENANCE_INTERVAL_SECONDS)
+            if self._stopped:
+                return
+            try:
+                async with self._session_factory() as session:
+                    await reconcile_event_partitions(session)
+                    await session.commit()
+            except Exception:
+                logger.exception("Hourly events partition reconciliation failed")
 
     async def _loop(self, key: str) -> None:
         job = self._jobs[key]

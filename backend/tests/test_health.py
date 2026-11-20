@@ -14,6 +14,7 @@ Regression coverage for two bugs in the previous implementation:
 """
 from __future__ import annotations
 
+import contextlib
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -151,3 +152,54 @@ async def test_health_uses_native_tags_for_ollama_with_v1_suffix(client):
     assert response.status_code == 200
     call = instance.get.await_args
     assert call.args[0] == "http://ollama.test:11434/api/tags"
+
+
+@contextlib.asynccontextmanager
+async def initialised(present: bool = True):
+    """Hold the setup-complete row present (or absent) in committed state."""
+    from sqlalchemy import delete, select
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from app.models.config import Config
+    from app.api.routes.setup import ADMIN_PASSWORD_KEY
+    from tests.conftest import test_engine
+
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    async with factory() as s:
+        before = (await s.execute(
+            select(Config.value).where(Config.key == ADMIN_PASSWORD_KEY)
+        )).scalar_one_or_none()
+        await s.execute(delete(Config).where(Config.key == ADMIN_PASSWORD_KEY))
+        if present:
+            s.add(Config(key=ADMIN_PASSWORD_KEY, value="health-probe-hash"))
+        await s.commit()
+    try:
+        yield
+    finally:
+        async with factory() as s:
+            await s.execute(delete(Config).where(Config.key == ADMIN_PASSWORD_KEY))
+            if before is not None:
+                s.add(Config(key=ADMIN_PASSWORD_KEY, value=before))
+            await s.commit()
+
+
+@pytest.mark.asyncio
+async def test_health_reports_failed_at_boot(setup_database, client, monkeypatch):
+    from app.config import settings
+    from tests.test_boot_reconciliation import booted
+
+    async def state() -> str:
+        response = await client.get("/health")
+        assert response.status_code == 200
+        return response.json()["pipeline_state"]
+
+    async with initialised():
+        async with booted(monkeypatch, llm_fails=True):
+            assert await state() == "failed_at_boot"
+        async with booted(monkeypatch, llm_fails=False):
+            assert await state() == "ok"
+    async with initialised(present=False), booted(monkeypatch, llm_fails=False):
+        assert await state() == "not_configured"
+    monkeypatch.setattr(settings, "read_only", True)
+    async with initialised(), booted(monkeypatch, llm_fails=False):
+        assert await state() == "read_only"

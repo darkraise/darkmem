@@ -55,6 +55,49 @@ def _configure_logging() -> None:
 _configure_logging()
 
 
+def install_pipeline(app: FastAPI, llm) -> ProcessingPipeline:
+    """Build the memory pipeline on ``llm`` and wire everything that reads it.
+
+    Called by the boot and, after a boot whose LLM setup failed, by the first
+    configuration save that installs an orchestrator, so captures queued in
+    the meantime drain on the next ``buffer_flush`` tick.
+    """
+    from app.api.websocket import event_manager
+    from app.database import async_session_factory
+    from app.services.pipeline import memory_retry_handler
+    from app.services.pipeline_failures import register_retry_handler
+
+    pipeline = ProcessingPipeline(llm, async_session_factory, broadcast=event_manager.broadcast)
+    app.state.pipeline = pipeline
+    app.state.pipeline_boot_error = None
+    set_pipeline(pipeline)
+
+    register_retry_handler("memory_ingest")(
+        memory_retry_handler(pipeline, async_session_factory)
+    )
+
+    @register_retry_handler("code_index")
+    async def _retry_code_index(repo_id):
+        from app.repositories.vector import PostgresVectorRepository
+        from app.services.code_pipeline import CodePipeline
+        from app.services.llm import lease_llm
+        from app.services.repo_manager import RepoManager
+
+        async with async_session_factory() as s:
+            code_vector_repo = PostgresVectorRepository(s, "code_chunks")
+            active_llm = getattr(app.state, "llm", None)
+            with lease_llm(active_llm):
+                code_pipeline = CodePipeline(
+                    session=s, llm=active_llm,
+                    vector_repo=code_vector_repo,
+                    repo_manager=RepoManager(s),
+                )
+                await code_pipeline.run(repo_id)
+                await s.commit()
+
+    return pipeline
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from app.database import async_session_factory
@@ -78,6 +121,63 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.exception("Could not load system_prompts overrides; falling back to in-code defaults")
 
+    app.state.session_factory = async_session_factory
+    app.state.pipeline = None
+    app.state.pipeline_boot_error = None
+
+    if settings.read_only:
+        # Increment 7's worker posture. The reconciliations below all degrade
+        # under a caught exception, so the SELECT-only role would make them
+        # inert anyway -- but depending on a swallowed exception for
+        # correctness is the shape review B1 condemns, and a restored snapshot
+        # already carries every partition these would create.
+        logger.info(
+            "DARKMEM_READ_ONLY: boot reconciliations, project backfill and "
+            "embedder registration skipped; job registry will not be armed. "
+            "Enforcement is the database role, not this flag."
+        )
+    else:
+        # Outside the LLM setup below: a provider table that cannot be read
+        # must not also leave the journal without next month's partition.
+        from app.services.embedder_registry import embedder_registry
+
+        # Permanent boot-time partition reconciliation (doc 19 §2). Runs on
+        # EVERY startup, after the migration and before anything embeds, so a
+        # fingerprint registered before a template was added gains the new
+        # parent, and a restored dump missing a child table regrows it. Every
+        # statement is IF NOT EXISTS, so the second boot is a no-op.
+        try:
+            async with async_session_factory() as session:
+                await embedder_registry.reconcile(session)
+        except Exception:
+            logger.exception("Boot-time partition reconciliation failed")
+
+        # The events journal keeps its monthly children ahead of need on the
+        # same boot pass. A missing child does not degrade journaling, it stops
+        # it: a RANGE parent rejects any insert with no matching partition.
+        try:
+            async with async_session_factory() as session:
+                children = await reconcile_event_partitions(session)
+                await session.commit()
+            logger.info("events partitions reconciled: %s", ", ".join(children))
+        except Exception:
+            logger.exception("Boot-time events partition reconciliation failed")
+
+        # Backfill every DISTINCT memories.project into the registry on every
+        # boot (doc 04 §7, T2.07). Idempotent (`ON CONFLICT DO NOTHING`), so a
+        # restart with nothing new to backfill inserts zero rows; this is a
+        # reconciliation pass, not a migration, and lazy registration on
+        # capture (project_registry.register) is what keeps it caught up
+        # between boots.
+        try:
+            async with async_session_factory() as session:
+                await seed_personal_project(session)
+                inserted = await backfill_projects(session)
+                await session.commit()
+            logger.info("projects registry backfilled: %d row(s)", inserted)
+        except Exception:
+            logger.exception("Boot-time projects registry backfill failed")
+
     try:
         from app.services.config import get_llm_config
         from app.services.usage_recorder import UsageRecorder
@@ -98,55 +198,7 @@ async def lifespan(app: FastAPI):
         async with async_session_factory() as session:
             await embedder_registry.warm_cache_from_db(session)
 
-        if settings.read_only:
-            # Increment 7's worker posture. The four reconciliations below all
-            # degrade under a caught exception, so the SELECT-only role would
-            # make them inert anyway -- but depending on a swallowed exception
-            # for correctness is the shape review B1 condemns, and a restored
-            # snapshot already carries every partition these would create.
-            logger.info(
-                "DARKMEM_READ_ONLY: boot reconciliations, project backfill and "
-                "embedder registration skipped; job registry will not be armed. "
-                "Enforcement is the database role, not this flag."
-            )
-        else:
-            # Permanent boot-time partition reconciliation (doc 19 §2). Runs on
-            # EVERY startup, after the migration and before anything embeds, so a
-            # fingerprint registered before a template was added gains the new
-            # parent, and a restored dump missing a child table regrows it. Every
-            # statement is IF NOT EXISTS, so the second boot is a no-op.
-            try:
-                async with async_session_factory() as session:
-                    await embedder_registry.reconcile(session)
-            except Exception:
-                logger.exception("Boot-time partition reconciliation failed")
-
-            # The events journal keeps its monthly children ahead of need on the
-            # same boot pass. A missing child does not degrade journaling, it stops
-            # it: a RANGE parent rejects any insert with no matching partition.
-            try:
-                async with async_session_factory() as session:
-                    children = await reconcile_event_partitions(session)
-                    await session.commit()
-                logger.info("events partitions reconciled: %s", ", ".join(children))
-            except Exception:
-                logger.exception("Boot-time events partition reconciliation failed")
-
-            # Backfill every DISTINCT memories.project into the registry on every
-            # boot (doc 04 §7, T2.07). Idempotent (`ON CONFLICT DO NOTHING`), so a
-            # restart with nothing new to backfill inserts zero rows; this is a
-            # reconciliation pass, not a migration, and lazy registration on
-            # capture (project_registry.register) is what keeps it caught up
-            # between boots.
-            try:
-                async with async_session_factory() as session:
-                    await seed_personal_project(session)
-                    inserted = await backfill_projects(session)
-                    await session.commit()
-                logger.info("projects registry backfilled: %d row(s)", inserted)
-            except Exception:
-                logger.exception("Boot-time projects registry backfill failed")
-
+        if not settings.read_only:
             llm_fp = llm.llm_fingerprint()
             llm_model_id, _, llm_dims_text = llm_fp.rpartition("|")
             if llm_dims_text == "0":
@@ -164,18 +216,19 @@ async def lifespan(app: FastAPI):
                 except Exception:
                     logger.exception("Failed to register LLM embedder %s at boot", llm_fp)
 
-        from app.api.websocket import event_manager
-        pipeline = ProcessingPipeline(llm, async_session_factory, broadcast=event_manager.broadcast)
-        app.state.pipeline = pipeline
         app.state.llm = llm
-        app.state.session_factory = async_session_factory
+        pipeline = install_pipeline(app, llm)
         logger.info("Pipeline initialized: pgvector + LLM connected")
-    except Exception:
-        logger.exception("Pipeline not available (Postgres-only mode)")
+    except Exception as exc:
+        # Captures still queue; /health answers `pipeline_state:
+        # failed_at_boot` until a configuration save installs an orchestrator
+        # and builds the pipeline (`install_pipeline`).
+        logger.exception("Pipeline not available: LLM setup failed at boot")
         app.state.pipeline = None
-        app.state.session_factory = async_session_factory
+        app.state.pipeline_boot_error = f"{type(exc).__name__}: {exc}"[:500]
 
-    set_pipeline(pipeline)
+    if pipeline is None:
+        set_pipeline(None)
 
     # Single shared lock for LLM config / provider / profile writes. Routes
     # used to lazy-create on first touch, which raced under concurrent
@@ -190,34 +243,6 @@ async def lifespan(app: FastAPI):
 
     from app.api.mcp.server import refresh_mcp_instructions
     refresh_mcp_instructions()
-
-    # Feature 2: register retry handlers for the failure tracking system
-    from app.services.pipeline import memory_retry_handler
-    from app.services.pipeline_failures import register_retry_handler
-    from app.services.code_pipeline import CodePipeline
-    from app.services.repo_manager import RepoManager
-    from app.repositories.vector import PostgresVectorRepository
-
-    if pipeline is not None:
-        register_retry_handler("memory_ingest")(
-            memory_retry_handler(pipeline, async_session_factory)
-        )
-
-        @register_retry_handler("code_index")
-        async def _retry_code_index(repo_id):
-            from app.services.llm import lease_llm
-
-            async with async_session_factory() as s:
-                code_vector_repo = PostgresVectorRepository(s, "code_chunks")
-                active_llm = getattr(app.state, "llm", None)
-                with lease_llm(active_llm):
-                    pipeline = CodePipeline(
-                        session=s, llm=active_llm,
-                        vector_repo=code_vector_repo,
-                        repo_manager=RepoManager(s),
-                    )
-                    await pipeline.run(repo_id)
-                    await s.commit()
 
     # ── Job registry: replaces the previous four bare asyncio loops ──
     from app.services.buffer_flush import (
@@ -1166,7 +1191,25 @@ async def health():
             return False
         return kind == "local"
 
+    async def check_initialised() -> bool:
+        try:
+            async with async_session_factory() as session:
+                return (await session.execute(text(
+                    "SELECT 1 FROM config WHERE key = 'admin_password_hash'"
+                ))).scalar_one_or_none() is not None
+        except Exception:
+            return False
+
     classifier_unavailable = await check_classifier_unavailable()
+
+    if settings.read_only:
+        pipeline_state = "read_only"
+    elif not await check_initialised():
+        pipeline_state = "not_configured"
+    elif pipeline is None:
+        pipeline_state = "failed_at_boot"
+    else:
+        pipeline_state = "ok"
 
     if settings.read_only:
         pgvector_ok, llm_ok = await check_pgvector(), False
@@ -1198,6 +1241,7 @@ async def health():
                 "llm": llm_ok,
             },
             "classifier_unavailable": classifier_unavailable,
+            "pipeline_state": pipeline_state,
         },
         status_code=status_code,
     )

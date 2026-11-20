@@ -318,11 +318,13 @@ def make_token_blocklist_cleanup_runner(session_factory: async_sessionmaker[Asyn
 def make_pipeline_failure_cleanup_runner(session_factory: async_sessionmaker[AsyncSession]):
     """Prune pipeline-failure rows, and keep the `events` partitions ahead.
 
-    The partition-maintenance arm rides here rather than as its own registered
-    job (doc 04 §8.1). Boot-time reconciliation alone is not enough: a process
-    that boots in January and runs into March outlives the children the baseline
-    created, and a RANGE parent rejects every insert that has no partition to
-    land in — so the journal would stop, taking the journaled write with it.
+    The partition-maintenance arm rides here as well as on the job registry's
+    hourly maintenance tick, rather than as its own registered job (doc 04
+    §8.1). Boot-time reconciliation alone is not enough: a process that boots
+    in January and runs into May outlives the children it created, and a RANGE
+    parent rejects every insert that has no partition to land in — so the
+    journal would stop, taking the journaled write with it. This job can be
+    disabled; the registry's tick cannot.
     """
     async def run() -> None:
         from app.services.events import reconcile_event_partitions
@@ -514,17 +516,31 @@ def make_buffer_flush_runner(app, session_factory: async_sessionmaker[AsyncSessi
     The pipeline is read from ``app.state`` on every run rather than captured at
     construction, because this runner is built before the lifespan wires the
     pipeline and because a Postgres-only boot leaves it None for the whole
-    process. With no pipeline there is nothing to flush INTO, so the run is a
-    no-op that leaves every buffered row pending — deliberately, since claiming
-    them would spend attempts on work that cannot succeed.
+    process until a configuration save installs an orchestrator. With no
+    pipeline there is nothing to flush INTO, so the run leaves every buffered
+    row pending — deliberately, since claiming them would spend attempts on
+    work that cannot succeed — and records why once per reason: `job_runs`
+    retention is one row ceiling across every job, so a skip row every five
+    seconds would push the other jobs' history out.
     """
+    reported: list[str | None] = [None]
+
     async def run() -> dict | None:
         from app.services.buffer_flush import flush_once
 
         pipeline = getattr(app.state, "pipeline", None)
         if pipeline is None:
-            logger.info("buffer_flush skipped: no pipeline")
-            return {}
+            why = (
+                "LLM setup failed at boot"
+                if getattr(app.state, "pipeline_boot_error", None) else "not built"
+            )
+            reason = f"no pipeline: {why}"
+            if reported[0] == reason:
+                return {}
+            reported[0] = reason
+            logger.warning("buffer_flush skipped: %s", reason)
+            return {"skipped_reason": reason}
+        reported[0] = None
 
         stats = await flush_once(session_factory, pipeline)
         if any(stats.values()):
