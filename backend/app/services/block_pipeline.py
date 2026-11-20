@@ -39,20 +39,12 @@ instead of a list.
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
 from urllib.parse import urlsplit
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.document_ingest import (
-    BlockDraft,
-    DocumentFileFailure,
-    DocumentFileJob,
-    DocumentIngest,
-    file_document,
-    file_documents_isolated,
-)
+from app.services.document_ingest import BlockDraft, DocumentIngest, file_document
 from app.services.document_parsers import (
     SOURCE_TYPE_MARKDOWN,
     SOURCE_TYPE_NOTE,
@@ -66,11 +58,9 @@ from app.services.document_parsers import (
 __all__ = [
     "PARSERS",
     "URI_SUFFIX_SOURCE_TYPES",
-    "DocumentSource",
     "UnsupportedSource",
     "bind_parser",
     "ingest_document",
-    "ingest_documents",
     "resolve_source_type",
 ]
 
@@ -102,26 +92,6 @@ URI_SUFFIX_SOURCE_TYPES: dict[str, str] = {
     ".txt": SOURCE_TYPE_NOTE,
     ".text": SOURCE_TYPE_NOTE,
 }
-
-
-@dataclass(frozen=True)
-class DocumentSource:
-    """One source to file, addressed the way `file_document` addresses one.
-
-    `source_type` is optional only when `uri` carries a suffix
-    `URI_SUFFIX_SOURCE_TYPES` knows; otherwise it is required.
-    """
-
-    project: str
-    content: str | bytes
-    uri: str | None = None
-    document_id: UUID | None = None
-    source_type: str | None = None
-    title: str | None = None
-    properties: dict | None = None
-    actor: str | None = None
-    source: str | None = None
-    label: str | None = None
 
 
 def resolve_source_type(*, source_type: str | None = None, uri: str | None = None) -> str:
@@ -237,47 +207,3 @@ async def ingest_document(
         carry_fingerprint=carry_fingerprint,
         max_blocks=max_blocks,
     )
-
-
-async def ingest_documents(
-    session: AsyncSession, sources: Sequence[DocumentSource]
-) -> list[DocumentIngest | DocumentFileFailure]:
-    """File every source, isolating one source's failure from the rest.
-
-    An unroutable `source_type` isolates the same way an unparseable one does.
-    Routing runs per source *before* the batch rather than raising out of it:
-    a corpus sweep meets a file it has no parser for as a matter of course,
-    and refusing the whole batch for one of them would mean the caller filters
-    by this module's own suffix table before calling it.
-    """
-    slots: list[DocumentFileFailure | None] = []
-    jobs: list[DocumentFileJob] = []
-    for source in sources:
-        try:
-            resolved_type = resolve_source_type(
-                source_type=source.source_type, uri=source.uri
-            )
-        except UnsupportedSource as exc:
-            slots.append(DocumentFileFailure(label=source.label, error=str(exc)))
-            continue
-        slots.append(None)
-        jobs.append(
-            DocumentFileJob(
-                project=source.project,
-                content=source.content,
-                parse=bind_parser(resolved_type, source.content),
-                uri=source.uri,
-                document_id=source.document_id,
-                title=source.title,
-                source_type=resolved_type,
-                properties=_with_frontmatter(
-                    resolved_type, source.content, source.properties
-                ),
-                actor=source.actor,
-                source=source.source,
-                label=source.label,
-            )
-        )
-
-    filed = iter(await file_documents_isolated(session, jobs))
-    return [slot if slot is not None else next(filed) for slot in slots]

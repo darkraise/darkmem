@@ -72,7 +72,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.auth import Principal, require_auth, require_scope
+from app.api.auth import Principal, TokenPayload, require_auth, require_scope
 from app.api.deps import refuse_when_read_only, get_llm
 from app.database import get_session
 from app.services.block_pipeline import UnsupportedSource
@@ -358,8 +358,8 @@ class DocumentPutResponse(BaseModel):
 class BlockInsertRequest(BaseModel):
     type: str = Field(min_length=1)
     text: str
-    parent_id: str | None = None
-    after_block_id: str | None = None
+    parent_id: UUID | None = None
+    after_block_id: UUID | None = None
     properties: dict | None = None
     expected_hash: str | None = None
 
@@ -372,9 +372,13 @@ class BlockUpdateRequest(BaseModel):
 
 
 class BlockMoveRequest(BaseModel):
-    new_parent_id: str | None = None
-    after_block_id: str | None = None
+    new_parent_id: UUID | None = None
+    after_block_id: UUID | None = None
     expected_hash: str | None = None
+
+
+def _optional_id(value: UUID | None) -> str | None:
+    return None if value is None else str(value)
 
 
 class BlockWriteResponse(BaseModel):
@@ -900,7 +904,7 @@ async def put_document_route(
 @router.post("/rename", response_model=DocumentRenameResponse)
 async def rename_documents_route(
     body: DocumentRenameRequest,
-    _user=Depends(require_auth),
+    user: TokenPayload = Depends(require_auth),
     session: AsyncSession = Depends(get_session),
 ) -> DocumentRenameResponse:
     """Rewrite a uri prefix across a subtree.
@@ -915,6 +919,7 @@ async def rename_documents_route(
             project=body.project,
             uri_prefix=body.uri_prefix,
             new_uri_prefix=body.new_uri_prefix,
+            actor=user.sub,
         )
     except DocumentUriConflict as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
@@ -1234,8 +1239,8 @@ async def insert_block_route(
     try:
         result = await insert_block(
             session, llm, document_id=str(document_id), type=body.type,
-            text=body.text, parent_id=body.parent_id,
-            after_block_id=body.after_block_id, properties=body.properties,
+            text=body.text, parent_id=_optional_id(body.parent_id),
+            after_block_id=_optional_id(body.after_block_id), properties=body.properties,
             expected_hash=body.expected_hash,
         )
     except Exception as exc:
@@ -1279,7 +1284,8 @@ async def move_block_route(
     try:
         result = await move_block(
             session, llm, block_id=str(block_id),
-            new_parent_id=body.new_parent_id, after_block_id=body.after_block_id,
+            new_parent_id=_optional_id(body.new_parent_id),
+            after_block_id=_optional_id(body.after_block_id),
             expected_hash=body.expected_hash,
         )
     except Exception as exc:

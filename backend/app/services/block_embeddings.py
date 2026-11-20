@@ -26,17 +26,14 @@ the two own separate partition families: the document family carries one HNSW
 index per child that every document ANN read filters the owner *after*, so a
 growing notes corpus sharing it would starve document search of candidates.
 ``embed_blocks`` therefore takes the family to write as ``parent``,
-defaulting to the document one. The read side
-(``search_blocks``, ``block_vectors``) is document-only and takes no
-``parent``: both join ``documents``, and page retrieval has no door yet.
+defaulting to the document one. The read side (``search_blocks``) is
+document-only and takes no ``parent``: it joins ``documents``, and page
+retrieval has no door yet.
 
 **No cross-fingerprint comparison.** Every statement here scopes to one
 resolved fingerprint's own child table — a different fingerprint is a
 different, unrelated table, not a filtered subset of this one, so there is no
 predicate that could leak a comparison across two partitions even by mistake.
-``block_vectors`` reads back exactly the fingerprint it was given and nothing
-else, which is what a caller building a same-fingerprint ANN probe (TH1.06)
-needs and all it needs.
 
 **This module does not decide *when* a block gets embedded.** ``embed_blocks``
 takes the ids to embed and embeds exactly those; nothing here re-derives a
@@ -62,7 +59,7 @@ from dataclasses import dataclass
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.repositories.vector import SEMANTIC_FETCH_MULTIPLIER, PostgresVectorRepository
+from app.repositories.vector import SEMANTIC_FETCH_MULTIPLIER
 from app.services.embedder_registry import child_table, ensure_registered
 
 logger = logging.getLogger(__name__)
@@ -239,37 +236,6 @@ async def _lock_owners(session: AsyncSession, rows) -> None:
             ), {"ids": owner_ids})
 
 
-async def resolve_read_fingerprint(session: AsyncSession, llm) -> str:
-    """A cheap, data-probe fingerprint resolution for this family — never an
-    embed call.
-
-    Delegated to the same resolver every other family uses, never re-derived:
-    ``llm_fingerprint()`` is a pure formatter over static config and can name a
-    partition no real embed ever wrote to, so this defers to
-    :meth:`PostgresVectorRepository.resolve_read_fingerprint`'s own
-    data-probe algorithm exactly as every sibling family does (it checks the
-    ``memory_embeddings`` partition, since that is where real embed traffic
-    is heaviest on almost every install). Raises
-    :class:`~app.repositories.vector.EmbedderFingerprintUnresolved` rather
-    than proceeding on an unconfirmed key.
-
-    **Neither of this family's two callers use this anymore** (T-doc-door.6
-    review, round 3, 2026-08-24): both `block_embedding_refresh`'s sweep and
-    `document_door.put_document`'s ``unchanged`` gap-fill repair resolve from
-    :func:`resolve_active_fingerprint` instead, because both exist to fill a
-    partition that may be EMPTY, which is exactly the case any data probe —
-    of any family — is biased against finding (see
-    :func:`resolve_active_fingerprint`'s docstring). This function is kept
-    for a caller that only needs "some live, already-populated fingerprint
-    for this family" and can accept a data probe's bias, the same shape
-    every sibling family's own callers use — no such caller exists in this
-    family today. A future caller of that shape should use this rather than
-    re-deriving it; a caller whose job is to fill gaps should use
-    :func:`resolve_active_fingerprint`.
-    """
-    return await PostgresVectorRepository(session).resolve_read_fingerprint(llm)
-
-
 # Never written anywhere and never compared against real block text — its
 # only job is to make the active embedder name the fingerprint it would
 # currently produce, the same role a real search query plays in
@@ -299,9 +265,9 @@ async def resolve_active_fingerprint(llm) -> str:
     **This exists because a data probe cannot correctly serve a caller whose
     job is to fill an EMPTY partition** (T-doc-door.6 review, rounds 2-3,
     2026-08-24). "Which live fingerprint holds data" is answered correctly by
-    :func:`resolve_read_fingerprint` for a caller that only needs *some*
-    already-populated partition — every sibling family's own resolver callers
-    are that shape. But `block_embedding_refresh`'s corpus-wide sweep and
+    :meth:`PostgresVectorRepository.resolve_read_fingerprint` for a caller
+    that only needs *some* already-populated partition — every sibling
+    family's own resolver callers are that shape. But `block_embedding_refresh`'s corpus-wide sweep and
     `document_door.put_document`'s single-document ``unchanged`` repair are
     both the opposite shape: their entire purpose is finding and filling the
     gaps in a partition that may hold nothing at all for the fingerprint that
@@ -315,7 +281,7 @@ async def resolve_active_fingerprint(llm) -> str:
 
     A real embed always yields a real fingerprint, so there is no
     "unconfirmed"/bootstrap case to guard against the way
-    :func:`resolve_read_fingerprint` does — this never raises
+    :meth:`PostgresVectorRepository.resolve_read_fingerprint` does — this never raises
     :class:`~app.repositories.vector.EmbedderFingerprintUnresolved`.
 
     **The cost is one embed call per caller-defined unit of work, always —
@@ -408,29 +374,3 @@ async def search_blocks(
         params,
     )
     return [dict(mapping) for mapping in result.mappings()][:limit]
-
-
-async def block_vectors(
-    session: AsyncSession, *, fingerprint: str, block_ids: Sequence[str],
-) -> dict[str, list[float]]:
-    """Each block's vector from ``fingerprint``'s own partition, in one read.
-
-    Never falls back to another fingerprint: a cross-fingerprint cosine has no
-    defined meaning, so a block with no row under this fingerprint is simply
-    absent from the result rather than probed somewhere else.
-    """
-    ids = [str(block_id) for block_id in block_ids]
-    if not ids:
-        return {}
-    table = child_table(PARENT_TABLE, fingerprint)
-    result = await session.execute(
-        text(
-            f"SELECT CAST(block_id AS text) AS block_id, embedding::text AS embedding_text "
-            f"FROM {table} WHERE block_id = ANY(CAST(:ids AS uuid[]))"
-        ),
-        {"ids": ids},
-    )
-    return {
-        mapping["block_id"]: [float(v) for v in mapping["embedding_text"].strip("[]").split(",")]
-        for mapping in result.mappings()
-    }

@@ -65,7 +65,6 @@ from app.services.document_ingest import (
     UNCHANGED,
     UPDATED,
     BlockDraft,
-    DocumentFileFailure,
     DocumentIngest,
     _file_document_without_savepoint,
     file_document,
@@ -646,31 +645,6 @@ async def test_a_failed_strip_fails_the_write_rather_than_being_written_over(
     assert [block["id"] for block in await _blocks(session, first.document_id)] == original_ids
 
 
-@pytest.mark.asyncio
-async def test_a_batch_failure_leaves_its_siblings_and_the_batch_usable(session):
-    good_uri = f"file:///{uuid4()}.md"
-    sources = [
-        bp.DocumentSource(project="default", uri=good_uri, content=MARKDOWN, label="good"),
-        bp.DocumentSource(
-            project="default", uri=f"file:///{uuid4()}.pdf",
-            content=b"not a pdf at all", label="broken",
-        ),
-        bp.DocumentSource(
-            project="default", uri=f"file:///{uuid4()}.txt",
-            content="A short note.\n", label="also-good",
-        ),
-    ]
-    results = await bp.ingest_documents(session, sources)
-    await session.flush()
-
-    assert isinstance(results[0], DocumentIngest)
-    assert isinstance(results[1], DocumentFileFailure)
-    assert results[1].label == "broken"
-    assert isinstance(results[2], DocumentIngest)
-    assert await _blocks(session, results[0].document_id)
-    assert await _blocks(session, results[2].document_id)
-
-
 # ── source routing ──────────────────────────────────────────────────
 
 
@@ -714,30 +688,6 @@ def test_an_unroutable_source_is_refused_rather_than_guessed(kwargs):
     looks filed and retrieves nothing."""
     with pytest.raises(bp.UnsupportedSource):
         bp.resolve_source_type(**kwargs)
-
-
-@pytest.mark.asyncio
-async def test_a_batch_isolates_an_unroutable_source_in_input_order(session):
-    sources = [
-        bp.DocumentSource(
-            project="default", uri=f"file:///{uuid4()}.md",
-            content="# One\n\nBody.\n", label="one",
-        ),
-        bp.DocumentSource(
-            project="default", uri=f"file:///{uuid4()}.docx",
-            content="whatever", label="two",
-        ),
-        bp.DocumentSource(
-            project="default", uri=f"file:///{uuid4()}.txt",
-            content="Three.\n", label="three",
-        ),
-    ]
-    results = await bp.ingest_documents(session, sources)
-    await session.flush()
-
-    kinds = ["ok" if isinstance(r, DocumentIngest) else r.label for r in results]
-    assert kinds == ["ok", "two", "ok"]
-    assert "docx" in results[1].error
 
 
 @pytest.mark.asyncio
@@ -975,20 +925,15 @@ def test_the_opt_out_scan_reports_a_file_that_does_reach_it(tmp_path, route, sou
     assert _opt_out_offenders([probe], tmp_path), route
 
 
-def test_only_the_two_standing_drills_name_the_opt_out():
+def test_only_the_standing_drill_names_the_opt_out():
     """Containment across the whole tree, not only the shipped half. The
-    opt-out is worth exactly the two drills it keeps runnable; anything else
-    reaching for it — a third test, a harness under `scripts/benchlib/tests`
+    opt-out is worth exactly the drill it keeps runnable; anything else
+    reaching for it — a second test, a harness under `scripts/benchlib/tests`
     that the production scan skips — wanted the guarded door and took the
     unguarded one."""
     offenders = _opt_out_offenders(_backend_sources(), BACKEND)
     naming = sorted({offender.split(":")[0] for offender in offenders})
-    assert naming == [
-        "tests/test_block_pipeline.py",
-        "tests/test_document_parsers.py",
-    ], "\n".join(offenders)
-
-
+    assert naming == ["tests/test_block_pipeline.py"], "\n".join(offenders)
 
 
 FM_MD = """---
@@ -1016,18 +961,3 @@ async def test_markdown_frontmatter_lands_in_document_properties(session):
     )).scalar_one()
     assert row["frontmatter"] == "title: The Plan\nstatus: draft"
 
-
-@pytest.mark.asyncio
-async def test_the_batch_path_captures_frontmatter_too(session):
-    """Single-source and batch must not drift: the batch builds its own jobs,
-    so a merge applied in only one place is a silent asymmetry."""
-    results = await bp.ingest_documents(
-        session,
-        [bp.DocumentSource(project="p", content=FM_MD, uri="notes/batch.md")],
-    )
-    await session.flush()
-    row = (await session.execute(
-        text("SELECT properties FROM documents WHERE id = CAST(:id AS uuid)"),
-        {"id": str(results[0].document_id)},
-    )).scalar_one()
-    assert row["frontmatter"] == "title: The Plan\nstatus: draft"

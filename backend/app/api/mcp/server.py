@@ -1352,6 +1352,7 @@ async def document_update(
                 renamed = await rename_documents(
                     session, project=project, uri_prefix=uri_prefix,
                     new_uri_prefix=new_uri_prefix,
+                    actor=current_key_name(), api_key_id=current_api_key_id(),
                 )
             else:
                 await update_document_metadata(
@@ -2193,6 +2194,18 @@ async def research_run(
 # carrying the same reasons.
 
 
+def _check_block_ids(**ids: str | None) -> None:
+    """Refuse a malformed optional block id as a validation error before any
+    door call, as the REST twins' UUID bodies answer 422."""
+    for name, value in ids.items():
+        if value is None:
+            continue
+        try:
+            UUID(value)
+        except (ValueError, TypeError) as error:
+            raise ValueError(f"{name} is not a uuid: {value!r}") from error
+
+
 def _block_refusal(exc: Exception, **fields) -> str | None:
     from app.services.block_verbs import BlockCycleError, BlockTargetUnresolved
     from app.services.document_door import DocumentNotConvertible
@@ -2289,6 +2302,7 @@ async def block_insert(
     """
     from app.services.block_verbs import insert_block
 
+    _check_block_ids(parent_id=parent_id, after_block_id=after_block_id)
     with lease_llm(_pipeline.llm if _pipeline is not None else None) as llm:
         if not _pipeline or not llm:
             return json.dumps(_degraded("embedder not configured", document_id=None))
@@ -2330,6 +2344,7 @@ async def block_move(
     """
     from app.services.block_verbs import move_block
 
+    _check_block_ids(new_parent_id=new_parent_id, after_block_id=after_block_id)
     with lease_llm(_pipeline.llm if _pipeline is not None else None) as llm:
         if not _pipeline or not llm:
             return json.dumps(_degraded("embedder not configured", document_id=None))

@@ -70,10 +70,8 @@ blocks of one document still need embedding, so after a rotation it would
 look at the stale, already-complete partition and report nothing to repair.
 It now resolves from ``resolve_active_fingerprint`` too, so the shared helper
 lives in ``block_embeddings.py`` rather than being duplicated here — both
-callers import it from there. ``block_embeddings.resolve_read_fingerprint``
-(the data probe) is unchanged in shape and stays exported for a caller that
-only needs *some* already-populated partition, not one that must fill gaps;
-neither of this family's two known callers is that shape today.
+callers import it from there. The data probe, which no caller used after
+that, has since been removed from ``block_embeddings``.
 
 **One block the embedder rejects must not starve the ones behind it.** The
 fetch below is ``ORDER BY b.id``, so a failing batch is the *same* failing

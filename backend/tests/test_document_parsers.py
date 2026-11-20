@@ -1,7 +1,4 @@
-"""The parser stack — PDF, markdown, notes — and per-document batch isolation
-(TH1.03, doc 16 §3).
-
-Two things carry this module.
+"""The parser stack — PDF, markdown, notes (TH1.03, doc 16 §3).
 
 **The parsers are exercised on real input, not stubs.** Markdown goes through
 `markdown-it-py`'s actual tokenizer; PDF goes through `pdfplumber` against a
@@ -10,18 +7,6 @@ deliberately not a new test dependency, since the only thing it needs to prove
 is that pdfplumber's own extraction round-trips through this module's grouping
 logic). Every assertion about a char_span is checked by slicing the actual
 source with it, never by trusting the number the parser reports.
-
-**Batch isolation is proven by comparison, not by inspection.** A guard that
-only ever runs its intended path is decorative. So alongside the real batch
-function (`file_documents_isolated`, whose per-job SAVEPOINT is
-`file_document`'s own since TH1.18) this module also defines the naive version
-it deliberately does not ship — a bare try/except over the unguarded body,
-reached through `_file_document_without_savepoint` — and runs the identical
-failure scenario through both. The naive version corrupts the sibling
-document; the real one does not. That comparison is the mutation drill,
-committed as a permanent regression test rather than a one-off manual edit.
-The opt-out is explicit for exactly this reason: making atomicity
-unconditional would have deleted the drill along with the defect.
 """
 from __future__ import annotations
 
@@ -34,12 +19,7 @@ from app.services import document_ingest as di
 from app.services.document_ingest import (
     CREATED,
     BlockDraft,
-    DocumentFileFailure,
-    DocumentFileJob,
-    DocumentIngest,
-    _file_document_without_savepoint,
     file_document,
-    file_documents_isolated,
 )
 from app.services.document_parsers import (
     split_frontmatter,
@@ -372,172 +352,6 @@ def test_pdf_only_emits_closed_vocabulary_types():
     assert {d.type for d in drafts} <= set(BLOCK_TYPES)
 
 
-# ── batch isolation: file_documents_isolated ─────────────────────────
-
-
-def _drafts(*texts: str) -> list[BlockDraft]:
-    return [BlockDraft(text=t, type="paragraph") for t in texts]
-
-
-def _raising_parse():
-    raise DocumentParseError("simulated: unparseable content")
-
-
-async def _block_ids(session, document_id) -> list[str]:
-    rows = (await session.execute(
-        text("SELECT id FROM blocks WHERE document_id = CAST(:d AS uuid) ORDER BY order_index"),
-        {"d": str(document_id)},
-    )).scalars().all()
-    return [str(r) for r in rows]
-
-
-async def _naive_file_documents(session, jobs):
-    """The version this module deliberately does not ship: no SAVEPOINT.
-
-    Kept only to prove the real function's guard is load-bearing — run the
-    identical scenario through both and compare. Since TH1.18 the guard is
-    `file_document`'s own, so the naive shape has to opt out of it explicitly
-    through the private unguarded body; a bare try/except around
-    `file_document` would now be atomic and this drill would prove nothing.
-    """
-    results = []
-    for job in jobs:
-        try:
-            result = await _file_document_without_savepoint(
-                session, project=job.project, content=job.content, parse=job.parse,
-                uri=job.uri, document_id=job.document_id, title=job.title,
-                source_type=job.source_type, properties=job.properties,
-                actor=job.actor, source=job.source,
-            )
-        except Exception as exc:
-            results.append(DocumentFileFailure(label=job.label, error=str(exc)))
-        else:
-            results.append(result)
-    return results
-
-
-@pytest.mark.asyncio
-async def test_batch_isolates_a_parse_failure_from_its_siblings(session):
-    uri_a = f"file:///{uuid4()}.md"
-    uri_c = f"file:///{uuid4()}.md"
-    jobs = [
-        DocumentFileJob(project="default", content="a", uri=uri_a,
-                         parse=lambda: _drafts("a1", "a2"), label="a"),
-        DocumentFileJob(project="default", content="b", uri=f"file:///{uuid4()}.md",
-                         parse=_raising_parse, label="b"),
-        DocumentFileJob(project="default", content="c", uri=uri_c,
-                         parse=lambda: _drafts("c1"), label="c"),
-    ]
-    results = await file_documents_isolated(session, jobs)
-    await session.flush()
-
-    assert isinstance(results[0], DocumentIngest)
-    assert results[0].outcome == CREATED
-    assert isinstance(results[1], DocumentFileFailure)
-    assert results[1].label == "b"
-    assert "unparseable" in results[1].error
-    assert isinstance(results[2], DocumentIngest)
-    assert results[2].outcome == CREATED
-
-    assert len(await _block_ids(session, results[0].document_id)) == 2
-    assert len(await _block_ids(session, results[2].document_id)) == 1
-
-    # the session is still usable — a failed job did not poison the transaction
-    count = (await session.execute(text("SELECT count(*) FROM documents"))).scalar_one()
-    assert count >= 2
-
-
-@pytest.mark.asyncio
-async def test_batch_failure_does_not_corrupt_an_existing_document(session):
-    """The scenario that actually needs the SAVEPOINT: a re-file whose parse
-    fails happens *after* the strip (doc 16 §3's flowchart order). Without
-    isolation the strip survives and the replacement never lands."""
-    uri = f"file:///{uuid4()}.md"
-    first = await file_document(
-        session, project="default", uri=uri, content="v1", parse=lambda: _drafts("v1a", "v1b"),
-    )
-    await session.flush()
-    original_ids = await _block_ids(session, first.document_id)
-    assert len(original_ids) == 2
-
-    jobs = [DocumentFileJob(
-        project="default", content="v2", uri=uri, parse=_raising_parse, label="refile",
-    )]
-    results = await file_documents_isolated(session, jobs)
-    await session.flush()
-
-    assert isinstance(results[0], DocumentFileFailure)
-    assert await _block_ids(session, first.document_id) == original_ids
-
-
-@pytest.mark.asyncio
-async def test_without_a_savepoint_the_same_scenario_corrupts_the_document(session):
-    """The mutation drill, executable: the naive batch function (no
-    SAVEPOINT) run through the identical failure the guarded one survives.
-    This is what proves the SAVEPOINT in `file_documents_isolated` is
-    load-bearing rather than decorative — remove it and this is what happens."""
-    uri = f"file:///{uuid4()}.md"
-    first = await file_document(
-        session, project="default", uri=uri, content="v1", parse=lambda: _drafts("v1a", "v1b"),
-    )
-    await session.flush()
-    assert len(await _block_ids(session, first.document_id)) == 2
-
-    jobs = [DocumentFileJob(
-        project="default", content="v2", uri=uri, parse=_raising_parse, label="refile",
-    )]
-    results = await _naive_file_documents(session, jobs)
-    await session.flush()
-
-    assert isinstance(results[0], DocumentFileFailure)
-    # the strip ran, nothing replaced it — exactly the corruption the
-    # SAVEPOINT in the real function exists to prevent
-    assert await _block_ids(session, first.document_id) == []
-
-
-@pytest.mark.asyncio
-async def test_a_non_parse_exception_is_isolated_the_same_way(session):
-    """Isolation is not narrowed to DocumentParseError — a structural
-    ValueError from a bad parent reference goes through the same path."""
-    def _bad_tree():
-        return [BlockDraft(text="child", parent=5)]
-
-    jobs = [
-        DocumentFileJob(project="default", content="x", uri=f"file:///{uuid4()}.md",
-                         parse=_bad_tree, label="bad-tree"),
-        DocumentFileJob(project="default", content="y", uri=f"file:///{uuid4()}.md",
-                         parse=lambda: _drafts("ok"), label="ok"),
-    ]
-    results = await file_documents_isolated(session, jobs)
-    await session.flush()
-
-    assert isinstance(results[0], DocumentFileFailure)
-    assert "earlier draft" in results[0].error
-    assert isinstance(results[1], DocumentIngest)
-    assert results[1].outcome == CREATED
-
-
-@pytest.mark.asyncio
-async def test_batch_preserves_input_order_in_its_results(session):
-    labels_and_jobs = [
-        ("one", lambda: _drafts("1")),
-        ("two", _raising_parse),
-        ("three", lambda: _drafts("3")),
-        ("four", _raising_parse),
-    ]
-    jobs = [
-        DocumentFileJob(project="default", content=label, uri=f"file:///{uuid4()}.md",
-                         parse=parse, label=label)
-        for label, parse in labels_and_jobs
-    ]
-    results = await file_documents_isolated(session, jobs)
-    kinds = [
-        "ok" if isinstance(r, DocumentIngest) else r.label
-        for r in results
-    ]
-    assert kinds == ["ok", "two", "ok", "four"]
-
-
 def test_the_event_and_object_types_are_still_closed():
     from app.services.events import EVENT_TYPES, OBJECT_TYPES
 
@@ -555,6 +369,14 @@ def test_source_type_constants_match_the_erd_spelling():
     assert SOURCE_TYPE_PDF == "pdf"
     assert SOURCE_TYPE_MARKDOWN == "md"
     assert SOURCE_TYPE_NOTE == "note"
+
+
+async def _block_ids(session, document_id) -> list[str]:
+    rows = (await session.execute(
+        text("SELECT id FROM blocks WHERE document_id = CAST(:d AS uuid) ORDER BY order_index"),
+        {"d": str(document_id)},
+    )).scalars().all()
+    return [str(r) for r in rows]
 
 
 @pytest.mark.asyncio

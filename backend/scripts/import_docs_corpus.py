@@ -9,8 +9,8 @@ this on a timer.
 
 Everything goes through the REST door on purpose: the run doubles as an
 end-to-end exercise of the deployed artifact, and the door owns the bounds,
-the journal and the embed. Failures are per-file results, never aborts --
-the same isolation posture as `ingest_documents`.
+the journal and the embed. Failures are per-file results, never aborts:
+each file is its own request.
 """
 from __future__ import annotations
 

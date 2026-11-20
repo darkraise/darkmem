@@ -218,9 +218,8 @@ async def test_resolve_read_fingerprint_passes_through_an_unconfirmable_wrong_di
 # the test below, are back to exactly their pre-T-doc-door.6 shape: the
 # memory-only probe is still what every other family's own callers
 # (relation, entity-anchoring, entity-merge, triple embeddings) get,
-# unchanged — the block family itself has no caller left for it, and it
-# stays exported for a future one of that shape (see
-# ``block_embeddings.resolve_read_fingerprint``'s own docstring).
+# unchanged — the block family itself has no caller for it, and its
+# block-family wrapper has been removed.
 
 BLOCK_MODEL_ID = "vectors-route-block-model"
 # Two live fingerprints sharing one model_id, exactly the residual shape

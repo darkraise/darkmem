@@ -105,6 +105,23 @@ async def _file_blocks(session, *texts: str) -> tuple[str, list[str]]:
     return str(ingest.document_id), [str(r) for r in rows]
 
 
+async def _vectors(session, *, fingerprint: str, block_ids) -> dict[str, list[float]]:
+    from app.services.embedder_registry import child_table
+
+    rows = await session.execute(
+        text(
+            f"SELECT CAST(block_id AS text), embedding::text "
+            f"FROM {child_table(be_mod.PARENT_TABLE, fingerprint)} "
+            f"WHERE block_id = ANY(CAST(:ids AS uuid[]))"
+        ),
+        {"ids": list(block_ids)},
+    )
+    return {
+        block_id: [float(v) for v in embedding.strip("[]").split(",")]
+        for block_id, embedding in rows
+    }
+
+
 async def _created_at(session, table: str, block_id: str) -> str:
     return str((await session.execute(
         text(f"SELECT created_at FROM {table} WHERE block_id = CAST(:id AS uuid)"),
@@ -127,7 +144,7 @@ async def test_a_block_embeds_its_own_text(session):
     assert result.written == 2
     assert embedder.texts == ["first block", "second block"]
 
-    vectors = await be_mod.block_vectors(
+    vectors = await _vectors(
         session, fingerprint=FINGERPRINT, block_ids=block_ids,
     )
     assert set(vectors) == set(block_ids)
@@ -200,7 +217,7 @@ async def test_re_embedding_refreshes_the_vector_and_keeps_created_at(session):
     created_second = await _created_at(session, table, block_ids[0])
     assert created_first == created_second
 
-    vectors = await be_mod.block_vectors(
+    vectors = await _vectors(
         session, fingerprint=FINGERPRINT, block_ids=block_ids,
     )
     assert vectors[block_ids[0]] == [9.0] * 8
@@ -343,10 +360,10 @@ async def test_a_read_under_one_fingerprint_never_sees_another(session):
     table_b = child_table(be_mod.PARENT_TABLE, OTHER_FINGERPRINT)
     assert table_a != table_b
 
-    only_a = await be_mod.block_vectors(
+    only_a = await _vectors(
         session, fingerprint=FINGERPRINT, block_ids=[block_id],
     )
-    only_b = await be_mod.block_vectors(
+    only_b = await _vectors(
         session, fingerprint=OTHER_FINGERPRINT, block_ids=[block_id],
     )
 
@@ -368,21 +385,6 @@ async def test_a_read_under_one_fingerprint_never_sees_another(session):
     )).scalar_one()
     assert count_a == 1
     assert count_b == 1
-
-
-@pytest.mark.asyncio
-async def test_resolve_read_fingerprint_delegates_to_the_shared_resolver(session):
-    """Never re-derived from static config — the same discipline the sibling
-    writers carry, delegated to `PostgresVectorRepository` rather than
-    duplicated."""
-    from app.repositories.vector import EmbedderFingerprintUnresolved
-
-    class NoDataEmbedder:
-        def llm_fingerprint(self):
-            return "nothing-embedded-yet|8"
-
-    with pytest.raises(EmbedderFingerprintUnresolved):
-        await be_mod.resolve_read_fingerprint(session, NoDataEmbedder())
 
 
 @pytest.mark.asyncio
@@ -411,7 +413,7 @@ async def test_resolve_active_fingerprint_uses_a_real_embed_not_a_probe():
 
 @pytest.mark.asyncio
 async def test_resolve_active_fingerprint_never_raises_unresolved():
-    """Unlike `resolve_read_fingerprint`, a real embed always yields a real
+    """Unlike a data probe, a real embed always yields a real
     fingerprint — there is no "nothing registered under this model yet"
     bootstrap case to guard against, even on a completely fresh install."""
 

@@ -867,6 +867,8 @@ async def rename_documents(
     project: str,
     uri_prefix: str,
     new_uri_prefix: str,
+    actor: str | None = None,
+    api_key_id: UUID | None = None,
 ) -> int:
     """Rewrite a uri prefix across a subtree in one transaction.
 
@@ -921,6 +923,8 @@ async def rename_documents(
             session,
             document_id=row["id"],
             uri=new_uri_prefix + row["uri"][len(uri_prefix):],
+            actor=actor,
+            api_key_id=api_key_id,
         )
 
     if rows:

@@ -52,8 +52,8 @@ guarded region rather than in front of it. Duplicating the gate outside it to
 skip them would put two answers to "did the content change" in the tree.
 
 ``_file_document_without_savepoint`` is that body, unguarded and reachable, so
-TH1.03's and TH1.04's standing drills can run the identical failure through it
-and show the damage the SAVEPOINT prevents — a guard whose absence is never
+TH1.04's standing drill can run the identical failure through it and show the
+damage the SAVEPOINT prevents — a guard whose absence is never
 exercised is decorative. It is private, absent from ``__all__``, and
 ``tests/test_block_pipeline.py`` fails the build if anything outside
 ``file_document`` itself names it, anywhere under ``app/``, ``scripts/`` or
@@ -86,8 +86,6 @@ __all__ = [
     "BlockDraft",
     "CREATED",
     "DOCUMENT_FILED_EVENT",
-    "DocumentFileFailure",
-    "DocumentFileJob",
     "DocumentHashConflict",
     "DocumentTooLarge",
     "DocumentUriConflict",
@@ -97,7 +95,6 @@ __all__ = [
     "UPDATED",
     "compute_content_hash",
     "file_document",
-    "file_documents_isolated",
 ]
 
 DOCUMENT_FILED_EVENT = "document_filed"
@@ -280,8 +277,8 @@ async def _file_document_without_savepoint(
 ) -> DocumentIngest:
     """`file_document`'s body with the atomic replace taken away.
 
-    Reachable only from `file_document` and from the two standing drills that
-    exist to show what the SAVEPOINT buys; see the module docstring.
+    Reachable only from `file_document` and from the standing drill that
+    exists to show what the SAVEPOINT buys; see the module docstring.
 
     `document_id` addresses an existing uri-less document — a note being
     re-filed. Passing it alongside a `uri` is refused rather than resolved by
@@ -464,81 +461,6 @@ async def _file_document_without_savepoint(
         blocks_written=len(rows), blocks_stripped=stripped,
         oversized_blocks=oversized, largest_block_chars=largest,
     )
-
-
-@dataclass(frozen=True)
-class DocumentFileJob:
-    """One document to file, addressed the same way `file_document` is.
-
-    `label` is the caller's own identifier for reporting a failure — a
-    filename, a uri, whatever the batch was keyed on — never used to resolve
-    identity; that is still `uri` or `document_id`.
-    """
-
-    project: str
-    content: str | bytes
-    parse: Callable[[], Sequence[BlockDraft]]
-    uri: str | None = None
-    document_id: UUID | None = None
-    title: str | None = None
-    source_type: str | None = None
-    properties: dict | None = None
-    actor: str | None = None
-    source: str | None = None
-    label: str | None = None
-
-
-@dataclass(frozen=True)
-class DocumentFileFailure:
-    label: str | None
-    error: str
-
-
-async def file_documents_isolated(
-    session: AsyncSession, jobs: Sequence[DocumentFileJob],
-) -> list[DocumentIngest | DocumentFileFailure]:
-    """File every job, isolating one job's failure from the rest of the batch.
-
-    A parse failure (TH1.03's parsers all raise `DocumentParseError` on
-    unparseable content) is the expected case, but nothing here is narrowed to
-    that type — any exception `file_document` lets through isolates the same
-    way, including a bad-parent `ValueError` or a genuine database error.
-
-    **Why a bare try/except is enough here, and only here.** `file_document`
-    does not commit (the caller owns the transaction boundary), so a parse
-    failure lands *after* the strip and *before* the new blocks are written —
-    the exact midpoint doc 16 §3's flowchart draws as one atomic step. Catching
-    that and moving on, over an unguarded filing, would leave the document's
-    prior blocks deleted with nothing written to replace them, staged in the
-    caller's still-open transaction, to be committed along with every other
-    job's success. The SAVEPOINT that prevents it is `file_document`'s own
-    (TH1.18): it rolls back to the mark before the exception reaches this
-    `except`, so the failed job's partial writes never reach the outer
-    transaction and every other job's is untouched. This loop used to open a
-    second, redundant one per job; one guard, in the writer, serves every
-    caller instead.
-    """
-    results: list[DocumentIngest | DocumentFileFailure] = []
-    for job in jobs:
-        try:
-            result = await file_document(
-                session,
-                project=job.project,
-                content=job.content,
-                parse=job.parse,
-                uri=job.uri,
-                document_id=job.document_id,
-                title=job.title,
-                source_type=job.source_type,
-                properties=job.properties,
-                actor=job.actor,
-                source=job.source,
-            )
-        except Exception as exc:
-            results.append(DocumentFileFailure(label=job.label, error=str(exc)))
-        else:
-            results.append(result)
-    return results
 
 
 async def _prune_revisions(
