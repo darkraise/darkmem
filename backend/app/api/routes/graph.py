@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -71,7 +73,7 @@ async def get_unified_graph(
 
 @router.get("/memory-context/{memory_id}")
 async def get_memory_context(
-    memory_id: str,
+    memory_id: UUID,
     _user=Depends(require_auth),
     service: GraphService = Depends(get_graph_service),
 ):
@@ -80,7 +82,7 @@ async def get_memory_context(
 
 @router.get("/entities/{entity_id}/neighbors", response_model=NeighborsResponse)
 async def get_neighbors(
-    entity_id: str,
+    entity_id: UUID,
     _user=Depends(require_auth),
     request: Request = None,
     session: AsyncSession = Depends(get_session),

@@ -1,4 +1,5 @@
 import logging
+from dataclasses import dataclass
 from uuid import UUID
 
 from sqlalchemy import case, func, select, text
@@ -11,16 +12,24 @@ from app.repositories.vector import PostgresVectorRepository
 from app.services.community_detector import label_communities
 from app.services.llm import LLMOrchestrator
 from app.services.process_tracer import process_display_label
-from app.services.rank_fusion import RRF_K
+from app.services.rank_fusion import RankedList, rrf_fuse
 from app.utils.graph_keys import compose_key, decompose_key, split_symbol_key
 
 logger = logging.getLogger(__name__)
 
-# Code search fuses its two arms on a ``(repo_id, file_path, line_start)`` key
-# rather than on a row id, so it keeps its own accumulation loop; the constant
-# is imported because a second declaration of it can drift from the one the
-# memory path ranks by while both files still read as if they agreed.
-__all__ = ["RRF_K", "CodeQueryService"]
+
+@dataclass(frozen=True)
+class CodeSearchAnswer:
+    """Fused hits plus the arms that raised, so a failed arm never reads as
+    an arm that found nothing."""
+
+    results: list[dict]
+    failed_arms: tuple[str, ...] = ()
+
+
+def _code_hit_key(row: dict) -> tuple[str, str, int]:
+    return (row["repo_id"], row["file_path"], row["line_start"])
+
 
 # `level=auto` folds the code graph to files above this many files plus
 # symbols in scope. The canvas is an SVG laid out in the browser: ops-tiny's
@@ -66,8 +75,9 @@ class CodeQueryService:
         limit: int = 20,
         repo_id: UUID | None = None,
         language: str | None = None,
-    ) -> list[dict]:
-        results_map: dict[tuple[str, str, int], dict] = {}
+    ) -> CodeSearchAnswer:
+        lists: list[RankedList] = []
+        failed: list[str] = []
 
         # `settings.read_only` skips the vector arm outright rather than
         # letting it attempt and fail: a backup worker makes no external
@@ -75,78 +85,78 @@ class CodeQueryService:
         if self.llm and not settings.read_only:
             try:
                 vector, fingerprint = await self.llm.embed(query)
-                vector_repo = PostgresVectorRepository(self.session)
-                chunk_results = await vector_repo.search_code_chunks(
-                    vector, fingerprint=fingerprint,
-                    limit=limit * 2, repo_id=repo_id, language=language,
-                )
-                for rank, chunk in enumerate(chunk_results, start=1):
-                    key = (str(chunk["repo_id"]), chunk["file_path"], chunk["line_start"])
-                    if key not in results_map:
-                        results_map[key] = {
-                            "chunk_content": chunk.get("chunk_content", ""),
-                            "file_path": chunk.get("file_path", ""),
-                            "repo_id": str(chunk.get("repo_id", "")),
-                            "language": chunk.get("language"),
-                            "symbol_name": chunk.get("symbol_name"),
-                            "line_start": chunk.get("line_start", 0),
-                            "line_end": chunk.get("line_end", 0),
-                            "rrf_score": 0,
-                        }
-                    results_map[key]["rrf_score"] += 1.0 / (RRF_K + rank)
+                async with self.session.begin_nested():
+                    chunk_results = await PostgresVectorRepository(self.session).search_code_chunks(
+                        vector, fingerprint=fingerprint,
+                        limit=limit * 2, repo_id=repo_id, language=language,
+                    )
+                lists.append(RankedList("vector", rows=[
+                    {
+                        "chunk_content": chunk.get("chunk_content", ""),
+                        "file_path": chunk.get("file_path", ""),
+                        "repo_id": str(chunk.get("repo_id", "")),
+                        "language": chunk.get("language"),
+                        "symbol_name": chunk.get("symbol_name"),
+                        "line_start": chunk.get("line_start", 0),
+                        "line_end": chunk.get("line_end", 0),
+                    }
+                    for chunk in chunk_results
+                ], weight=1.0))
             except Exception as e:
                 logger.warning("Vector search failed: %s", e)
+                failed.append("vector")
 
+        escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        text_query = (
+            select(CodeSymbol, CodeFile.file_path, CodeFile.repo_id, CodeFile.language)
+            .join(CodeFile)
+            .where(
+                (CodeSymbol.name.ilike(f"%{escaped}%"))
+                | (CodeSymbol.source_code.ilike(f"%{escaped}%"))
+            )
+        )
+        if repo_id:
+            text_query = text_query.where(CodeFile.repo_id == repo_id)
+        if language:
+            # The vector branch filters by language; without this the keyword
+            # side fuses in other-language matches and defeats the filter.
+            text_query = text_query.where(CodeFile.language == language)
+        # Relevance order so RRF ranks mean something (and truncation is
+        # deterministic): exact name > prefix > substring > body-only match,
+        # then shorter names first.
+        text_query = text_query.order_by(
+            case(
+                (CodeSymbol.name.ilike(escaped), 0),
+                (CodeSymbol.name.ilike(f"{escaped}%"), 1),
+                (CodeSymbol.name.ilike(f"%{escaped}%"), 2),
+                else_=3,
+            ),
+            func.length(CodeSymbol.name),
+        )
+        text_query = text_query.limit(limit * 2)
         try:
-            escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-            text_query = (
-                select(CodeSymbol, CodeFile.file_path, CodeFile.repo_id, CodeFile.language)
-                .join(CodeFile)
-                .where(
-                    (CodeSymbol.name.ilike(f"%{escaped}%"))
-                    | (CodeSymbol.source_code.ilike(f"%{escaped}%"))
-                )
-            )
-            if repo_id:
-                text_query = text_query.where(CodeFile.repo_id == repo_id)
-            if language:
-                # The vector branch filters by language; without this the keyword
-                # side fuses in other-language matches and defeats the filter.
-                text_query = text_query.where(CodeFile.language == language)
-            # Relevance order so RRF ranks mean something (and truncation is
-            # deterministic): exact name > prefix > substring > body-only match,
-            # then shorter names first.
-            text_query = text_query.order_by(
-                case(
-                    (CodeSymbol.name.ilike(escaped), 0),
-                    (CodeSymbol.name.ilike(f"{escaped}%"), 1),
-                    (CodeSymbol.name.ilike(f"%{escaped}%"), 2),
-                    else_=3,
-                ),
-                func.length(CodeSymbol.name),
-            )
-            text_query = text_query.limit(limit * 2)
-
-            text_results = (await self.session.execute(text_query)).all()
-            for rank, (sym, file_path, rid, lang) in enumerate(text_results, start=1):
-                key = (str(rid), file_path, sym.line_start)
-                if key not in results_map:
-                    results_map[key] = {
-                        "chunk_content": sym.source_code[:500] if sym.source_code else "",
-                        "file_path": file_path,
-                        "repo_id": str(rid),
-                        "language": lang,
-                        "symbol_name": sym.name,
-                        "line_start": sym.line_start,
-                        "line_end": sym.line_end,
-                        "rrf_score": 0,
-                    }
-                results_map[key]["rrf_score"] += 1.0 / (RRF_K + rank)
+            async with self.session.begin_nested():
+                text_results = (await self.session.execute(text_query)).all()
+            lists.append(RankedList("keyword", rows=[
+                {
+                    "chunk_content": sym.source_code[:500] if sym.source_code else "",
+                    "file_path": file_path,
+                    "repo_id": str(rid),
+                    "language": lang,
+                    "symbol_name": sym.name,
+                    "line_start": sym.line_start,
+                    "line_end": sym.line_end,
+                }
+                for sym, file_path, rid, lang in text_results
+            ], weight=1.0))
         except Exception as e:
             logger.warning("Text search failed: %s", e)
+            failed.append("keyword")
 
-        sorted_results = sorted(results_map.values(), key=lambda x: x["rrf_score"], reverse=True)
-        return sorted_results[:limit]
+        return CodeSearchAnswer(
+            results=rrf_fuse(lists, limit, key=_code_hit_key),
+            failed_arms=tuple(failed),
+        )
 
     async def list_symbols(
         self,

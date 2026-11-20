@@ -17,7 +17,7 @@ import pytest
 import app.api.mcp.server as mcp_server
 from app.models.code import CodeFile, CodeSymbol, Repository
 from app.models.memory import Memory
-from app.services.code_query import CodeQueryService
+from app.services.code_query import CodeQueryService, CodeSearchAnswer
 from app.services.memory import MemoryService
 
 
@@ -131,12 +131,12 @@ async def test_code_search_runs_the_rest_twins_composition(mcp_session, monkeypa
 
     async def _fake_search(self, query, limit=20, repo_id=None, language=None):
         calls.append({"query": query, "limit": limit, "repo_id": repo_id, "language": language})
-        return [{
+        return CodeSearchAnswer(results=[{
             "chunk_content": "def parse(): ...", "file_path": "a.py",
             "repo_id": "11111111-1111-1111-1111-111111111111", "language": "python",
             "symbol_name": "parse", "line_start": 1, "line_end": 2,
             "rrf_score": 0.5,
-        }]
+        }])
 
     monkeypatch.setattr(CodeQueryService, "search_code", _fake_search)
 

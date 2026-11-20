@@ -55,10 +55,11 @@ def test_arm_flags_are_never_list_weights():
 
 
 def test_neither_class_can_reach_the_other_through_its_signature():
-    # The fusion takes ranked lists and a limit — there is no parameter
-    # through which a per-row scalar or its weight could arrive. The factor
-    # takes signals and weights — there is no rank and no list.
-    assert set(inspect.signature(rrf_fuse).parameters) == {"lists", "limit"}
+    # The fusion takes ranked lists, a limit and a row-identity key — there
+    # is no parameter through which a per-row scalar or its weight could
+    # arrive. The factor takes signals and weights — there is no rank and no
+    # list.
+    assert set(inspect.signature(rrf_fuse).parameters) == {"lists", "limit", "key"}
     assert set(inspect.signature(rank_fusion_factor).parameters) == {"signals", "weights"}
     assert {f.name for f in fields(RankedList)} == {"name", "rows", "weight"}
 

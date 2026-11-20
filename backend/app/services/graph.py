@@ -189,9 +189,12 @@ class GraphService:
             "memories_truncated": len(memory_nodes) < total,
         }, degraded
 
-    async def get_memory_context(self, memory_id: str) -> dict:
+    async def get_memory_context(self, memory_id: UUID | str) -> dict:
         if not self.graph_repo:
             return {"entities": [], "relations": [], "neighbors": []}
+        # Entity memory_ids come back in canonical lower case; an upper-case
+        # seed would otherwise never match itself and list itself as a peer.
+        memory_id = str(UUID(str(memory_id)))
 
         # Entities are not memory-scoped, so their memory_ids reach into every
         # project that asserts them. Scope the expansion by the seed memory's
@@ -209,7 +212,7 @@ class GraphService:
                     neighbor_memory_ids.add(mid)
 
         neighbors = await self._fetch_neighbor_memories(
-            list(neighbor_memory_ids)[:20], self._memory_scope(scope),
+            sorted(neighbor_memory_ids)[:20], self._memory_scope(scope),
         )
 
         return {
@@ -262,7 +265,7 @@ class GraphService:
             return []
         try:
             uuids = [UUID(mid) for mid in memory_ids]
-            stmt = select(Memory).where(Memory.id.in_(uuids))
+            stmt = select(Memory).where(Memory.id.in_(uuids)).order_by(Memory.id)
             if scope is not None:
                 stmt = stmt.where(*scope.orm_criteria(Memory))
             result = await self.session.execute(stmt)

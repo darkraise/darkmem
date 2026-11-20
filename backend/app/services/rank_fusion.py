@@ -17,7 +17,7 @@ scalar would start moving list ordering. ``LIST_WEIGHT_KEYS`` and the
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Hashable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -122,7 +122,11 @@ def normalize_row_id(row: Mapping) -> str | None:
     return key or None
 
 
-def rrf_fuse(lists: Sequence[RankedList], limit: int) -> list[dict]:
+def rrf_fuse(
+    lists: Sequence[RankedList],
+    limit: int,
+    key: Callable[[Mapping], Hashable | None] = normalize_row_id,
+) -> list[dict]:
     """Fuse ranked lists into one ``rrf_score``-ordered result set.
 
     A row at rank *r* of a list contributes ``weight / (RRF_K + r)``; a row
@@ -130,28 +134,33 @@ def rrf_fuse(lists: Sequence[RankedList], limit: int) -> list[dict]:
     so no per-modality score normalisation is needed and adding a producer
     never re-tunes an existing one.
 
+    ``key`` names a row's identity across lists; a row it maps to ``None`` is
+    dropped. The default keys on the normalised memory or row id and writes
+    that normalised id back onto the fused row.
+
     The first-seen list's raw ``score`` survives on the fused row so a
     consumer can see which modality found it, but ``rrf_score`` is the sole
     ordering key.
     """
-    fused: dict[str, dict] = {}
+    fused: dict[Hashable, dict] = {}
 
     for ranked in lists:
         for rank, row in enumerate(ranked.rows, start=1):
-            key = normalize_row_id(row)
-            if key is None:
+            row_key = key(row)
+            if row_key is None:
                 continue
             contribution = ranked.weight / (RRF_K + rank)
-            entry = fused.get(key)
+            entry = fused.get(row_key)
             if entry is None:
                 entry = dict(row)
                 entry.pop("source", None)
-                if entry.get("memory_id") is not None:
-                    entry["memory_id"] = key
-                elif entry.get("id") is not None:
-                    entry["id"] = key
+                if key is normalize_row_id:
+                    if entry.get("memory_id") is not None:
+                        entry["memory_id"] = row_key
+                    elif entry.get("id") is not None:
+                        entry["id"] = row_key
                 entry["rrf_score"] = contribution
-                fused[key] = entry
+                fused[row_key] = entry
             else:
                 entry["rrf_score"] += contribution
 

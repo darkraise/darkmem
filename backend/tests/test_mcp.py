@@ -143,7 +143,7 @@ async def test_code_search_clamps_limit(session, monkeypatch):
 
     async def _fake_search(self, query, limit=20, repo_id=None, language=None):
         captured["limit"] = limit
-        return []
+        return code_query_mod.CodeSearchAnswer(results=[])
 
     monkeypatch.setattr(code_query_mod.CodeQueryService, "search_code", _fake_search)
 

@@ -1621,7 +1621,7 @@ async def code_search(
                 repo_id = repo.id
 
         async with _code_service_context() as session:
-            results = await CodeQueryService(session, llm=llm).search_code(
+            answer = await CodeQueryService(session, llm=llm).search_code(
                 query, limit, repo_id, language,
             )
 
@@ -1640,7 +1640,7 @@ async def code_search(
                 # differently.
                 "score": r["rrf_score"],
             }
-            for r in results
+            for r in answer.results
         ])
 
 

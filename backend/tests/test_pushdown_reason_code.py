@@ -500,9 +500,9 @@ async def test_code_search_scopes_both_arms_by_repository(session):
         await _add_chunk(session, repo.id, file_path=path)
     await session.flush()
 
-    results = await CodeQueryService(session, llm=_FakeLLM()).search_code(
+    results = (await CodeQueryService(session, llm=_FakeLLM()).search_code(
         "parse", limit=10, repo_id=mine.id,
-    )
+    )).results
 
     assert results
     assert {r["repo_id"] for r in results} == {str(mine.id)}

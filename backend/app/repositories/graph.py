@@ -422,9 +422,9 @@ class PostgresGraphRepository:
         return await self._build_neighbors(result.mappings().first(), max_depth, scope)
 
     async def get_neighbors_by_id(
-        self, entity_id: str, max_depth: int = 1, scope: MemoryFilter | None = None,
+        self, entity_id: UUID | str, max_depth: int = 1, scope: MemoryFilter | None = None,
     ) -> dict:
-        params: dict = {"id": entity_id}
+        params: dict = {"id": str(entity_id)}
         seed_scope = ""
         if scope is not None:
             params.update(scope.params())
@@ -912,14 +912,14 @@ class PostgresGraphRepository:
         )
         return [row[0] for row in result.all()]
 
-    async def get_entities_by_memory_id(self, memory_id: str) -> list[dict]:
+    async def get_entities_by_memory_id(self, memory_id: UUID | str) -> list[dict]:
         result = await self.session.execute(
             text("""
                 SELECT id, name, entity_type, properties, memory_ids
                 FROM entities
                 WHERE memory_ids @> ARRAY[CAST(:mid AS uuid)]
             """),
-            {"mid": memory_id},
+            {"mid": str(memory_id)},
         )
         rows = result.mappings().all()
         return [

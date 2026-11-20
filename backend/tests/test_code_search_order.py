@@ -39,7 +39,7 @@ async def test_search_code_ranks_exact_name_first(session):
     await session.flush()
 
     svc = CodeQueryService(session, llm=None)  # no LLM => keyword pass only
-    results = await svc.search_code("parse", limit=10, repo_id=repo.id)
+    results = (await svc.search_code("parse", limit=10, repo_id=repo.id)).results
 
     names = [r["symbol_name"] for r in results]
     assert names[0] == "parse"

@@ -36,7 +36,7 @@ async def search_code(
 ):
     svc = _get_service(request, session)
     with lease_llm(svc.llm):
-        results = await svc.search_code(body.query, body.limit, body.repo_id, body.language)
+        answer = await svc.search_code(body.query, body.limit, body.repo_id, body.language)
         return [
             CodeSearchResult(
                 chunk_content=r["chunk_content"],
@@ -48,7 +48,7 @@ async def search_code(
                 line_end=r["line_end"],
                 score=r["rrf_score"],
             )
-            for r in results
+            for r in answer.results
         ]
 
 
