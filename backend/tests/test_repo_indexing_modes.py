@@ -889,3 +889,28 @@ async def test_deleting_a_repo_evicts_its_due_times(
     assert r.status_code == 204
 
     assert indexed_repo.id not in job_runners._DUE
+
+
+async def test_a_restart_releases_the_claims_a_dead_process_left(session):
+    """A claim outlives the process that took it: a redeploy or a cancelled
+    task ends the run without reaching its own status reset, and every reindex
+    door then refuses the repo. A fresh process runs nothing, so every claim
+    it finds is stale."""
+    from app.services.repo_manager import RepoManager
+
+    indexed = Repository(
+        name="was-indexing", local_path="/tmp/was-indexing", status="indexing",
+        last_indexed_commit="a" * 40,
+    )
+    cloning = Repository(name="was-cloning", url="https://forge.invalid/r.git", status="cloning")
+    idle = Repository(name="was-idle", local_path="/tmp/was-idle", status="ready")
+    session.add_all([indexed, cloning, idle])
+    await session.flush()
+
+    released = await RepoManager.release_interrupted_runs(session)
+
+    assert released == 2
+    for repo in (indexed, cloning, idle):
+        await session.refresh(repo)
+    assert (indexed.status, cloning.status, idle.status) == ("stale", "error", "ready")
+    assert await RepoManager(session).claim_for_indexing(indexed.id, message="again") is True

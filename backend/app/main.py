@@ -651,6 +651,12 @@ async def lifespan(app: FastAPI):
     # database, so the viewer role never sees them, and `backup_ship` on a
     # worker would ship snapshots of snapshots.
     if not settings.read_only:
+        from app.services.repo_manager import RepoManager
+
+        async with async_session_factory() as _s:
+            released = await RepoManager.release_interrupted_runs(_s)
+        if released:
+            logger.warning("Released %d repository claim(s) left by a previous process", released)
         await job_registry.start_all()
 
     async with contextlib.AsyncExitStack() as stack:

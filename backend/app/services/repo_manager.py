@@ -8,7 +8,7 @@ from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 from uuid import UUID
 
-from sqlalchemy import func, select, update
+from sqlalchemy import case, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.code import CodeFile, CodeSymbol, Repository
@@ -289,6 +289,28 @@ class RepoManager:
         )).scalar_one_or_none()
         await self.session.commit()
         return claimed is not None
+
+    @staticmethod
+    async def release_interrupted_runs(session: AsyncSession) -> int:
+        """Free every repo a previous process left claimed; returns how many.
+
+        A run resets its own status only in handlers a cancellation never
+        reaches, so a redeploy mid-index leaves the claim standing and every
+        reindex door refusing the repo. Boot is the one moment this is safe to
+        do blindly: with a single worker, a fresh process owns no run.
+        """
+        released = await session.execute(
+            update(Repository)
+            .where(Repository.status.in_(RepoManager.BUSY_STATUSES))
+            .values(
+                status=case(
+                    (Repository.last_indexed_commit.isnot(None), "stale"), else_="error",
+                ),
+                status_message="Interrupted by a restart. Reindex to continue.",
+            )
+        )
+        await session.commit()
+        return released.rowcount
 
     async def list_all(self) -> list[dict]:
         repos = (await self.session.execute(select(Repository))).scalars().all()
