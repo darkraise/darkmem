@@ -2,19 +2,18 @@
 
 The tab's own rendering is `frontend`'s to test. What only the server can
 answer is that the screen shows the system rather than itself: the targets come
-from T3.11's registry, and the curb is enforced where the client cannot ignore
-it.
+from T3.11's registry.
 """
 
 from __future__ import annotations
 
+import importlib.util
 import json
 
 import pytest
 from sqlalchemy import text
 
 from app.models.config import Config
-from app.api.routes.distribution import DISTRIBUTION_CONFIG_KEY
 from app.services import inject_adapters as ia
 
 pytestmark = pytest.mark.asyncio
@@ -57,165 +56,45 @@ class TestTheTargetsShownAreTheTargetsUsed:
         assert targets["cursor"]["context_file"] == ".cursorrules"
 
 
-class TestThePolicyAndTheCurb:
-    async def test_the_defaults_apply_before_anything_is_written(
-        self, client, auth_headers
-    ):
-        policy = (await client.get(
-            "/api/v1/distribution", headers=auth_headers
-        )).json()["policy"]
+class TestThePolicyIsGone:
+    """The token budget, the watch switch and the curb steered nothing: no
+    inject writer ever read them. The writer modules and the policy door
+    went together, and the read keeps only the adapter targets."""
 
-        assert policy["curbed"] is False
-        assert policy["token_budget"] == 2000
+    async def test_inject_modules_and_policy_route_are_gone(self):
+        from app.main import app
 
-    async def test_the_curb_is_one_control_and_it_persists(
-        self, client, auth_headers
-    ):
-        """"A single control stops all injection immediately" — so it is one
-        flag, not a per-target sweep the caller has to complete."""
-        written = await client.put(
-            "/api/v1/distribution/policy",
-            json={"token_budget": 2000, "curbed": True},
-            headers=auth_headers,
-        )
-        assert written.status_code == 200
-        assert written.json()["curbed"] is True
+        for name in (
+            "app.services.inject_watch",
+            "app.services.inject_fill",
+            "app.services.inject_block",
+            "app.services.inject_journal",
+        ):
+            assert importlib.util.find_spec(name) is None, name
 
-        after = (await client.get(
-            "/api/v1/distribution", headers=auth_headers
-        )).json()["policy"]
-        assert after["curbed"] is True
+        routes = {
+            (method, route.path)
+            for route in app.routes
+            for method in (getattr(route, "methods", None) or ())
+        }
+        assert ("PUT", "/api/v1/distribution/policy") not in routes
+        assert ("GET", "/api/v1/distribution") in routes
 
-    async def test_the_curb_lives_server_side_not_in_the_client(
-        self, client, auth_headers, session
-    ):
-        """A curb honoured only by the client would be a setting that appears
-        to work and does not — the client is the thing being curbed."""
-        await client.put(
-            "/api/v1/distribution/policy",
-            json={"token_budget": 500, "curbed": True},
-            headers=auth_headers,
-        )
+    async def test_distribution_get_has_no_policy_keys(self, client, auth_headers):
+        response = await client.get("/api/v1/distribution", headers=auth_headers)
 
-        stored = (await session.execute(
-            text("SELECT value FROM config WHERE key = CAST(:k AS text)"),
-            {"k": DISTRIBUTION_CONFIG_KEY},
-        )).scalar_one()
-        assert stored["curbed"] is True
-        assert stored["token_budget"] == 500
-
-    async def test_the_write_answers_with_the_state_now_in_force(
-        self, client, auth_headers
-    ):
-        """200 with the value rather than 204: a human turning push off needs
-        to see what is in force, and an empty response leaves the screen
-        asserting what it hopes."""
-        response = await client.put(
-            "/api/v1/distribution/policy",
-            json={"token_budget": 1234, "curbed": False},
-            headers=auth_headers,
-        )
-        # Whole-body equality on purpose: a new policy field reaching this
-        # response is a new thing the screen is now asserting, and it should
-        # cost an edit here. `watch_enabled` (T4.06) is the first one to.
-        assert response.json() == {
-            "token_budget": 1234,
-            "curbed": False,
-            "watch_enabled": False,
+        assert response.status_code == 200
+        body = response.json()
+        assert "policy" not in body
+        for target in body["targets"]:
+            assert "watched" not in target
+            assert "refresh" not in target
+        assert {t["tool"] for t in body["targets"]} >= {
+            "claude-code", "cursor", "codex", "cline",
         }
 
-    async def test_an_out_of_range_budget_is_refused(self, client, auth_headers):
-        response = await client.put(
-            "/api/v1/distribution/policy",
-            json={"token_budget": -1, "curbed": False},
-            headers=auth_headers,
-        )
-        assert response.status_code == 422
-
-    async def test_both_doors_require_auth(self, client):
+    async def test_the_read_requires_auth(self, client):
         assert (await client.get("/api/v1/distribution")).status_code in (401, 403)
-        assert (await client.put(
-            "/api/v1/distribution/policy", json={"token_budget": 1, "curbed": True}
-        )).status_code in (401, 403)
-
-
-class TestTheCurbIsJournalled:
-    """Doc 15 §7: "the **curb** … journals the curb as an ``inject_curbed``
-    ``events`` row", and its mermaid draws the edge.
-
-    ``record_inject_curbed`` shipped with the event type already in the closed
-    vocabulary and **no caller anywhere in the tree**, so the one curb act the
-    system can observe today — a human flipping the flag — left no trace. Found
-    by the Fable review of 2026-08-10 (I-9); the writer was there, the edge had
-    no producer.
-    """
-
-    async def _curbed_rows(self, session):
-        return (await session.execute(text(
-            "SELECT payload FROM events WHERE event_type = 'inject_curbed'"
-        ))).scalars().all()
-
-    async def test_turning_the_curb_on_journals_it(
-        self, client, auth_headers, session
-    ):
-        await client.put(
-            "/api/v1/distribution/policy",
-            json={"token_budget": 2000, "curbed": True},
-            headers=auth_headers,
-        )
-
-        rows = await self._curbed_rows(session)
-        assert len(rows) == 1
-        # One row for a global control. Per-target rows would describe
-        # per-target curbs, which do not exist.
-        assert rows[0]["tool"] == "*"
-        assert "human" in rows[0]["reason"]
-
-    async def test_leaving_the_curb_on_journals_nothing_further(
-        self, client, auth_headers, session
-    ):
-        """The transition is the event, not the state. A screen that re-saves
-        an unchanged policy would otherwise manufacture a curb history nobody
-        performed."""
-        for _ in range(3):
-            await client.put(
-                "/api/v1/distribution/policy",
-                json={"token_budget": 2000, "curbed": True},
-                headers=auth_headers,
-            )
-
-        assert len(await self._curbed_rows(session)) == 1
-
-    async def test_releasing_the_curb_journals_nothing(
-        self, client, auth_headers, session
-    ):
-        """Deliberate asymmetry, pinned so it reads as a decision rather than
-        an omission: ``EVENT_TYPES`` is closed and holds no release event, and
-        inventing one at a call site is exactly what the taxonomy-first rule
-        forbids. Closing it means editing doc 04 §8.1 first."""
-        await client.put(
-            "/api/v1/distribution/policy",
-            json={"token_budget": 2000, "curbed": True},
-            headers=auth_headers,
-        )
-        await client.put(
-            "/api/v1/distribution/policy",
-            json={"token_budget": 2000, "curbed": False},
-            headers=auth_headers,
-        )
-
-        assert len(await self._curbed_rows(session)) == 1
-
-    async def test_a_budget_edit_alone_is_not_a_curb(
-        self, client, auth_headers, session
-    ):
-        await client.put(
-            "/api/v1/distribution/policy",
-            json={"token_budget": 500, "curbed": False},
-            headers=auth_headers,
-        )
-
-        assert await self._curbed_rows(session) == []
 
 
 class TestARefusedTargetIsNamedOnTheWire:
@@ -330,55 +209,3 @@ class TestARefusedTargetIsNamedOnTheWire:
 
         assert "stringly" not in [t["tool"] for t in state["targets"]]
         assert "still in force" not in state["rejected"][0]["reason"]
-
-
-class TestWatchStatePerTarget:
-    """T4.08: the tab shows whether a target is watched, and `refresh` alone
-    does not answer that — an adapter declaring `watch` on an install that has
-    watch off is refused by `resolve_adapter`, so a screen reading the raw
-    field would report a cadence the writer would not serve."""
-
-    async def test_a_target_is_not_watched_while_the_install_has_watch_off(
-        self, client, auth_headers, session
-    ):
-        await _adapters_config(
-            session, {"claude-code": {"context_file": "CLAUDE.md", "refresh": "watch"}}
-        )
-
-        state = (await client.get("/api/v1/distribution", headers=auth_headers)).json()
-
-        target = next(t for t in state["targets"] if t["tool"] == "claude-code")
-        assert target["refresh"] == "watch"
-        assert target["watched"] is False
-
-    async def test_it_is_watched_once_the_install_enables_it(
-        self, client, auth_headers, session
-    ):
-        await _adapters_config(
-            session, {"claude-code": {"context_file": "CLAUDE.md", "refresh": "watch"}}
-        )
-        await client.put(
-            "/api/v1/distribution/policy",
-            json={"token_budget": 2000, "curbed": False, "watch_enabled": True},
-            headers=auth_headers,
-        )
-
-        state = (await client.get("/api/v1/distribution", headers=auth_headers)).json()
-
-        target = next(t for t in state["targets"] if t["tool"] == "claude-code")
-        assert target["watched"] is True
-
-    async def test_a_session_start_target_stays_unwatched_with_the_flag_on(
-        self, client, auth_headers
-    ):
-        """The flag permits watch; it does not impose it. A target that never
-        asked for the cadence is still refreshed at session start."""
-        await client.put(
-            "/api/v1/distribution/policy",
-            json={"token_budget": 2000, "curbed": False, "watch_enabled": True},
-            headers=auth_headers,
-        )
-
-        state = (await client.get("/api/v1/distribution", headers=auth_headers)).json()
-
-        assert all(t["watched"] is False for t in state["targets"])

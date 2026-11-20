@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 """`darkmem connect <tool>` — the onboarding command (doc 15 §5, T3.13).
 
+Reached only from the CLI: no route, job or MCP tool imports this file.
+
 Thin by design. Every decision lives in ``app.services.client_connect`` and
 ``app.services.inject_adapters`` so it is testable without a terminal, a tool
 installation or a server; this file is argument parsing, file I/O and printing.

@@ -161,9 +161,6 @@ EXPECTED_STATUS = {
     ("GET", "/api/v1/graph/full"): 200,
     ("GET", "/api/v1/graph/memory-context/{memory_id}"): 200,
     ("GET", "/api/v1/distribution"): 200,
-    # 200 rather than 204: the curb is here, and a human turning push off
-    # needs to see the state now in force.
-    ("PUT", "/api/v1/distribution/policy"): 200,
     ("GET", "/api/v1/graph/unified"): 200,
     ("GET", "/api/v1/config/notifications"): 200,
     ("PUT", "/api/v1/config/notifications"): 200,

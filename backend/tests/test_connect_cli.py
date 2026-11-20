@@ -502,3 +502,35 @@ class TestTheRegistryReadFailsSoftly:
 
         assert await cli.main() == 2
         assert "no such tool" in capsys.readouterr().err
+
+
+async def test_connect_entry_resolves_an_adapter(session, monkeypatch, tmp_path, capsys):
+    """The CLI reads the adapter registry and writes that tool's MCP config
+    into the named workspace, with no inject module behind it."""
+    from contextlib import asynccontextmanager
+
+    from app.services.inject_adapters import resolve_adapter
+
+    module = _connect_module()
+
+    @asynccontextmanager
+    async def same_session():
+        yield session
+
+    async def handshake(call):
+        return ["memory_search"]
+
+    monkeypatch.setattr(module, "async_session_factory", same_session)
+    monkeypatch.setattr(module, "verify_handshake", handshake)
+    monkeypatch.setattr(
+        sys, "argv", ["connect.py", "cursor", "--workspace", str(tmp_path)]
+    )
+
+    assert await module.main() == 0
+
+    adapter = await resolve_adapter(session, "cursor")
+    written = tmp_path / adapter.mcp_config
+    assert written.exists()
+    assert "darkmem" in json.loads(written.read_text())["mcpServers"]
+    assert f"wrote {written}" in capsys.readouterr().out
+

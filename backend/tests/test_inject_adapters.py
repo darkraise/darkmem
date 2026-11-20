@@ -7,8 +7,9 @@ Three done-whens, and two of them are about refusing rather than doing:
 2. An unknown tool is refused with a message, **not a best guess** — the
    failure that forbids is writing a managed block into a file the tool does
    not read (silent) or one another tool does (worse).
-3. Refresh is session-start only; ``watch`` is T4.06's, and a cadence accepted
-   here but unimplemented below would report a push that never happens.
+3. Refresh is session-start only; a row declaring any other cadence is
+   refused, since a cadence accepted here and unimplemented below would
+   report a push that never happens.
 """
 
 from __future__ import annotations
@@ -24,7 +25,6 @@ from app.services import inject_adapters as ia
 from app.services.inject_adapters import (
     REFRESH_SESSION_START,
     UnknownTool,
-    UnsupportedCadence,
     get_adapters,
     resolve_adapter,
 )
@@ -162,8 +162,8 @@ class TestTheMatrix:
 
     async def test_one_marker_style_is_valid_in_every_v1_context_file(self, session):
         """Not a simplification but a fact about the target set: every v1 file
-        is Markdown, so `inject_block`'s HTML-comment sentinels are valid in
-        all four. A target with a different comment syntax is the seam this
+        is Markdown, so one HTML-comment sentinel style is valid in all
+        four. A target with a different comment syntax is the seam this
         records — parameterising the marker before one exists is scaffolding.
         """
         markdownish = {".md", ".mdc", ".markdown"}
@@ -201,30 +201,31 @@ class TestAnUnknownToolIsRefused:
 
 
 class TestTheCadence:
-    async def test_watch_mode_is_refused_not_accepted_and_ignored(self, session):
-        with pytest.raises(UnsupportedCadence):
-            await resolve_adapter(session, "claude-code", cadence="watch")
+    async def test_watch_cadence_is_refused_with_a_reason(self, session):
+        """No watcher exists, so a row asking for one is refused by name, on
+        the read and at the CLI's door, rather than served at a cadence
+        nothing implements."""
+        await _config(session, {
+            "claude-code": {"context_file": "CLAUDE.md", "refresh": "watch"},
+            "zed": {"context_file": "AGENTS.md", "refresh": REFRESH_SESSION_START},
+        })
 
-    async def test_an_adapter_declaring_another_cadence_is_refused(self, session):
-        """A config row cannot switch watch on by itself.
+        adapters, rejected = await ia.get_registry(session)
+        assert "claude-code" not in adapters
+        assert "watch cadence was removed" in rejected["claude-code"]
 
-        The refusal used to belong to watch being unimplemented; since T4.06 it
-        belongs to the policy flag, which is the human's. The two questions are
-        different — "which cadence does this tool want" and "may this install
-        be watched" — and an adapter row answering the second would let an
-        operator editing transport facts start a push cadence nobody enabled.
-        """
-        await _config(
-            session, {"claude-code": {"context_file": "CLAUDE.md", "refresh": "watch"}}
-        )
-
-        with pytest.raises(UnsupportedCadence):
+        with pytest.raises(UnknownTool) as refusal:
             await resolve_adapter(session, "claude-code")
+        assert "watch cadence was removed" in str(refusal.value)
+
+        zed = await resolve_adapter(session, "zed")
+        assert zed.refresh == REFRESH_SESSION_START
+        assert (await resolve_adapter(session, "cursor")).refresh == REFRESH_SESSION_START
 
     async def test_nothing_in_the_tree_schedules_an_inject(self):
-        """The cadence claim, asserted where it can regress. `watch` being
-        deferred means no job, cron or loop drives an inject; the client asks
-        at session start. A scan, because a cadence nobody enforces is prose.
+        """The cadence claim, asserted where it can regress: no job, cron or
+        loop drives an inject; the client asks at session start. A scan,
+        because a cadence nobody enforces is prose.
         """
         offenders: list[str] = []
         # Anchored on __file__, not cwd: the first version used `Path("app")`
@@ -249,5 +250,5 @@ class TestTheCadence:
 
         assert not offenders, (
             "inject must be pulled by the client at session start, never "
-            f"scheduled server-side (watch mode is T4.06's): {offenders}"
+            f"scheduled server-side: {offenders}"
         )

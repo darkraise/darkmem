@@ -265,8 +265,7 @@ async def gather_facts(
     the ``name_lower`` it was given finds the same rows.
 
     ``now`` is a parameter rather than a clock read so the ranking is testable
-    for equality — the same reason ``inject_block.render_block`` takes its
-    ``generated_at``.
+    for equality.
 
     **Read-heat is computed here, never read from a stored column.** Doc 09
     §4.1 is explicit that heat is "computed at job time, never a stored heat

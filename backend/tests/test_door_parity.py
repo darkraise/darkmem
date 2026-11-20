@@ -164,13 +164,13 @@ PARITY_TABLE: tuple[Surface, ...] = (
     Surface(
         name="distribution.config",
         status=REST_ONLY,
-        rest=(("GET", f"{V1}/distribution"), ("PUT", f"{V1}/distribution/policy")),
+        rest=(("GET", f"{V1}/distribution"),),
         mcp=(),
         reason=(
-            "Configures what agents are *told*, and the curb stops push "
-            "entirely. Exposing 'stop telling agents things' to an agent "
-            "inverts the control it exists to give a human, so this is "
-            "single-door on purpose rather than by omission."
+            "An operator's read of which file each client tool reads and "
+            "which configured rows were refused. Nothing injects today, so "
+            "there is no policy to set, and keeping 'stop telling agents "
+            "things' with a human is why this stays single-door on purpose."
         ),
     ),
     Surface(
@@ -185,8 +185,7 @@ PARITY_TABLE: tuple[Surface, ...] = (
             "Arming the research loop is an operator act, and the loop's own "
             "door is an MCP tool — so an MCP twin here would let the caller "
             "that runs the loop also switch it on, which is the control this "
-            "row exists to keep with the human. Same shape as the "
-            "distribution config above and for the same reason."
+            "row exists to keep with the human."
         ),
     ),
     Surface(
@@ -275,8 +274,7 @@ PARITY_TABLE: tuple[Surface, ...] = (
         reason=(
             "Model rates are an operator setting, and the write half decides "
             "what every later call is reported to have cost. Exposing it to "
-            "an agent would let the measured party set its own price, which is "
-            "the same control the distribution curb keeps with the human."
+            "an agent would let the measured party set its own price."
         ),
     ),
     Surface(

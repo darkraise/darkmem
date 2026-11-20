@@ -1,5 +1,7 @@
 """`darkmem connect <tool>` — client MCP configuration (doc 15 §5) — T3.13.
 
+Reached only from the CLI, ``backend/scripts/connect.py``.
+
 **This writes a file, and that does not contradict T3.09.** The rule there is
 that the *server* never writes the *client's* filesystem. This module is a
 client-side CLI that happens to live in this repository: it runs on the
