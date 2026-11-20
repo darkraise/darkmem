@@ -24,9 +24,17 @@ changes no code.
   Reusing `memory_communities` gives 72 communities over the 1,000-memory
   view (median 10), leaves 11% of it uncovered, labels with raw entity
   triples, and refreshes only when `topic_detection` runs.
-- **Resolution is one constant, 2.0, for every view size** (my call). Across
-  the six views measured it beat Louvain at resolution 1 on churn stability
-  in every one (Riskiest assumption).
+- **Resolution 2.0, with a coverage fallback to 1.0** (pre-execution
+  ruling, 2026-11-20, `.dforge/rulings-preexec-3-report.md`). The approved
+  draft used 2.0 for every view size. At 2.0, modularity scores a small
+  near-duplicate view best as singletons, so project scopes under about 40
+  memories lost most or all of their clusters (`measure5.out`: GamexV2 0.95
+  to 0.00, gdrive-downloader 1.00 to 0.00). A resolution rising with view
+  size fixed coverage but lost most of 2.0's stability on mid-size scopes
+  (`measure7.out`: darkraise-ai-plugins 0.60 against 0.83). The fallback
+  keeps 2.0 on every view it clusters at 90% or more, which includes the
+  1,000-memory view the owner's choice was measured on and every scope of
+  79 memories or more (`measure10.out`).
 - **Determinism** (my call): Leiden runs with `n_iterations=-1` (until
   stable) after `igraph.set_random_number_generator(random.Random(42))`. A
   fresh `Random` never touches Python's global `random` state, and the call
@@ -90,10 +98,16 @@ Leiden on a synthetic 50,000-node graph took 0.31 s against Louvain's 0.28 s.
 
 `cluster_labels` replaces `community_multilevel` with
 `community_leiden(objective_function="modularity", weights="weight",
-resolution=CLUSTER_RESOLUTION, n_iterations=-1)`, seeded as Decisions says.
-`CLUSTER_RESOLUTION = 2.0` and `CLUSTER_SEED = 42` sit beside `CLUSTER_K`.
-Renumbering and the `min_cluster_size` drop are unchanged. No other caller of
-igraph community detection exists in `backend/app`.
+resolution=<r>, n_iterations=-1)`, seeded as Decisions says before each
+pass. It first clusters at `CLUSTER_RESOLUTION = 2.0`. When fewer than
+`MIN_CLUSTERED_SHARE = 0.9` of the view's memories (every memory, including
+those with no edge) carry a label after the `min_cluster_size` drop, it
+clusters again at `FALLBACK_RESOLUTION = 1.0` and keeps that result only
+when it labels strictly more memories; otherwise the 2.0 result stands.
+`CLUSTER_SEED = 42` and the three constants sit beside `CLUSTER_K`.
+Renumbering, the `min_cluster_size` drop and the no-edges branch are
+unchanged. No other caller of igraph community detection exists in
+`backend/app`.
 
 ### Naming (`backend/app/utils/cluster_names.py`, new, pure)
 
@@ -216,6 +230,8 @@ The delta (carried into the proof report):
 A1. [test, high] Clustering the same similarity graph twice returns identical labels, including when Python's global `random` state changes between the calls.
 A2. [test, high] Two dense groups joined weakly enough that Louvain at resolution 1 merges them come back as two clusters.
 A3. [test, high] Communities smaller than `min_cluster_size` are labelled -1, and a graph with no edges labels every memory -1 (existing behaviour kept).
+A22. [test, high] A view of five near-identical memories (a complete similarity graph) comes back as one cluster of five, through the 1.0 fallback.
+A23. [test, high] A view that 2.0 clusters at 90% or more keeps exactly its 2.0 labels, and a view where the 1.0 pass labels no more memories than the 2.0 pass keeps the 2.0 labels.
 A4. [demo, high] Running the shipped `knn_graph` plus `cluster_labels` over the newest 1,000 memories of the measurement export gives at least 15 clusters, a largest cluster of at most 120 and a churn ARI of at least 0.85.
 A5. [test, high] A memory whose `project` is `default` counts toward the project in its first `project/` tag when choosing a prefix.
 A6. [test, high] A cluster whose most common effective project holds at least 60% of its members starts with that project's name; below 60%, or when that project is `default`, the name has no prefix.
@@ -237,12 +253,14 @@ A21. [demo, neg, high] OP-1: the live proof records 0 console or page errors and
 
 ## Riskiest assumption
 
-That one fixed resolution, 2.0, suits every view the page serves, from a
-64-memory project scope to the whole corpus. Evidence: `measure2.py` on
-2026-11-20 (`.dforge/ui-ux/graph-cluster-quality/measurements/measure2.out`)
-over six views from 64 to 4,759 memories. Leiden at 2.0 has the higher churn
-ARI than Louvain at 1.0 in all six and roughly halves the largest cluster in
-the large views. The weak point is the smallest scope: on `darkload` (64
-memories), 11% of memories end up unclustered (coverage 0.89, against 1.00
-today). If the owner finds small scopes over-split on the live page, the fix
-is a resolution that falls with view size, not another algorithm.
+That resolution 2.0 with the 1.0 coverage fallback suits every view the
+page serves, from a 5-memory project scope to the whole corpus. Evidence:
+`measure2.out` and `measure10.out` (2026-11-20, in
+`.dforge/ui-ux/graph-cluster-quality/measurements/`). On the newest-1,000
+view and every scope of 79 memories or more the rule keeps 2.0, whose churn
+ARI beats Louvain at 1.0 in every view measured. Every smaller scope that
+2.0 dissolved falls back to 1.0 with coverage of at least 0.95. The known
+weakness: a scope near the 90% line (homelab, 36 memories;
+claude-code-plugins, 60) can switch resolution when a memory arrives, which
+reshuffles its clusters (churn ARI 0.60 and 0.61, with the trials split
+between the two resolutions in `measure10.out`).
