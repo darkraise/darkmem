@@ -11,10 +11,13 @@ T1.01 owns asserting the one-query property with a query-counting test.
 """
 from __future__ import annotations
 
-from sqlalchemy import select
+from collections.abc import Callable
+
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import LLMPurposeConfig, settings
+from app.models.config import Config
 from app.models.llm_config import LLMPurposeConfigRow
 from app.models.llm_provider import LLMProviderRow
 from app.schemas.config import LLMPurposeConfigSchema
@@ -103,3 +106,42 @@ async def get_llm_config(session: AsyncSession) -> dict[str, LLMPurposeConfig]:
             provider_name=provider.name,
         )
     return merged
+
+
+async def lock_config_row(session: AsyncSession, key: str) -> None:
+    """Serialise writers of one ``config`` row for the rest of the transaction.
+
+    A transaction-scoped advisory lock rather than ``SELECT ... FOR UPDATE``
+    alone: a row lock locks nothing while the row does not exist yet, which is
+    every door's first save, and two first saves would both insert.
+    """
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtext(:key))"), {"key": key}
+    )
+
+
+async def patch_config_row(
+    session: AsyncSession, key: str, mutate: Callable[[dict], dict],
+) -> dict:
+    """Read-modify-write one ``config`` row under its lock, and commit.
+
+    ``mutate`` takes a copy of the stored value (``{}`` when there is no row or
+    it is not an object) and returns the value to store; validate before the
+    call, so nothing in ``mutate`` can raise. The lock is held until the commit,
+    so a concurrent save of the same row reads this one's result.
+    """
+    await lock_config_row(session, key)
+    row = (await session.execute(
+        select(Config).where(Config.key == key)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )).scalar_one_or_none()
+    current = dict(row.value) if row is not None and isinstance(row.value, dict) else {}
+    stored = mutate(current)
+    if row is None:
+        session.add(Config(key=key, value=stored))
+    else:
+        row.value = stored
+    await session.flush()
+    await session.commit()
+    return stored

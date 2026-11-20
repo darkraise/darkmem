@@ -311,10 +311,10 @@ async def test_the_config_lock_excludes_a_second_writer_on_the_same_key():
     operator just sees the control they reset sitting at its old value.
     """
     from tests.conftest import test_engine
-    from app.api.routes.config import _lock_config_row
+    from app.services.config import lock_config_row
 
     async with AsyncSession(test_engine) as holder:
-        await _lock_config_row(holder, LADDER_CONFIG_KEY)
+        await lock_config_row(holder, LADDER_CONFIG_KEY)
         async with AsyncSession(test_engine) as contender:
             taken = (
                 await contender.execute(
@@ -353,7 +353,7 @@ async def test_two_concurrent_ladder_clears_both_survive():
     locked path composes and commits at all.
     """
     from tests.conftest import test_engine
-    from app.api.routes.config import _lock_config_row
+    from app.services.config import lock_config_row
     from app.models.config import Config
 
     async with AsyncSession(test_engine) as setup:
@@ -369,7 +369,7 @@ async def test_two_concurrent_ladder_clears_both_survive():
     async def clear(name: str) -> None:
         """One request's worth of read-modify-write, lock included."""
         async with AsyncSession(test_engine) as s:
-            await _lock_config_row(s, LADDER_CONFIG_KEY)
+            await lock_config_row(s, LADDER_CONFIG_KEY)
             row = (
                 await s.execute(
                     select(Config).where(Config.key == LADDER_CONFIG_KEY)

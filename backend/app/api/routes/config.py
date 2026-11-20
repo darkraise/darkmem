@@ -11,7 +11,6 @@ from pydantic import (
     model_serializer,
 )
 from sqlalchemy import select, text
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_auth
@@ -30,6 +29,8 @@ from app.schemas.config import (
 from app.services.config import (
     PURPOSES,
     cfg_to_schema,
+    lock_config_row,
+    patch_config_row,
 )
 from app.services import ml_runtime, research_rerun
 from app.services.backup_config import (
@@ -454,27 +455,6 @@ def _numeric_flag_bounds() -> dict[str, FlagBound]:
 FeatureFlagsResponse.model_rebuild()
 
 
-async def _lock_config_row(session: AsyncSession, key: str) -> None:
-    """Serialise the read-modify-write on one ``config`` row.
-
-    Both PUTs below read a JSON blob, patch it in Python and write the whole
-    blob back. Two concurrent requests each read before the other commits, so
-    the second write drops the first's change entirely -- measured on the Flags
-    tab, where saving two controls inside one round-trip left one of them
-    silently un-saved and the row holding only the other. The operator sees a
-    control they set sitting at its old value with no error anywhere.
-
-    A transaction-scoped advisory lock is enough and is the cheapest thing that
-    is actually correct: it serialises writers on this key, needs no schema
-    change, and releases on commit or rollback. ``SELECT ... FOR UPDATE`` would
-    not do -- it locks no row when the row does not exist yet, which is exactly
-    the first-save case both of these doors have.
-    """
-    await session.execute(
-        text("SELECT pg_advisory_xact_lock(hashtext(:key))"), {"key": key}
-    )
-
-
 def _flags_response(flags: dict) -> FeatureFlagsResponse:
     """Build the wire response from a resolved flags dict.
 
@@ -553,8 +533,6 @@ async def update_feature_flags(
     _user=Depends(require_auth),
     session: AsyncSession = SessionDep,
 ):
-    await _lock_config_row(session, FEATURE_FLAGS_KEY)
-    current = await get_feature_flags_dict(session)
     updates = body.model_dump(exclude_unset=True)
 
     if "classification_areas" in updates:
@@ -567,21 +545,13 @@ async def update_feature_flags(
         if "general" not in updates["classification_areas"]:
             updates["classification_areas"] = ["general", *updates["classification_areas"]]
 
-    current.update(updates)
+    def mutate(current: dict) -> dict:
+        merged = {**FEATURE_FLAGS_DEFAULTS, **current, **updates}
+        # Drop any keys that aren't part of the current schema so deprecated
+        # flags don't linger in the DB row forever.
+        return {k: merged[k] for k in FEATURE_FLAGS_DEFAULTS if k in merged}
 
-    # Drop any keys that aren't part of the current schema so deprecated flags
-    # don't linger in the DB row forever.
-    stored = {k: current[k] for k in FEATURE_FLAGS_DEFAULTS if k in current}
-
-    result = await session.execute(select(Config).where(Config.key == FEATURE_FLAGS_KEY))
-    config = result.scalar_one_or_none()
-    if config:
-        config.value = stored
-    else:
-        session.add(Config(key=FEATURE_FLAGS_KEY, value=stored))
-    await session.flush()
-
-    await session.commit()
+    stored = await patch_config_row(session, FEATURE_FLAGS_KEY, mutate)
     return _flags_response(stored)
 
 
@@ -685,32 +655,22 @@ async def update_verification_ladder(
     keeping it means a later `ladder_measurements` entry licenses the value
     they already chose rather than requiring them to type it again.
     """
-    await _lock_config_row(session, LADDER_CONFIG_KEY)
-    result = await session.execute(select(Config).where(Config.key == LADDER_CONFIG_KEY))
-    row = result.scalar_one_or_none()
-    current = dict(row.value) if row and isinstance(row.value, dict) else {}
-
     updates = body.model_dump(exclude_unset=True)
-    for name, value in updates.items():
-        if value is None:
-            # An explicit null clears the commitment and returns the parameter
-            # to its shipped floor — the only way back out of an override.
-            current.pop(name, None)
-        else:
-            current[name] = value
 
-    # Drop anything that is not a known threshold, so a key the resolver would
-    # only warn about cannot accumulate in the row forever.
-    stored = {k: v for k, v in current.items() if k in LADDER_FLOORS}
+    def mutate(current: dict) -> dict:
+        for name, value in updates.items():
+            if value is None:
+                # An explicit null clears the commitment and returns the
+                # parameter to its shipped floor — the only way back out of an
+                # override.
+                current.pop(name, None)
+            else:
+                current[name] = value
+        # Drop anything that is not a known threshold, so a key the resolver
+        # would only warn about cannot accumulate in the row forever.
+        return {k: v for k, v in current.items() if k in LADDER_FLOORS}
 
-    if row:
-        row.value = stored
-    else:
-        session.add(Config(key=LADDER_CONFIG_KEY, value=stored))
-    await session.flush()
-    # Same reason as the feature-flags door above: a 200 must mean committed,
-    # or the client's own refetch can read around it.
-    await session.commit()
+    await patch_config_row(session, LADDER_CONFIG_KEY, mutate)
 
     return _ladder_response(await resolve_ladder(session))
 
@@ -832,7 +792,7 @@ async def update_backup_destinations(
     _user=Depends(require_auth),
     session: AsyncSession = SessionDep,
 ):
-    await _lock_config_row(session, BACKUP_DESTINATIONS_KEY)
+    await lock_config_row(session, BACKUP_DESTINATIONS_KEY)
     try:
         saved = await save_backup_destinations(session, body.model_dump())
     except DestinationInvalid as exc:
@@ -985,16 +945,7 @@ async def update_repo_allowlist(
             detail=f"Invalid allowlist patterns (host[/path-prefix] or *.host only): {invalid}",
         )
 
-    result = await session.execute(
-        select(Config).where(Config.key == REPO_ALLOWLIST_KEY)
-    )
-    config = result.scalar_one_or_none()
-    stored = {"patterns": cleaned}
-    if config:
-        config.value = stored
-    else:
-        session.add(Config(key=REPO_ALLOWLIST_KEY, value=stored))
-    await session.flush()
+    await patch_config_row(session, REPO_ALLOWLIST_KEY, lambda _: {"patterns": cleaned})
 
     return RepoAllowlistResponse(patterns=cleaned)
 
@@ -1064,7 +1015,6 @@ async def update_notifications(
     from app.services.notifications import masked, save_settings
 
     saved = await save_settings(session, body.model_dump(exclude_none=True))
-    await session.commit()
     return masked(saved)
 
 
@@ -1109,40 +1059,29 @@ async def update_system_prompts(
 ):
     from app.services import prompt as _prompt_mod  # noqa: PLC0415
 
-    row = (
-        await session.execute(select(Config).where(Config.key == _prompt_mod.SYSTEM_PROMPTS_KEY))
-    ).scalar_one_or_none()
-    stored: dict[str, str] = {}
-    if row and isinstance(row.value, dict):
-        for k, v in row.value.items():
-            if isinstance(k, str) and isinstance(v, str):
-                stored[k] = v
-
     for key, value in body.overrides.items():
         if not isinstance(key, str) or key not in _prompt_mod.PROMPTS:
             raise HTTPException(status_code=422, detail=f"Unknown prompt purpose: {key!r}")
         if not isinstance(value, str):
             raise HTTPException(status_code=422, detail=f"Prompt for {key!r} must be a string")
-        if value == "":
-            stored.pop(key, None)
-        else:
-            if len(value) > PROMPT_OVERRIDE_MAX_CHARS:
-                raise HTTPException(
-                    status_code=422,
-                    detail=(
-                        f"Prompt for {key!r} exceeds "
-                        f"{PROMPT_OVERRIDE_MAX_CHARS:,} characters"
-                    ),
-                )
-            stored[key] = value
+        if len(value) > PROMPT_OVERRIDE_MAX_CHARS:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Prompt for {key!r} exceeds {PROMPT_OVERRIDE_MAX_CHARS:,} characters",
+            )
 
-    if row:
-        row.value = stored
-    else:
-        session.add(Config(key=_prompt_mod.SYSTEM_PROMPTS_KEY, value=stored))
+    def mutate(current: dict) -> dict:
+        stored = {k: v for k, v in current.items() if isinstance(k, str) and isinstance(v, str)}
+        for key, value in body.overrides.items():
+            if value == "":
+                stored.pop(key, None)
+            else:
+                stored[key] = value
+        return stored
+
     # The in-process cache follows the committed row, never a write that may
     # still roll back.
-    await session.commit()
+    await patch_config_row(session, _prompt_mod.SYSTEM_PROMPTS_KEY, mutate)
 
     await _prompt_mod.refresh_from_db(session)
 
@@ -1191,14 +1130,9 @@ async def update_repos_path(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
-    row = (await session.execute(
-        select(Config).where(Config.key == "repos_default_local_path")
-    )).scalar_one_or_none()
-    if row is None:
-        session.add(Config(key="repos_default_local_path", value={"path": str(resolved)}))
-    else:
-        row.value = {"path": str(resolved)}
-    await session.flush()
+    await patch_config_row(
+        session, "repos_default_local_path", lambda _: {"path": str(resolved)},
+    )
     return ReposPathResponse(path=str(resolved))
 
 
@@ -1308,13 +1242,5 @@ async def update_theme_settings(
     session: AsyncSession = SessionDep,
 ):
     stored = body.settings.model_dump(by_alias=True, exclude_none=True)
-    # Saves are debounce-fired by every browser session, so concurrent
-    # first-ever writes are plausible; select-then-insert would 500 the loser.
-    await session.execute(
-        pg_insert(Config)
-        .values(key=THEME_SETTINGS_KEY, value=stored)
-        .on_conflict_do_update(
-            index_elements=[Config.key], set_={"value": stored}
-        )
-    )
+    await patch_config_row(session, THEME_SETTINGS_KEY, lambda _: stored)
     return ThemeSettingsResponse(settings=body.settings)

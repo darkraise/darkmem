@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models.config import Config
+from app.services.config import patch_config_row
 
 logger = logging.getLogger(__name__)
 
@@ -56,26 +57,21 @@ def masked(settings: dict) -> dict:
 
 
 async def save_settings(session: AsyncSession, patch: dict) -> dict:
-    current = await get_settings(session)
-    for section, values in (patch or {}).items():
-        if section not in current or not isinstance(values, dict):
-            continue
-        for key, value in values.items():
-            # The mask is what a client echoes back when it did not touch the
-            # secret; writing it through would destroy the real token.
-            if key == "bot_token" and value == MASK:
+    """Merge ``patch`` into the stored settings under the row lock, and commit."""
+    def mutate(stored: dict) -> dict:
+        current = _merged(stored)
+        for section, values in (patch or {}).items():
+            if section not in current or not isinstance(values, dict):
                 continue
-            current[section][key] = value
+            for key, value in values.items():
+                # The mask is what a client echoes back when it did not touch
+                # the secret; writing it through would destroy the real token.
+                if key == "bot_token" and value == MASK:
+                    continue
+                current[section][key] = value
+        return current
 
-    row = (await session.execute(
-        select(Config).where(Config.key == NOTIFICATIONS_CONFIG_KEY)
-    )).scalar_one_or_none()
-    if row is None:
-        session.add(Config(key=NOTIFICATIONS_CONFIG_KEY, value=current))
-    else:
-        row.value = current
-    await session.flush()
-    return current
+    return await patch_config_row(session, NOTIFICATIONS_CONFIG_KEY, mutate)
 
 
 async def send_telegram(settings: dict, text: str) -> tuple[bool, str | None]:

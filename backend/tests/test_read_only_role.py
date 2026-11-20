@@ -251,6 +251,8 @@ ROW_LOCK_WRITERS = {
     "services/block_embeddings.py",
     "services/buffer_flush.py",
     "services/buffer_monitor.py",
+    # patch_config_row: every config-row save locks the row it rewrites.
+    "services/config.py",
     "services/document_door.py",
     # Holds the dream actions' locked memory read; memory_dream and
     # dream_undo, both writers, are the only modules that execute it.
