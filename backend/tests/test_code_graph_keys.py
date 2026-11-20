@@ -17,12 +17,13 @@ from sqlalchemy.engine import Engine
 
 from app.models.code import Repository
 from app.repositories.fact_sources import CODE_SOURCE_KIND, STALE_DETAIL_KEY
-from app.services import process_tracer
+from app.services import community_detector, process_tracer
 from app.services.citation_reverify import reverify_citations
 from app.services.code_pipeline import CodePipeline
 from app.services.community_detector import CommunityDetector
 from app.services.process_tracer import ProcessTracer, _compute_entry_score
 from app.services.repo_manager import RepoManager
+from app.utils.leiden import PartitionResult
 
 
 class _Statements:
@@ -158,6 +159,16 @@ async def test_community_keys_are_stable_across_runs(session, tmp_path):
         r"INSERT INTO code_edges.*'member_of'|DELETE FROM code_edges.*edge_type = 'member_of'"
     ) == []
 
+    # A new cluster whose members sort first renumbers Leiden's communities;
+    # the existing communities keep their keys.
+    _write(tmp_path, {"a0.py": CLUSTERED["y.py"].replace("b", "c")})
+    _git(tmp_path, "add", "a0.py")
+    _git(tmp_path, "commit", "-qm", "third cluster")
+    await _run(session, repo)
+    after = [row.key for row in await _rows(session, community_sql, repo)]
+    assert len(after) == len(first) + 1
+    assert set(first) <= set(after)
+
 
 async def test_unchanged_call_graph_skips_phases_nine_and_ten(session, tmp_path, monkeypatch):
     repo = await _indexed(session, tmp_path, CLUSTERED)
@@ -189,6 +200,102 @@ async def test_unchanged_call_graph_skips_phases_nine_and_ten(session, tmp_path,
     assert await _rows(session, member_sql, repo) == members_before
 
 
+async def _layer(session, repo: Repository) -> tuple[list, list]:
+    members = await _rows(
+        session,
+        "SELECT source_key, target_key FROM code_edges "
+        "WHERE repo_id = :r AND edge_type = 'member_of' ORDER BY 1, 2",
+        repo,
+    )
+    communities = await _rows(
+        session,
+        "SELECT key FROM code_graph_nodes WHERE repo_id = :r AND kind = 'community' ORDER BY 1",
+        repo,
+    )
+    return members, communities
+
+
+async def test_a_graph_with_no_calls_left_keeps_no_community(session, tmp_path):
+    repo = await _indexed(session, tmp_path, CLUSTERED)
+    assert (await _layer(session, repo))[0]
+
+    await _commit_and_run(session, tmp_path, repo, {
+        "x.py": "def a1():\n    return 1\n\n\ndef a2():\n    return 2\n\n\ndef a3():\n    return 3\n",
+        "y.py": "def b1():\n    return 1\n\n\ndef b2():\n    return 2\n\n\ndef b3():\n    return 3\n",
+    })
+
+    assert await _layer(session, repo) == ([], [])
+
+
+async def test_a_deleted_file_leaves_its_community_when_clustering_is_unavailable(
+    session, tmp_path, monkeypatch,
+):
+    repo = await _indexed(session, tmp_path, CLUSTERED)
+    members, communities = await _layer(session, repo)
+    assert len(communities) == 2
+
+    async def _unavailable(*_args, **_kwargs):
+        return PartitionResult(membership=None, outcome="unavailable")
+
+    monkeypatch.setattr(community_detector, "partition_graph", _unavailable)
+    _git(tmp_path, "rm", "-q", "y.py")
+    _git(tmp_path, "commit", "-qm", "drop y")
+    await _run(session, repo)
+
+    members_after, communities_after = await _layer(session, repo)
+    assert members_after == [m for m in members if "::y.py" not in m.source_key]
+    assert len(communities_after) == 1
+
+
+async def test_a_visibility_change_reruns_the_process_tracer(session, tmp_path, monkeypatch):
+    source = (
+        "export class Svc {\n"
+        "  public run(): number { return this.a() + this.b(); }\n"
+        "  a(): number { return this.c(); }\n"
+        "  b(): number { return 1; }\n"
+        "  c(): number { return 2; }\n"
+        "}\n"
+    )
+    repo = await _indexed(session, tmp_path, {"svc.ts": source})
+    ran: list[str] = []
+    real_trace = ProcessTracer.trace
+
+    async def _trace(self, *args, **kwargs):
+        ran.append("processes")
+        return await real_trace(self, *args, **kwargs)
+
+    monkeypatch.setattr(ProcessTracer, "trace", _trace)
+
+    await _commit_and_run(session, tmp_path, repo, {
+        "svc.ts": source.replace("public run()", "private run()"),
+    })
+
+    assert ran == ["processes"]
+
+
+async def test_a_decorated_handler_becomes_a_process_entry(session, tmp_path):
+    repo = await _indexed(session, tmp_path, {
+        "app.py": (
+            "def route(fn):\n    return fn\n\n\n"
+            "@route\n"
+            "def handle():\n    return step_a() + step_b()\n\n\n"
+            "def step_a():\n    return step_c()\n\n\n"
+            "def step_b():\n    return 1\n\n\n"
+            "def step_c():\n    return 2\n"
+        ),
+    })
+
+    entries = {
+        row.source_key
+        for row in await _rows(
+            session,
+            "SELECT source_key FROM code_edges WHERE repo_id = :r AND edge_type = 'entry_point_of'",
+            repo,
+        )
+    }
+    assert "handle::app.py" in entries
+
+
 async def test_type_environment_is_seeded_per_file(session, tmp_path):
     repo = await _indexed(session, tmp_path, {
         "conf.py": (
@@ -199,6 +306,7 @@ async def test_type_environment_is_seeded_per_file(session, tmp_path):
         "cache.py": "class Cache:\n    def load(self):\n        return 0\n",
         "other.py": "def run(config):\n    return config.load()\n",
         "user.py": "from conf import config\n\n\ndef go():\n    return config.load()\n",
+        "star.py": "from conf import *\n\n\ndef go_star():\n    return config.load()\n",
     })
 
     callers = {
@@ -211,6 +319,7 @@ async def test_type_environment_is_seeded_per_file(session, tmp_path):
         )
     }
     assert "go::user.py" in callers
+    assert "go_star::star.py" in callers
     assert "run::other.py" not in callers
 
 

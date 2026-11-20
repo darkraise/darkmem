@@ -104,6 +104,7 @@ class CommunityDetector:
             node_ids[row["key"]] = idx
 
         if len(node_list) < 3:
+            await self._write_layer({}, set())
             return 0
 
         is_large = len(node_list) > _LARGE_GRAPH_THRESHOLD
@@ -155,6 +156,7 @@ class CommunityDetector:
                 node_degree[tgt] = node_degree.get(tgt, 0) + 1
 
         if not edge_list:
+            await self._write_layer({}, set())
             return 0
 
         if is_large:
@@ -193,7 +195,7 @@ class CommunityDetector:
         if membership is None:
             groups = [list(range(len(node_list)))]
             keys = [compose_key("community", "all")]
-            labels = {0: keys[0]}
+            labels = {keys[0]: keys[0]}
         else:
             by_comm: dict[int, list[int]] = {}
             for node_idx, comm_id in enumerate(membership):
@@ -209,17 +211,17 @@ class CommunityDetector:
             # Only the communities stored here compete for a label, so the
             # labels written match the ones the code graph route derives.
             labels = label_communities({
-                n: [node_list[i]["file_path"] for i in members]
-                for n, members in enumerate(groups)
+                key: [node_list[i]["file_path"] for i in members]
+                for key, members in zip(keys, groups)
             })
 
         desired_nodes = {
             key: {
                 "key": key,
-                "label": labels[n],
+                "label": labels[key],
                 "properties": {"size": len(members)},
             }
-            for n, (key, members) in enumerate(zip(keys, groups))
+            for key, members in zip(keys, groups)
         }
         desired_members = {
             (node_list[i]["id"], key)

@@ -121,25 +121,62 @@ _NODE_DELETE_SQL = """
       AND kind NOT IN ('community', 'process')
 """
 
-# What phases 09 and 10 read, as an order-free digest. A call edge below the
-# confidence phase 11 prunes is left out: it exists only between phases 06
-# and 11 of a run, so counting it would make every run look changed.
+# What phases 09 and 10 read, as an order-free digest: the edges they walk
+# and the kind and visibility they read off symbol nodes. A call edge below
+# the confidence phase 11 prunes is left out: it exists only between phases
+# 06 and 11 of a run, so counting it would make every run look changed.
 _CALL_GRAPH_DIGEST_SQL = """
-    SELECT count(*) AS edges,
-           COALESCE(sum(hashtextextended(
-               edge_type || '|' || source_key || '|' || target_key || '|'
-               || COALESCE(properties->>'confidence', ''), 0)), 0) AS digest
-    FROM code_edges
-    WHERE repo_id = :repo_id
-      AND edge_type IN ('calls', 'extends', 'implements', 'imports',
-                        'handles_route', 'handles_tool')
-      AND NOT (edge_type = 'calls'
-               AND COALESCE((properties->>'confidence')::float, 1.0) < 0.3)
+    WITH e AS (
+        SELECT hashtextextended(
+                   edge_type || '|' || source_key || '|' || target_key || '|'
+                   || COALESCE(properties->>'confidence', ''), 0) AS h
+        FROM code_edges
+        WHERE repo_id = :repo_id
+          AND edge_type IN ('calls', 'extends', 'implements', 'imports',
+                            'handles_route', 'handles_tool')
+          AND NOT (edge_type = 'calls'
+                   AND COALESCE((properties->>'confidence')::float, 1.0) < 0.3)
+    ), s AS (
+        SELECT hashtextextended(
+                   key || '|' || COALESCE(properties->>'kind', '') || '|'
+                   || COALESCE(properties->>'visibility', ''), 0) AS h
+        FROM code_graph_nodes
+        WHERE repo_id = :repo_id AND kind = 'symbol'
+    )
+    SELECT (SELECT count(*) FROM e) AS edges,
+           (SELECT COALESCE(sum(h), 0) FROM e) AS edge_digest,
+           (SELECT count(*) FROM s) AS symbols,
+           (SELECT COALESCE(sum(h), 0) FROM s) AS symbol_digest
 """
 
 # Route/tool nodes have bare keys and no file_path property, so the node
 # delete above can't match them; once their handles_* edge is gone they are
 # phantoms that would otherwise accumulate.
+# A deleted symbol's community membership and process steps, for a run whose
+# phases 09-10 do not rewrite them (clustering unavailable); then the
+# communities left with no member.
+_ORPHAN_LAYER_SWEEP_SQL = """
+    DELETE FROM code_edges e
+    WHERE e.repo_id = :repo_id
+      AND (e.edge_type IN ('member_of', 'step_in_process')
+           OR (e.edge_type = 'entry_point_of' AND e.source_kind = 'scored'))
+      AND NOT EXISTS (
+          SELECT 1 FROM code_graph_nodes n
+          WHERE n.repo_id = e.repo_id AND n.kind = 'symbol' AND n.key = e.source_key
+      )
+"""
+
+_EMPTY_COMMUNITY_SWEEP_SQL = """
+    DELETE FROM code_graph_nodes n
+    WHERE n.repo_id = :repo_id
+      AND n.kind = 'community'
+      AND NOT EXISTS (
+          SELECT 1 FROM code_edges e
+          WHERE e.repo_id = n.repo_id AND e.edge_type = 'member_of'
+            AND e.target_key = n.key
+      )
+"""
+
 _ORPHAN_HANDLER_SWEEP_SQL = """
     DELETE FROM code_graph_nodes n
     WHERE n.repo_id = :repo_id
@@ -1844,7 +1881,7 @@ class CodePipeline:
         row = (await self.session.execute(
             text(_CALL_GRAPH_DIGEST_SQL), {"repo_id": self._repo_id_str},
         )).one()
-        return (row.edges, row.digest)
+        return (row.edges, row.edge_digest, row.symbols, row.symbol_digest)
 
     async def phase_09_community_detection(self) -> None:
         t0 = await self._phase_log("09_community_detection")
@@ -2193,9 +2230,10 @@ class CodePipeline:
     async def _sweep_orphan_handlers(self, repo_id: UUID) -> None:
         if not self._orphan_sweep_due:
             return
-        await self.session.execute(
-            text(_ORPHAN_HANDLER_SWEEP_SQL), {"repo_id": str(repo_id)},
-        )
+        params = {"repo_id": str(repo_id)}
+        await self.session.execute(text(_ORPHAN_HANDLER_SWEEP_SQL), params)
+        await self.session.execute(text(_ORPHAN_LAYER_SWEEP_SQL), params)
+        await self.session.execute(text(_EMPTY_COMMUNITY_SWEEP_SQL), params)
         self._orphan_sweep_due = False
 
 
@@ -2355,13 +2393,16 @@ def _file_type_seed(
     named_imports: dict[str, tuple[str, str]],
 ) -> dict[str, str]:
     """The return types a file can name: the functions it defines and the
-    names it imports, under the name the file uses. A name the file neither
-    defines nor imports is a local that only shares a function's name."""
-    seed = dict(return_types.get(file_path, {}))
+    names it imports (phase 05 folds wildcard imports into the named map),
+    under the name the file uses, a definition shadowing an import. A name
+    the file neither defines nor imports is a local that only shares a
+    function's name."""
+    seed: dict[str, str] = {}
     for local_name, (source_file, exported_name) in named_imports.items():
         type_name = return_types.get(source_file, {}).get(exported_name)
         if type_name:
             seed[local_name] = type_name
+    seed.update(return_types.get(file_path, {}))
     return seed
 
 
