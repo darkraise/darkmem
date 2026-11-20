@@ -22,6 +22,8 @@
 
 **Worktree setup:** `docker compose -f docker-compose.dev.yml up -d postgres`, then confirm `.dforge/test-env.sh` and `.dforge/gate-legs.sh` exist (both are local, untracked files written with this plan)
 
+**Plan review:** 2026-11-20 — dforge:judge-opus — executability 16 / coherence 17 / coverage 17 / assumptions 16 (round 2)
+
 ## Global Constraints
 
 - **Verify first (spec rule 1).** Every finding starts with its failing test, or with the named query or command where no test can reproduce it. A finding whose test passes unchanged, or whose described code no longer exists, is not fixed: close its register row with `scripts/register set docs/dforge/registers/2026-11-20-audit-remaining.md <id> done --note "not reproduced: <evidence>"`, keep the passing test only if it pins behaviour no other test pins, and go on.
@@ -30,7 +32,7 @@
 - **Schema (spec rule 4).** Never edit `backend/migrations/versions/0001_baseline.py`, not even a comment. A schema change is a new revision whose `down_revision` is the head at the time it is written; the chain stays linear with one head. A revision must upgrade a populated database in place.
 - **Doors (spec rule 5).** After adding or removing a REST route or MCP tool, run the guards leg from `CLAUDE.md` ("The guards leg is mandatory…") and re-read the headline counts sentence in `docs/two-door-parity.md` and `CLAUDE.md`'s tool and job counts.
 - **No removal without proof (spec rule 6).** Remove a module, export, script or dependency only after `rg` shows no importer outside its own tests; quote the search in the commit body.
-- **Host limits (spec rule 7).** Run Python as `backend/.venv/bin/python` from `backend/`; there is no `python` on PATH. Backend tests take their database from `. ../.dforge/test-env.sh` (the dev Postgres on `127.0.0.1:5433`, database `darkmem_test`); never set `DATABASE_URL` in front of pytest and never point a test, harness or script at production (`127.0.0.1:5432`, container `darkmem-prod-postgres-1`). Exit 143 is SIGTERM from `earlyoom`, not a failure: read `free -h` and re-run before believing a red leg. Give every test, build and network command a timeout.
+- **Host limits (spec rule 7).** Run Python as `backend/.venv/bin/python` from `backend/`; there is no `python` on PATH. Backend tests take their database from `. ../.dforge/test-env.sh` (the dev Postgres on `127.0.0.1:5433`, database `darkmem_test`); never set `DATABASE_URL` in front of pytest and never point a test, harness or script at production (`127.0.0.1:5432`, container `darkmem-prod-postgres-1`). The one exception is a read-only `SELECT` (or an `EXPLAIN` of one) that a task step spells out, run through `docker exec darkmem-prod-postgres-1 psql`; nothing else in the run touches production. Exit 143 is SIGTERM from `earlyoom`, not a failure: read `free -h` and re-run before believing a red leg. Give every test, build and network command a timeout.
 - **Never run Playwright bare.** Use `backend/scripts/e2e/run_playwright_e2e.py`; `npx playwright test` points `/api` at the live instance on `:8000`.
 - **Nothing leaves this machine.** No `git push`, no image push (`DARKMEM_PUSH=0` on any build), no deploy and no write to production inside the run. `gh` is used read-only.
 - **Single worker (invariant 13).** No `--workers`, `WEB_CONCURRENCY` or `deploy.replicas` anywhere; every launch path keeps `--no-proxy-headers`. In-process caches added by this plan rely on the single worker and say so in one comment.
@@ -41,14 +43,15 @@
 - **Comments.** None unless the why is non-obvious. Never reference the task, plan or finding id in code.
 - **Commits.** `<type>(<scope>): <subject>`, subject at most 50 characters, imperative, no attribution lines. One commit per task unless a task says otherwise. Never `--no-verify`. Leave the untracked `graph.jpg` alone.
 - **Register.** When a task's commit lands, set each row its `**Items:**` line names with `scripts/register set <register> <id> done --note "<commit sha7>"` unless the row is closed `not reproduced`.
+- **Plugin scripts.** `scripts/register` and `scripts/ui-proof` are dforge plugin scripts, not files of this repository: call each as `bash <plugin-root>/scripts/<name>`, where the plugin root is the path the session start prints.
 - uutils (ubuntu-latest): a lock built on `mkdir` failing when the directory exists does not exclude a second process — create the lock file with `set -C` (noclobber), or use `flock`.
 - uutils (ubuntu-latest): `timeout` signals only the command it started, so the command's children keep running — run the command in its own process group (`setsid`) and signal the group.
 
 ## Contracts
 
 - **C1 — health body.** `GET /health` stays 200 and gains two keys: `classifier_unavailable: bool` (Task 11; true only while the stored classification purpose says `classifier_kind=local` and `torch` cannot be imported) and `pipeline_state: "ok" | "not_configured" | "read_only" | "failed_at_boot"` (Task 41).
-- **C2 — buffer triage.** Each item of `GET /api/v1/memory-buffer` carries `memory_id: str` (the pre-minted memory id from the row's metadata) and `memory_exists: bool`. The discard route `DELETE /api/v1/memory-buffer/{buffer_id}` keeps answering 204, deletes that memory through `MemoryService.delete_memory` when it exists, and reports it in the response header `X-Memory-Deleted: true|false`; the `buffer_discarded` event payload gains `memory_deleted: bool`.
-- **C3 — code queries.** `CodeQueryService.resolve_repo(name_or_id: str) -> Repository` raises `RepoNotFound` or `RepoAmbiguous(candidates: list[Repository])`. `CodeQueryService.lookup_symbol(repo_id, name, file_path=None, owner=None, limit=50)` returns rows carrying `file_path` with no lazy load. `BlastRadiusRequest` gains a required `repo_id: UUID`; a symbol key that matches more than one symbol raises `SymbolAmbiguous(candidates)`, answered as HTTP 409 with `error.code = "symbol_ambiguous"` and `error.candidates` on REST and as an `ambiguous` envelope listing `candidates` on MCP. Every MCP code tool reaches the database only through a `CodeQueryService` method.
+- **C2 — buffer triage.** Each item of `GET /api/v1/memory-buffer` already carries `memory_id` (`UUID | None` in `BufferRowResponse`, a string or null on the wire: the pre-minted memory id from the row's metadata), which stays as it is, and gains one new field, `memory_exists: bool` (false when `memory_id` is null). The discard route `DELETE /api/v1/memory-buffer/{buffer_id}` keeps answering 204, deletes that memory through `MemoryService.delete_memory` when it exists, and reports it in the response header `X-Memory-Deleted: true|false`; the `buffer_discarded` event payload gains `memory_deleted: bool`.
+- **C3 — code queries.** `CodeQueryService.resolve_repo(name_or_id: str) -> Repository` raises `RepoNotFound` or `RepoAmbiguous(candidates: list[Repository])`. `CodeQueryService.lookup_symbol(repo_id, name, file_path=None, owner=None, limit=50)` returns rows carrying `file_path` with no lazy load. `BlastRadiusRequest` gains a required `repo_id: UUID`; a symbol key that matches more than one symbol raises `SymbolAmbiguous(candidates)`, answered as HTTP 409 with `error.code = "symbol_ambiguous"` and `error.candidates` on REST and as an `ambiguous` envelope listing `candidates` on MCP. Every MCP code tool except `code_reindex` (the write door, which keeps its own repository lookup) reaches the database only through a `CodeQueryService` method.
 - **C4 — removed wire keys.** After Tasks 17, 43 and 44: the flags answer of `GET /api/v1/config/feature-flags` carries no `w_context_boost`, `community_injection_enabled` or `flag_measurements`; the retrieval envelope's `excluded` object carries no `by_context_conflict`; `GET /api/v1/distribution` carries no `policy`, `watched` or `refresh`; `PUT /api/v1/distribution/policy` and `GET /api/v1/vectors/projection` do not exist.
 - **C5 — session rotation.** `GET /api/v1/auth/me` and the answer of `POST /api/v1/auth/refresh` carry `expires_at` (ISO 8601, UTC). On a successful refresh or change-password the server closes every WebSocket bound to the presented token with code `4001` and reason `Session renewed`, before the blocklist write commits. A socket closed for expiry, epoch change or revocation keeps the existing reason `Session expired or revoked`.
 - **C6 — config rows.** `app.services.config.patch_config_row(session, key, mutate) -> dict` locks the row (`SELECT … FOR UPDATE`, inserting it when absent), calls `mutate(current: dict) -> dict`, writes the result and commits.
@@ -57,8 +60,8 @@
 - **C9 — graph preview.** Each memory node of `GET /api/v1/graph/unified` carries `content` cut to at most 280 characters and `content_truncated: bool`; the full text is read from `GET /api/v1/memories/{id}`.
 - **C10 — state boards.** `frontend/src/features/settings/components/settings-save-states.stories.tsx` (Task 55) and `frontend/src/components/app-chrome/load-failure-states.stories.tsx` (Task 50), each exporting one story per state, are the source of the A37 and A41 proof screenshots.
 - **C11 — local helpers.** `.dforge/test-env.sh` exports `TEST_DATABASE_URL` and `BENCH_DATABASE_URL`; `.dforge/gate-legs.sh` runs every gate leg except the F1 bench and prints `ALL LEGS OK`.
+- **C12 — lost-tag script.** `backend/scripts/restore_refine_project_tags.py` takes `--dry-run` (default), `--apply`, `--database-url <url>` and `--i-am-the-owner`. Without `--database-url` it reads `DATABASE_URL`, and then `--apply` without `--i-am-the-owner` exits 2 before any connection; with `--database-url` no owner flag is needed. A dry run prints one line per affected memory, `<memory_id>\t<comma-separated lost project/ tags>`, then `memories: <n>`, and writes nothing.
 - **C13 — fact facets.** `FactListResponse.facets`: an object mapping each filterable field of the facts tab (the fields its select options are built from in `frontend/src/features/knowledge/use-facts.ts`) to the sorted list of distinct values among all facts in the request's project scope, independent of paging and of the other filters (Task 62).
-- **C12 — lost-tag script.** `backend/scripts/restore_refine_project_tags.py` with `--dry-run` (default) and `--apply`; a dry run prints one line per affected memory, `<memory_id>\t<comma-separated lost project/ tags>`, then `memories: <n>`.
 
 ## Assumptions (evidence)
 
@@ -73,6 +76,9 @@
 - `frontend/src/*.ts(x)` and `*.css` count as UI files (`scripts/ui-proof paths`), so every task editing one carries a `**UI/UX:**` line even when it only deletes unused code; such a line cites OP-4.
 - Register row 215 (requeue the 53 failed captures) and the deploy are production writes, which an auto run never performs. Row 215 is deferred with that reason; Task 71 holds the after-merge sequence, which is carried out once the run has finished and merged.
 - The F1-19 preview (C9) means the graph page's text filter matches the first 280 characters of a memory and its tags, not the whole text. This follows the track's observation that the page needs content only for labels, the filter and the detail panel; the detail panel loads the full text on open.
+- The SPA has no buffer list: `rg memory-buffer frontend/src` on 2026-11-20 matches one comment, and `triage-tab.tsx` lists `pipeline_failures` only. Ruling (the Opus ruling seat, `.dforge/rulings-preexec-4-report.md`): UX-12's confirmation lives in a new "Failed captures" section of the existing Activity → Triage tab, with Requeue and Discard. It adds no route and no tab, so OP-4 holds; it is hidden in demo mode; Requeue has no confirmation.
+- `backend/scripts/e2e/run_e2e.py` reads no arguments today and exits 2 (`BLOCKED`) when the LAN endpoint does not serve the seeded extraction model (read 2026-11-20). Task 56 adds the argument pass-through and treats exit 2 as a missing toolchain, not a red test.
+- Tasks 41 and 52 each read production once through a spelled-out `SELECT`; Global Constraints' Host limits names that exception. Every write and every other read uses the dev Postgres.
 - P1-7 names no remedy in the track file. Decision: `release.sh` runs the floor gate and the three legs `CLAUDE.md` names for this host, and runs `gate.sh --full` only when called with `--full-gate`.
 
 ## Task index
@@ -335,7 +341,7 @@ git commit -m "fix(security): validate ssh fields, rebind secrets"
 - `::test_picker_routes_a_fork_to_hosted` (unit, A6): `pick_runner` called with the fork marker set (the environment variable the workflow passes from the same expression) returns `ubuntu-latest` in every mode, including when no picker token is present; fails today because a tokenless picker queues on self-hosted.
 - `::test_third_party_actions_are_pinned_to_shas` (unit): in all three workflow files, every `uses:` naming an action outside `actions/` and `github/` is pinned to a 40-character commit sha with the tag in a trailing comment.
 - `::test_scan_job_does_not_write_the_publish_cache` (unit): the trivy scan job's build step has no `cache-to`, or a scope different from the publish job's `cache-from`.
-- `backend/tests/test_dev_script_guards.py::test_start_dev_server_refuses_without_database_url` (integration, bash): running `scripts/start_dev_server.sh` with `DATABASE_URL` unset exits non-zero before any migration, printing a line naming `DATABASE_URL`; the script contains no bare `python ` invocation and uses `backend/.venv/bin/python`; fails today because it calls `python -m alembic upgrade head` against the default port 5432.
+- `backend/tests/test_dev_script_guards.py::test_start_dev_server_refuses_without_database_url` (integration, bash): the test never runs the script in place. It copies `scripts/start_dev_server.sh` into `<tmp>/scripts/`, creates `<tmp>/backend/.venv/bin/python` and, in a directory put first on `PATH`, `python`, `pip`, `alembic` and `uvicorn`, each a stub that appends its arguments to `<tmp>/calls.log` and exits 0, then runs the copy under `timeout 10` with `DATABASE_URL` unset. It asserts a non-zero exit that is not 124, a printed line naming `DATABASE_URL`, and an empty `calls.log`; a second case with `DATABASE_URL` set asserts the first logged call is the venv stub with `-m alembic upgrade head` and that no call came from the bare `python` stub. Fails today because the bare `python` stub is called with `-m alembic upgrade head` and the script exits 0. The stubs are what keep the red run from migrating port 5432 or binding `:8000`.
 - `::test_e2e_reset_refuses_a_non_disposable_database` (unit): `e2e_db`'s reset raises before any SQL when the target database name does not match the suite's disposable pattern or the port is 5432; the destructive-SQL guard's exemption text no longer claims it never touches an ambient database.
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -410,6 +416,7 @@ git commit -m "fix(read-only): refuse reprocess and three MCP tools"
 - Modify: `backend/app/services/hybrid_search.py`
 - Modify: `CLAUDE.md`
 - Test: `backend/tests/test_chat_retrieval_parity.py`
+- Test: `backend/tests/test_access_rank_signals.py`
 
 **Interfaces:**
 - Consumes: none
@@ -546,6 +553,7 @@ git commit -m "fix(pipeline): retry transient extraction failures"
 - Modify: `backend/app/services/buffer_flush.py`
 - Modify: `backend/app/config.py`
 - Modify: `backend/app/api/routes/memories.py`
+- Modify: `backend/app/api/mcp/server.py`
 - Modify: `CLAUDE.md`
 - Test: `backend/tests/test_wait_process.py`
 
@@ -574,11 +582,11 @@ Run: `.venv/bin/python -m pytest -q tests/test_wait_process.py`
 
 1. B1-6: at the deadline return the ack and let the flush continue as a tracked background task holding its own session and its LLM lease; never cancel it from the request. The claim, the attempt count and the `FOR UPDATE SKIP LOCKED` path are unchanged.
 2. B1-9: answer 201 only when `ClaimedFlushResult.done` is true for that row.
-3. B1-22: replace the flag with the module constant and remove its default from `config.py`; correct `CLAUDE.md`'s `buffer_wait_timeout_seconds` mention to the constant.
+3. B1-22: replace the flag with the module constant and remove its default from `config.py`; correct `CLAUDE.md`'s `buffer_wait_timeout_seconds` mention to the constant, and reword the three MCP tool descriptions in `server.py` that name the flag (`rg buffer_wait_timeout_seconds backend/app` lists them) to say the wait is 10 seconds.
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `.venv/bin/python -m pytest -q tests/test_wait_process.py tests/test_memory_buffer.py tests/test_session_resource_lifetimes.py`
+Run: `.venv/bin/python -m pytest -q tests/test_wait_process.py tests/test_memory_buffer.py tests/test_session_resource_lifetimes.py tests/test_prompt_agent_instructions.py`
 
 - [ ] **Step 5: Commit**
 
@@ -618,7 +626,7 @@ Run: `.venv/bin/python -m pytest -q tests/test_memory_buffer.py`
 
 - [ ] **Step 3: Implement**
 
-1. Per C2: add the two fields to the list item schema (one query for existence over the page's ids, no per-row query) and the `X-Memory-Deleted` header to the discard answer.
+1. Per C2: add `memory_exists` to the list item schema (one query for existence over the page's ids, no per-row query; `memory_id` is already served and is not changed) and the `X-Memory-Deleted` header to the discard answer.
 2. The discard calls `MemoryService.delete_memory` for an existing memory in the same transaction as the buffer row's settlement, journalling `buffer_discarded` as today with the new key.
 3. Correct `CLAUDE.md`'s sentence on discard to say it deletes the materialised memory.
 
@@ -685,10 +693,17 @@ git commit -m "fix(classify): refuse local classifier without torch"
 ### Task 12: Buffer discard confirmation and classifier notice
 
 **Files:**
+- Create: `frontend/src/hooks/api/use-memory-buffer-api.ts`
+- Create: `frontend/src/features/activity/components/failed-captures-section.tsx`
+- Create: `frontend/src/features/activity/components/failed-captures-section.stories.tsx`
+- Modify: `frontend/src/hooks/api/index.ts`
 - Modify: `frontend/src/features/activity/components/triage-tab.tsx`
 - Modify: `frontend/src/features/settings/components/llm-tab.tsx`
 - Modify: `frontend/src/features/settings/use-llm-tab-binding.ts`
-- Test: `frontend/src/features/activity/components/triage-tab.discard.test.tsx`
+- Test: `frontend/src/hooks/api/__tests__/use-memory-buffer-api.test.tsx`
+- Test: `frontend/src/hooks/api/__tests__/use-memory-buffer-api.demo.test.tsx`
+- Test: `frontend/src/features/activity/__tests__/failed-captures-section.test.tsx`
+- Test: `frontend/src/features/activity/__tests__/failed-captures-section.demo.test.tsx`
 - Test: `frontend/src/features/settings/components/llm-tab.classifier.test.tsx`
 
 **Interfaces:**
@@ -698,32 +713,46 @@ git commit -m "fix(classify): refuse local classifier without torch"
 **Items:** 9, 13
 **UI/UX:** UX-12, UI-6
 **Depends on:** Task 10, Task 11
-**Evaluation:** files 1 - spec 2 - coupling 1 - risk 1 = 5
+**Evaluation:** files 2 - spec 2 - coupling 1 - risk 1 = 6
+
+The SPA has no buffer list today: `triage-tab.tsx` lists `pipeline_failures` only and no frontend file calls `/api/v1/memory-buffer`. UX-12's confirmation therefore lives in a new "Failed captures" section of the existing Activity → Triage tab (ruling recorded in Assumptions): no new route, no new tab.
 
 - [ ] **Step 1: Write the failing test**
 
-- `triage-tab.discard.test.tsx::names the memory and deletes only on confirm` (unit, A55): for a row with `memory_exists: true`, pressing Discard opens the library confirmation dialog whose text contains the memory's short id and the sentence "This also deletes the memory."; Cancel sends no request; Confirm sends the discard request once. For a row with `memory_exists: false` the dialog does not mention a memory. Fails today because discard sends at once with no such text.
-- `::reports a failed discard` (unit): a 500 from the discard keeps the row listed and shows an error toast.
+The demo flag is set once per file with the hoisted `vi.mock("@/lib/demo-flag", …)` this repository uses, so the demo cases sit in their own `.demo.test.tsx` files, as `use-feed.demo.test.tsx` and `use-feed.real.test.tsx` do. `FailedCapturesSection` takes its data as props (`items`, `total`, `isLoading`, `isError`, `onRequeue`, `onDiscard`, the last two returning promises); the component tests render it with props, and `triage-tab.tsx` feeds it from the hooks.
+
+- `use-memory-buffer-api.test.tsx::lists poison rows` (unit): `useMemoryBufferItems()` requests `GET /api/v1/memory-buffer?state=poison&limit=200` once and returns the answer's `items` and `total`. Fails today because the module does not exist.
+- `use-memory-buffer-api.demo.test.tsx::sends nothing in demo mode` (unit): with the demo flag on, `useMemoryBufferItems()` sends no request and returns an empty list.
+- `use-memory-buffer-api.test.tsx::discard and requeue invalidate the list` (unit): `useDiscardBufferItem().mutateAsync(id)` sends `DELETE /api/v1/memory-buffer/<id>` once and `useRequeueBufferItem().mutateAsync(id)` sends `POST /api/v1/memory-buffer/<id>/requeue` once; each success invalidates the `["memoryBuffer"]` query key, and the discard also invalidates `["memories"]`.
+- `failed-captures-section.test.tsx::lists failed captures with their error` (unit): given two items as props the section titled "Failed captures" renders each row's `content_preview`, `project`, "`<attempts>` of `<max_attempts>` attempts" and `last_error`; with `total` 230 and 200 items it shows the line "Showing the newest 200 of 230"; with no items it renders the empty state titled "No failed captures"; with `isError` true it renders the failed state titled "Couldn't load failed captures".
+- `::names the memory and deletes only on confirm` (unit, A55): for a row with `memory_exists: true`, pressing Discard opens the alert dialog titled "Discard this capture?" whose description contains the memory's short id (`shortId(memory_id)`) and the sentence "This also deletes the memory."; Cancel calls nothing; the destructive Discard button calls `onDiscard` once with the row's id and focus returns to the row's Discard button when the dialog closes.
+- `::a row without a memory does not mention one` (unit): for `memory_exists: false` the dialog description is "The capture is removed from the queue." and contains no "memory".
+- `::requeue runs at once and reports a refusal` (unit): pressing Requeue calls `onRequeue` once with the row's id and opens no dialog; a rejected promise keeps the row listed and shows an error toast.
+- `::reports a failed discard` (unit): a rejected `onDiscard` keeps the row listed and shows an error toast.
+- `failed-captures-section.demo.test.tsx::the triage tab shows no failed captures in demo mode` (unit): the Triage tab rendered with the demo flag on has no "Failed captures" heading and sends no `/api/v1/memory-buffer` request.
 - `llm-tab.classifier.test.tsx::shows the unavailable line` (unit, A19): with `/health` answering `classifier_unavailable: true`, the classification purpose row shows "Local classifier unavailable, using the LLM classifier"; with `false` it does not; in demo mode no `/health` request is made.
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npx vitest run src/features/activity/components/triage-tab.discard.test.tsx src/features/settings/components/llm-tab.classifier.test.tsx`
+Run: `npx vitest run src/hooks/api/__tests__/use-memory-buffer-api.test.tsx src/hooks/api/__tests__/use-memory-buffer-api.demo.test.tsx src/features/activity/__tests__/failed-captures-section.test.tsx src/features/activity/__tests__/failed-captures-section.demo.test.tsx src/features/settings/components/llm-tab.classifier.test.tsx`
 
 - [ ] **Step 3: Implement**
 
-1. UX-12: use the darkraise-ui confirmation dialog the tab already uses for other destructive actions; the confirm button is the destructive variant and focus returns to the row's Discard button on close.
-2. UI-6: read `classifier_unavailable` through the existing health query (add `enabled: !DEMO`), and render the line as the library's inline warning text under the classification purpose.
+1. `use-memory-buffer-api.ts`: the three hooks above, typed from `BufferRowResponse` plus C2's `memory_exists`, following `use-pipeline-api.ts`'s fetch, query-key and `enabled: !DEMO` conventions; export the module from `hooks/api/index.ts`.
+2. `failed-captures-section.tsx`: a second `ModuleSurface` titled "Failed captures", taking the props named above, rendered by `triage-tab.tsx` under "Failure triage" from the three hooks and only when the demo flag is off. Rows reuse the tab's `listItemClass` row and its `EmptyState` kinds for the loading, empty and failed states; nothing here is a new local component the library already ships.
+3. UX-12: Discard opens the same `AlertDialog` pattern the tab's Forget action uses, with the texts the tests name and the destructive variant on the confirm button; Requeue has no confirmation.
+4. `failed-captures-section.stories.tsx`: one story per state, fed by props with no request: empty, one row, 200 rows of 230, a row whose `last_error` is a 400-character unbroken line, a failed load, and the discard dialog open for a row with a memory. Task 70 takes UX-12's screenshots from these stories.
+5. UI-6: read `classifier_unavailable` through the existing health query (add `enabled: !DEMO`), and render the line as the library's inline warning text under the classification purpose.
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npx vitest run src/features/activity src/features/settings && npm run typecheck`
+Run: `npx vitest run src/hooks/api src/features/activity src/features/settings && npm run typecheck`
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add frontend/src/features/activity frontend/src/features/settings
-git commit -m "feat(ui): confirm buffer discard, flag classifier"
+git add frontend/src/hooks/api frontend/src/features/activity frontend/src/features/settings
+git commit -m "feat(ui): triage failed captures, flag classifier"
 ```
 
 ### Task 13: Pipeline entry builder, importance and extraction module cleanups
@@ -1085,6 +1114,7 @@ git commit -m "fix(vault): skip unqualified scans, dedupe holds"
 
 - `backend/tests/test_vault_lock_scope.py::test_lift_commits_per_candidate_batch` (integration): a lift over three candidate batches commits after each (commit spy count 3), so a second session can lock a fact of batch one while batch three runs; fails today because the tick commits once.
 - `::test_withdrawal_times_out_instead_of_waiting` (integration): with a fact row locked by another session, the Phase 5 source withdrawal inside savepoint B raises a lock-timeout error within 5 s and the savepoint rolls back; fails today because it waits without bound.
+- `::test_withdrawal_leaves_lock_timeout_as_it_found_it` (integration): in a batch of two memories, `SHOW lock_timeout` read in the batch transaction after the first memory's savepoint B is released equals its value before the batch began. It passes today and guards Step 3's bound: it fails if the 5 s limit leaks past the withdrawal into the rest of the batch.
 - `backend/tests/test_vault_tick_cost.py::test_idle_drain_advances_the_watermark` (integration): a recompute drain that returns fewer than `batch` rows stores a watermark equal to its `safe_until`; fails today because an idle drain never moves it.
 - `::test_memory_source_join_uses_the_primary_key` (integration): with `enable_seqscan` off, `EXPLAIN` of the supersession-hold read and of `memory_sources_for_fact` names `memories_pkey`; fails today because of `CAST(m.id AS text)`.
 - `::test_code_reconcile_is_skipped_when_no_repository_moved` (integration): two consecutive lift ticks with no `last_indexed_commit` change run the code-provenance read once (statement counter on the second tick: 0).
@@ -1099,7 +1129,7 @@ Run: `.venv/bin/python -m pytest -q tests/test_vault_tick_cost.py tests/test_vau
 
 - [ ] **Step 3: Implement**
 
-1. B3a-6: commit the lift per candidate batch; add `SET LOCAL lock_timeout = '5s'` to the withdrawal inside savepoint B, so a timeout fails B as a `graph_write` failure the buffer retries.
+1. B3a-6: commit the lift per candidate batch; bound the withdrawal's lock wait inside savepoint B to 5 s, so a timeout fails B as a `graph_write` failure the buffer retries. `SET LOCAL` outlives a released savepoint for the rest of the transaction, so read `current_setting('lock_timeout')` before the withdrawal and set it back once the withdrawal's statements have run, on the success path; a failed B restores it by rolling back. `SET` takes no bind parameter: set both the bound and the restore with `SELECT set_config('lock_timeout', :v, true)`.
 2. B3a-7: when the drain returns fewer than `batch` rows, advance the watermark to `safe_until`. Add no index (spec departure).
 3. B3a-8: join on `m.id = CASE WHEN <memory-kind ref has the canonical UUID shape> THEN CAST(fs.source_ref AS uuid) END` in both statements.
 4. B3a-9: skip the code reconcile unless some repository's `last_indexed_commit` differs from the stamp stored in the lift's state row; drop the inert `adjudicate_contradiction` consult there.
@@ -1174,6 +1204,8 @@ git commit -m "fix(dream): refine the summary only, keep tags"
 - Modify: `CLAUDE.md`
 - Test: `backend/tests/test_dream_strict_journal.py`
 - Test: `backend/tests/test_dream_digest.py`
+- Test: `backend/tests/test_memory_dream.py`
+- Test: `backend/tests/test_dream_undo.py`
 
 **Interfaces:**
 - Consumes: none
@@ -1390,7 +1422,7 @@ Run: `.venv/bin/python -m pytest -q tests/test_mcp_code_tools.py tests/test_code
 - [ ] **Step 3: Implement**
 
 1. Per C3: add `resolve_repo`, extend `lookup_symbol` (select `CodeFile.file_path` in the query, honour `repo_id`, `file_path` and owner, bounded by `limit`), and make blast radius take `repo_id` and raise `SymbolAmbiguous`.
-2. Move the raw SQL of MCP `code_symbol`, `code_blast_radius`, `code_file_symbols` and `code_context` out of `server.py` into `CodeQueryService` methods; the tools become argument validation, one service call and envelope shaping. Use one session idiom for all of them.
+2. Move the raw SQL of MCP `code_symbol`, `code_blast_radius`, `code_file_symbols` and `code_context` out of `server.py` into `CodeQueryService` methods; the tools become argument validation, one service call and envelope shaping. Use one session idiom for all of them. In `code_dependencies`, `code_processes` and `code_communities` replace only the repository-by-name lookup with `resolve_repo` and its `ambiguous` envelope here; their remaining queries move in Task 27.
 3. The REST blast-radius route passes `repo_id` and maps `SymbolAmbiguous` to 409.
 4. Run `make generate` in `sdks/` if the OpenAPI document changed, then the guards leg.
 
@@ -1427,7 +1459,7 @@ All in `backend/tests/test_mcp_code_tools.py`.
 - `::test_code_search_without_an_embedder_answers_from_the_keyword_arm` (integration, A14): with no LLM orchestrator installed, MCP `code_search("parse_config")` returns the symbol whose name matches, and the reply carries `degraded: true` with a reason naming the semantic arm; fails today with an empty degraded result.
 - `::test_code_rename_treats_underscore_and_percent_literally` (integration): with symbols `get_user` and `getXuser` (and `a%b` and `axxb`), `code_rename("get_user", …)` lists references to `get_user` only; fails today because `_` and `%` act as `LIKE` wildcards.
 - `::test_code_processes_runs_a_bounded_number_of_statements` (integration): with twelve processes seeded, `code_processes` runs at most three statements (statement counter); fails today with one per process.
-- `::test_mcp_code_tools_hold_no_sql` (unit): an AST scan of every `code_*` tool body in `server.py` finds no `select(`, `text(` or `session.execute` call; each body reaches the database only through a `CodeQueryService` attribute. Fails today on the tools Task 26 did not move.
+- `::test_mcp_code_tools_hold_no_sql` (unit): an AST scan of every `code_*` tool body in `server.py` except `code_reindex` (exempted by name, the one write door) finds no `select(`, `text(` or `session.execute` call; each scanned body reaches the database only through a `CodeQueryService` attribute. Fails today on the tools Task 26 did not move.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -1438,7 +1470,7 @@ Run: `.venv/bin/python -m pytest -q tests/test_mcp_code_tools.py`
 1. B6-D2: move the queries of `code_search`, `code_rename`, `code_dependencies`, `code_processes`, `code_communities` and `code_changes` into `CodeQueryService`; every tool resolves its repository through `resolve_repo` (C3).
 2. B4-12: `code_search` always calls `search_code` and adds the degraded annotation when the semantic arm did not run.
 3. B6-15: match with `left(target_key, :n) = :name || '::'` instead of `LIKE`.
-4. `code_reindex` stays the only MCP write door into the code subsystem and is not moved.
+4. `code_reindex` stays the only MCP write door into the code subsystem and is not moved: it keeps its own repository lookup, as C3 says.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -1581,7 +1613,7 @@ Run: `.venv/bin/python -m pytest -q tests/test_code_index_cost.py tests/test_sch
 
 - [ ] **Step 3: Implement**
 
-1. B4-5: revision `0004_code_edge_file_indexes` (`down_revision = "0003_board_views"`, or the head if another revision landed first) creates `ix_code_edges_source_file` on `(repo_id, split_part(source_key, '::', 2))` and `ix_code_edges_target_file` on the target twin with `CREATE INDEX IF NOT EXISTS`; its downgrade drops both. The table is `code_edges` (`CodeEdge` in `app/models/code.py`). Then delete in one statement per phase with `split_part(...) = ANY(:files)` and run the orphan sweep once per run.
+1. B4-5: revision `0004_code_edge_file_indexes` (`down_revision = "0003_board_views"`, as C7 fixes) creates `ix_code_edges_source_file` on `(repo_id, split_part(source_key, '::', 2))` and `ix_code_edges_target_file` on the target twin with `CREATE INDEX IF NOT EXISTS`; its downgrade drops both. The table is `code_edges` (`CodeEdge` in `app/models/code.py`). Then delete in one statement per phase with `split_part(...) = ANY(:files)` and run the orphan sweep once per run.
 2. B4-4: run the scan through `run_in_executor`, comparing `(mtime, size)` first and hashing only files whose stat changed; keep discovery by `git_visible_files`.
 3. B4-14: write the marker `code_files` row (content hash, no symbols, a `parse_error` status message) for a file whose parse raised or timed out. No revision.
 4. B4-15: batch `_store_graph` inserts per file, the phase 05 update per batch, and reuse the maps phase 07 loads in phase 06.
@@ -1625,7 +1657,7 @@ All in `backend/tests/test_code_graph_keys.py`.
 - `::test_unchanged_call_graph_skips_phases_nine_and_ten` (integration): an incremental run that changes only a comment runs neither `community_detector` nor `process_tracer`.
 - `::test_type_environment_is_seeded_per_file` (integration): with `def config()` returning `Settings` in `conf.py`, a local variable `config` in `other.py` that neither imports nor defines `config` gains no member-call edge to `Settings`; a file that imports `config` does. Fails today because the seed is repository-global.
 - `::test_process_tracer_reads_no_signature` (unit): the tracer's scoring reads no `signature` property (source scan), and a decorated framework entry point still scores through the properties the pipeline writes.
-- `::test_citation_symbol_keys_survive_the_rekey` (integration, spec WP7): a `fact_sources` row whose `detail.symbol_key` names a class, a function and a property before the re-key resolves through `citation_reverify` afterwards and is not marked stale.
+- `::test_citation_symbol_keys_survive_the_rekey` (integration, spec WP7): a `fact_sources` row whose `detail.symbol_key` names a class and a function before the re-key resolves through `citation_reverify` afterwards and is not marked stale. Add a property case to the same test only when Step 3.5's search finds that a property key can be cited; when it cannot, the commit body says so and the test has the two cases.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -1834,7 +1866,8 @@ All but the last in `backend/tests/test_document_revisions.py`; revision ages ar
 
 - `::test_prune_needs_both_conditions` (integration, A27): a document with 60 revisions of which the oldest 20 are 100 days old gets a content-changing put; afterwards exactly the 10 revisions that are both beyond the newest 50 and older than 90 days are gone. A document with 60 revisions all 10 days old loses none; a document with 30 revisions all 200 days old loses none. Fails today because nothing prunes.
 - `::test_prune_is_scoped_to_the_filed_document` (integration, A27): a second document with 60 old revisions is untouched by a put to the first.
-- `::test_prune_journals_one_count_only_event_first` (integration, A27): the put writes one `document_revisions_pruned` event with `object_type` document, the document id and `payload == {"pruned": 10}` (no content, no revision ids), and it is written before the DELETE (the event exists when a DELETE patched to raise aborts the savepoint… and the whole filing rolls back with it).
+- `::test_prune_journals_one_count_only_event_first` (integration, A27): the put writes one `document_revisions_pruned` event with `object_type` document, the document id and `payload == {"pruned": 10}` (no content, no revision ids), and the statement log of the put (a `before_cursor_execute` listener on the test engine) shows the `INSERT INTO events` for that row ahead of the `DELETE FROM document_revisions`.
+- `::test_a_failed_prune_delete_rolls_the_filing_back` (integration, A27): with the `DELETE FROM document_revisions` statement made to raise, the put fails, and afterwards the document's content, its 60 revisions and the `events` table are exactly as before the put: no new revision and no `document_revisions_pruned` row.
 - `::test_unjournalled_prune_is_skipped_and_the_put_succeeds` (integration, A27): with `record_event` returning `False` for that event type, the put answers success, the new revision is stored, and all 61 revisions remain.
 - `::test_before_cursor_naming_a_pruned_revision_answers_404` (integration, A27): `GET /api/v1/documents/{id}/revisions?before=<pruned id>` answers 404, and MCP `document_revisions` with the same cursor answers its not-found envelope.
 - `::test_unchanged_repush_prunes_nothing` (integration): a byte-identical re-push writes no revision and prunes none.
@@ -2147,7 +2180,7 @@ Run: `.venv/bin/python -m pytest -q tests/test_boot_reconciliation.py tests/test
 
 1. B6-14: move the partition and backfill reconciliations out of the LLM `try`; record the boot failure; build a missing pipeline when a configuration save installs an orchestrator; `buffer_flush` reports the skip; serve `pipeline_state` (C1).
 2. B6-20: `_MONTHS_AHEAD = 3`, and the registry's scheduler loop calls `events_ensure_partition` reconciliation once an hour itself, outside any job; the arm on `pipeline_failure_cleanup` stays. Read-only mode never arms the loop, as today.
-3. B6-D1: before removing the legacy `enrichment_config` copy, confirm on the restored production backup that the current row carries `batch_size` (here use `docker exec darkmem-prod-postgres-1 psql -U darkmem -d darkmem -Atc "select value ? 'batch_size' from config where key = 'enrichment_config'"`, a read). If it does not, keep the copy and close that part `not reproduced: production still needs the copy`. Make the Postgres-only mode's failure visible through `pipeline_state`; keep the proxy guard.
+3. B6-D1: before removing the legacy `enrichment_config` copy, confirm that the live row carries `batch_size` with the read-only query Global Constraints' Host limits allows: `docker exec darkmem-prod-postgres-1 psql -U darkmem -d darkmem -Atc "select value ? 'batch_size' from config where key = 'enrichment_config'"`, expected `t`. If it prints `f` or no row, keep the copy and close that part `not reproduced: production still needs the copy`. Make the Postgres-only mode's failure visible through `pipeline_state`; keep the proxy guard.
 4. `CLAUDE.md`: the events paragraph says reconciliation runs at boot, hourly from the scheduler loop and on `pipeline_failure_cleanup`, three months ahead; the health sentence names `pipeline_state`.
 
 - [ ] **Step 4: Run test to verify it passes**
@@ -2332,6 +2365,7 @@ git commit -m "refactor(inject): remove the unreached inject trio"
 - Modify: `frontend/src/demo/data/settings-curated.ts`
 - Test: `frontend/src/features/settings/components/flags-tab.dead-controls.test.tsx`
 - Test: `frontend/src/features/settings/components/distribution-tab.test.tsx`
+- Test: `frontend/src/features/chat/lib/retrieval.test.ts`
 
 **Interfaces:**
 - Consumes: C4
@@ -2439,7 +2473,7 @@ git commit -m "refactor(vault): drop the unused triple embeddings"
 
 All in `backend/tests/test_stated_expiry_arm_removed.py`.
 
-- `::test_no_code_reads_or_writes_the_fact_column` (unit, A47): a source scan over `backend/app` finds `stated_expiry` only in `app/services/stated_expiry.py`, its importers' calls to that module, and the memory pipeline's use of it; no line names `knowledge_triples.stated_expiry`, `StatedExpiryOutcome`, or a `stated_expiry` key in `knowledge_triples._COLUMNS`. Fails today on the close arm, the merge `LEAST` and `insert_open`.
+- `::test_no_code_reads_or_writes_the_fact_column` (unit, A47): a source scan over `backend/app` finds the string `stated_expiry` only in files on the test's explicit allowlist: `app/services/stated_expiry.py`, plus each file that `rg -l stated_expiry backend/app` still lists after Step 3 for the memory-side derivation of `memories.expires_at` (write those paths into the allowlist with one comment each saying what the file uses it for; a fact-side file is never added); no line names `knowledge_triples.stated_expiry`, `StatedExpiryOutcome`, or a `stated_expiry` key in `knowledge_triples._COLUMNS`. Fails today on the close arm, the merge `LEAST` and `insert_open`.
 - `::test_fact_column_and_index_still_exist` (integration, A47): after `alembic upgrade head`, `knowledge_triples.stated_expiry` and its partial index are present.
 - `::test_memory_expiry_is_still_derived_from_a_stated_expiry` (integration, A47): `tests/test_self_expiring_memories.py`'s behaviour holds: a memory stating an expiry gets `memories.expires_at`.
 - `::test_merge_fold_keeps_the_earlier_reference_and_valid_times` (integration): a fact merge still takes the earlier `reference_time` and `valid_at`.
@@ -2525,6 +2559,8 @@ git commit -m "refactor(documents): drop search_vector and PDF parser"
 - Modify: `frontend/src/features/code/components/real-repositories-view.tsx`
 - Modify: `frontend/src/features/code/components/real-code-graph-view.tsx`
 - Modify: `frontend/src/features/code/components/real-wiki-view.tsx`
+- Modify: `frontend/src/features/code/components/code-graph-tab.tsx`
+- Modify: `frontend/src/features/settings/components/backups-tab.tsx`
 - Modify: `frontend/src/hooks/api/use-code-api.ts`
 - Test: `frontend/src/features/code/components/__tests__/edit-repository.test.tsx`
 - Test: `frontend/src/features/code/components/__tests__/code-graph-actions.test.tsx`
@@ -2556,7 +2592,7 @@ Run: `npx vitest run src/features/code`
 
 1. F1-1: drop `path` from `editRepoSchema`; render the path with the library's read-only text style.
 2. F1-4: guard the action on the node kind, pass `repo_id`, and add `onError` to the mutation. F1-10: await the two `mutateAsync` calls inside their submit handlers and report a rejection.
-3. F1-11 and UI-3: replace every direct clipboard write in `frontend/src` with the darkraise-ui `clipboard` component (read its `.d.ts` first).
+3. F1-11 and UI-3: replace every direct clipboard write in `frontend/src` with the darkraise-ui `clipboard` component (read its `.d.ts` first). `rg navigator.clipboard frontend/src` lists them: `real-code-graph-view.tsx`, `code-graph-tab.tsx` and Settings' `backups-tab.tsx`.
 4. Render the three screens through Storybook or the demo build at 1280x800 and 1920x1080, both themes, with a 64-character repository name and an unbroken URL; record the screenshot paths for Task 70.
 
 - [ ] **Step 4: Run test to verify it passes**
@@ -2691,7 +2727,7 @@ git commit -m "perf(code-ui): dim on search without a rebuild"
 - `backend/tests/test_graph_payload_preview.py::test_memory_nodes_carry_a_preview` (integration): for a memory of 1,000 characters, its node in `GET /api/v1/graph/unified` has `content` of exactly 280 characters and `content_truncated: true`; a 100-character memory has its whole content and `false`. Fails today because the full content is served.
 - `backend/tests/unit/test_cluster_names.py::test_two_clusters_never_share_a_name` (unit, row 224): two clusters whose computed names are both `gpu` are named `gpu` and `gpu 2`, the smaller cluster id keeping the bare name; three get `gpu`, `gpu 2`, `gpu 3`; a suffix that would pass `MAX_NAME_CHARS` still appears. Fails today with two identical names.
 - `::test_term_inside_the_prefix_is_skipped` (unit, row 225): with prefix `darkraise-ai-plugins` and candidate terms `plugins` and `routing`, the name is `darkraise-ai-plugins · routing`; fails today with `… · plugins`.
-- Measurement (row 226), no test: time `entity_terms_for_memories` for an `all_memories` view on production data, read-only, with `docker exec darkmem-prod-postgres-1 psql -U darkmem -d darkmem -c "EXPLAIN (ANALYZE, BUFFERS) <the statement with the view's memory ids>"`; write the execution time and the memory count into the Note of row 226 and of row 4 of `docs/dforge/registers/2026-11-20-graph-cluster-quality.md`.
+- Measurement (row 226), no test: time `entity_terms_for_memories` for an `all_memories` view on production data under the read-only exception of Global Constraints' Host limits (the statement is one `SELECT`, the same one the live graph page already runs), with `docker exec darkmem-prod-postgres-1 psql -U darkmem -d darkmem -c "EXPLAIN (ANALYZE, BUFFERS) <the statement with the view's memory ids>"`; write the execution time and the memory count into the Note of row 226 and of row 4 of `docs/dforge/registers/2026-11-20-graph-cluster-quality.md`.
 - Comment (row 227), no test: replace the stale "Louvain" wording in the kept comment of `tests/test_graph_scale.py`.
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -2889,8 +2925,10 @@ git commit -m "fix(settings): dialogs wait for their save"
 - Modify: `backend/app/api/routes/auth.py`
 - Modify: `backend/app/api/auth.py`
 - Modify: `backend/app/api/websocket.py`
+- Modify: `backend/scripts/e2e/run_e2e.py`
 - Modify: `CLAUDE.md`
 - Test: `backend/tests/test_auth_token_rotation.py`
+- Test: `backend/tests/test_e2e_runner_args.py`
 - Test: `backend/tests/test_websocket.py`
 - Test: `backend/scripts/e2e/tests/test_session_rotation.py`
 
@@ -2911,10 +2949,11 @@ git commit -m "fix(settings): dialogs wait for their save"
 - `::test_read_only_refresh_also_closes_with_4001` (integration): under `DARKMEM_READ_ONLY`, where refresh reissues without blocklisting, T's socket still closes with 4001.
 - `::test_a_new_socket_with_the_new_cookie_connects` (integration): after the refresh, a handshake with the new token succeeds and one with T is refused.
 - `backend/scripts/e2e/tests/test_session_rotation.py::test_renewal_and_password_change_over_a_real_socket` (e2e, A38): against the disposable e2e stack, open a real WebSocket, call refresh, observe the 4001 close and reconnect with the new cookie; then change the password and observe the same; the reconnected socket receives a broadcast.
+- `backend/tests/test_e2e_runner_args.py::test_extra_arguments_reach_pytest` (unit): with the model probe, `stack.boot` and `subprocess.run` patched, `run_e2e.main()` under `sys.argv = ["run_e2e.py", "-k", "session_rotation"]` calls pytest with `-k session_rotation` after its fixed arguments, and with no extra argument the command is today's; fails today because the runner reads no arguments.
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `.venv/bin/python -m pytest -q tests/test_auth_token_rotation.py tests/test_websocket.py`
+Run: `.venv/bin/python -m pytest -q tests/test_auth_token_rotation.py tests/test_websocket.py tests/test_e2e_runner_args.py`
 
 - [ ] **Step 3: Implement**
 
@@ -2922,11 +2961,15 @@ Run: `.venv/bin/python -m pytest -q tests/test_auth_token_rotation.py tests/test
 2. The websocket module keeps a registry of open sockets by token id. Refresh and change-password, after validating the presented token and before committing the blocklist write, close that token's sockets with 4001 `Session renewed`; the commit follows. A failure after the close is safe: the client reconnects only after it holds a new cookie. Change-password then lets the epoch check close every other session's sockets as today.
 3. The one-second revalidation, its cache (Task 42) and the existing close reason are unchanged.
 4. `CLAUDE.md`'s auth paragraph gains one sentence: a rotation closes the presented token's sockets with 4001 before the blocklist commit.
-5. Run the e2e test through `backend/scripts/e2e/run_e2e.py` (it boots its own disposable stack); never against `:8000`.
+5. `run_e2e.py` appends `sys.argv[1:]` to its pytest command, as `run_playwright_e2e.py` does for Playwright. Run the e2e test through it (it boots its own disposable stack); never against `:8000`. The runner exits 2 with a `BLOCKED:` line when the LAN endpoint does not serve the seeded extraction model: that is a missing toolchain, not a red test. On exit 2, keep the e2e test, quote the `BLOCKED:` line in the ledger and in the commit body, and go on; the integration tests above gate this task, and Task 70's walkthrough shows the renewal over a real socket.
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `.venv/bin/python -m pytest -q tests/test_auth_token_rotation.py tests/test_websocket.py tests/test_read_only_doors.py tests/test_sdk_generator.py && timeout 1500 .venv/bin/python scripts/e2e/run_e2e.py -k session_rotation`
+Run: `.venv/bin/python -m pytest -q tests/test_auth_token_rotation.py tests/test_websocket.py tests/test_read_only_doors.py tests/test_sdk_generator.py tests/test_e2e_runner_args.py`
+Expected: PASS.
+
+Then run: `timeout 1500 .venv/bin/python scripts/e2e/run_e2e.py -k session_rotation`
+Expected: exit 0, or exit 2 with a `BLOCKED:` line handled as Step 3.5 says.
 
 - [ ] **Step 5: Commit**
 
@@ -2943,7 +2986,9 @@ git commit -m "feat(auth): tell sockets when a session is renewed"
 - Modify: `frontend/src/lib/websocket.ts`
 - Modify: `frontend/src/routes/_authenticated.tsx`
 - Modify: `frontend/src/main.tsx`
+- Modify: `frontend/src/features/settings/use-change-password.ts`
 - Test: `frontend/src/lib/__tests__/session-renewal.test.ts`
+- Test: `frontend/src/features/settings/__tests__/change-password-renewal.test.tsx`
 - Test: `frontend/src/lib/__tests__/websocket-session.test.ts`
 
 **Interfaces:**
@@ -2967,22 +3012,23 @@ With fake timers and a mocked `fetch`, `localStorage`, `WebSocket` and router.
 - `websocket-session.test.ts::reconnects after 4001 only once the renewal is recorded` (unit, A38): a close with code 4001 opens no new socket until the renewal record appears (own response or `storage` event), then opens one; with no record within 10 s the app goes to sign-in.
 - `::an expired close with no recent renewal ends the session with no retry` (unit, A38): a close with reason `Session expired or revoked` and no renewal in the last 10 s navigates to sign-in and schedules no reconnect; fails today because the socket retries every 30 s forever. The same close 3 s after a renewal reconnects once.
 - `::a refused handshake after a renewal is retried once` (unit): a handshake closed as "Unauthorized" within 10 s of a renewal is retried once.
-- `::StrictMode leaves one socket` (unit, F2-17): mounting the provider twice in `StrictMode` leaves exactly one open socket, and one event produces one toast.
+- `frontend/src/features/settings/__tests__/change-password-renewal.test.tsx::a password change keeps its own tab signed in and connected` (unit, A38): when `useChangePassword`'s mutation resolves, `darkmem.session.renewed_at` is written (after the response, never before) and `/auth/me` is re-read for the new `expires_at`; a 4001 close arriving either before or after that response opens exactly one new socket once the record exists, and the router never navigates to sign-in. Fails today because a password change records nothing and the socket's close ends in the retry loop.
+- `websocket-session.test.ts::StrictMode leaves one socket` (unit, F2-17): mounting the provider twice in `StrictMode` leaves exactly one open socket, and one event produces one toast.
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npx vitest run src/lib`
+Run: `npx vitest run src/lib src/features/settings/__tests__/change-password-renewal.test.tsx`
 
 - [ ] **Step 3: Implement**
 
 1. `session-renewal.ts` owns: the `expires_at` state from `/auth/me` and refresh, the minute timer and `visibilitychange` check, the refresh call, the `localStorage` renewal record (key `darkmem.session.renewed_at`, wrapped in try/catch) and its `storage` listener, and the 10-second window predicate the API client and the socket both ask. It is disabled in demo mode.
 2. `api.ts`: replace the hard reload on 401 with one retry inside the window, else a router navigation to sign-in. `websocket.ts`: handle 4001, the expired reason and the refused handshake as the tests state; make connect idempotent so `StrictMode` cannot leave two sockets.
-3. Start the module from the authenticated layout; stop it on sign-out.
+3. Start the module from the authenticated layout; stop it on sign-out. `use-change-password.ts` calls the module's renewal recorder on a successful change (the same function the refresh path calls) and re-reads `/auth/me`.
 4. Prove in the running app for Task 70: shorten the session lifetime in the disposable e2e stack, keep a note draft and a document block edit open across a renewal, and record that the note draft survives while an unsent block edit is lost only on the slept-past-expiry path.
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npx vitest run src/lib src/features/notes && npm run typecheck`
+Run: `npx vitest run src/lib src/features/notes src/features/settings && npm run typecheck`
 
 - [ ] **Step 5: Commit**
 
@@ -3589,7 +3635,7 @@ git commit -m "docs: state what the code does after the audit"
 - Create: `docs/dforge/ui-ux/proofs/2026-11-20-audit-remaining.judge.md`
 
 **Interfaces:**
-- Consumes: C10, and the screenshots Tasks 12, 45, 49, 50, 53, 55, 57, 61 and 63 recorded
+- Consumes: C10, and the screenshots Tasks 45, 49, 50, 53, 55, 57 and 63 recorded (Tasks 12 and 61 record none; Step 3 captures theirs)
 - Produces: none
 
 **UI/UX:** OP-1, OP-2, OP-3, OP-4
@@ -3609,7 +3655,8 @@ Expected: every server answers and its PID is recorded.
 2. Run the automated checks the web platform guide lists (accessibility scan, console errors, overflow, contrast) on each changed screen.
 3. Write the proof report with one row per contract item UI-1 to UI-6, UX-1 to UX-12 and OP-1 to OP-4, each naming its screenshot or its test. A41 (UI-1) and A37 (UX-1) cite the C10 state boards. A42's items (UI-2, UI-3, UI-5, UX-6, UX-7, UX-8, UX-9) each show the working behaviour at both viewports. An item no harness on this host can show is an `unverifiable` row with its reason; never write an `**Accepted by:**` line.
 4. Stamp the report with `scripts/ui-proof stamp`, have the `dforge:judge-opus` seat review it into the `.judge.md` file, and fix the UI (not the check) for every `fix` verdict.
-5. Stop every server started in Step 2 and confirm no process of this task is left.
+5. UX-12 and Task 61's refusals have no earlier screenshots; capture them here. The "Failed captures" section is shown from Task 12's stories (`failed-captures-section.stories.tsx`) in Storybook at both viewports and themes, by keyboard alone (Tab reaches Requeue and Discard, Enter opens the dialog, Escape closes it and returns focus), with zero rows, one row, and a row whose `last_error` is a 400-character unbroken line. Task 61's editor refusals, and every other flow that needs a server, are walked by a scratch Playwright spec, `frontend/tests/proof-audit-remaining.spec.ts`, run as `backend/scripts/e2e/run_playwright_e2e.py tests/proof-audit-remaining.spec.ts --project=chromium`: the spec seeds what it needs through the disposable stack's API, writes its screenshots to `.dforge/ui-ux/audit-remaining/`, and is deleted before Step 5's commit, never committed. The OP-4 row of the report states that the section is new on the existing Activity → Triage tab, adds no route or tab, and is hidden in demo mode.
+6. Stop every server started in Step 2 and confirm no process of this task is left.
 
 - [ ] **Step 4: Run the gate**
 
@@ -3643,14 +3690,14 @@ git commit -m "docs(ui-ux): prove the remaining audit UI items"
 1. Create a scratch database on the dev Postgres only: `docker exec darkmem-postgres-1 psql -U darkmem -d darkmem -c "CREATE DATABASE darkmem_restore_proof"`.
 2. Load the newest dump of `/root/darkmem-backups` into it (`gzip -dc <dump> | docker exec -i darkmem-postgres-1 psql -U darkmem -d darkmem_restore_proof`, timeout 1800 s). The production container and port 5432 are never written.
 3. Record `SELECT version_num FROM alembic_version`, `SELECT count(*) FROM blocks`, and the name and row count of every `triple_embeddings__%` table.
-Expected: the restore completes and the stamp is `0003_board_views` or older.
+Expected: the restore completes, the stamp is `0003_board_views` or older, and the `blocks` count is above zero. Production holds filed documents, so a zero count means the wrong dump was restored: drop the scratch database, restore the next newest dump and repeat. If every dump has zero blocks, record A46 as not proven on this host with that evidence in rows 26 and 101 and go on.
 
 - [ ] **Step 3: Run the revisions and reports**
 
-1. If `blocks` is empty, file one document and create one page on the restored copy through the app's doors with `DATABASE_URL` pointing at `darkmem_restore_proof`, and count again (A46 needs a non-zero count).
-2. From `backend/`, with `DATABASE_URL` set explicitly to the restore-proof database on port 5433: `.venv/bin/python -m alembic upgrade head`. Record the head, the `blocks` count after (it must equal the count before), that no `blocks.search_vector` column and no empty `triple_embeddings__%` table remains, and every kept table with its row count. A kept table gets a register row (`scripts/register add … --state deferred --note "<name> rows=<n>: left in place by revision 0005"`).
+1. Build the scratch database's URL the way `.dforge/test-env.sh` builds the test one, from `backend/`: `. ../.dforge/test-env.sh && export RESTORE_URL="${TEST_DATABASE_URL%/darkmem_test}/darkmem_restore_proof"`. Print only its host and database part, never the password.
+2. From `backend/`: `DATABASE_URL="$RESTORE_URL" timeout 1800 .venv/bin/python -m alembic upgrade head`. Record the head, the `blocks` count after (it must equal the count before), that no `blocks.search_vector` column and no empty `triple_embeddings__%` table remains, and every kept table with its row count. A kept table gets a register row (`scripts/register add … --state deferred --note "<name> rows=<n>: left in place by revision 0005"`).
 3. Run `EXPLAIN` for one per-file edge delete and record that it names `ix_code_edges_source_file`.
-4. Run the lost-tag script's dry run against the restored copy: `.venv/bin/python scripts/restore_refine_project_tags.py --dry-run --database-url <restore-proof url>`; record its `memories: <n>` line in the Note of register row 232.
+4. Run the lost-tag script's dry run against the restored copy: `.venv/bin/python scripts/restore_refine_project_tags.py --dry-run --database-url "$RESTORE_URL"`; record its `memories: <n>` line in the Note of register row 232.
 5. Row 216: `gh api repos/{owner}/{repo}/actions/permissions/fork-pr-contributor-approval` and `gh repo view --json visibility` (reads only; the owner and repository come from `git remote get-url origin`). Record both answers in row 216's Note and set it `done`. Change no setting.
 6. Drop the scratch database: `docker exec darkmem-postgres-1 psql -U darkmem -d darkmem -c "DROP DATABASE darkmem_restore_proof"`.
 7. Write the A46 evidence (counts before and after, tables kept) into the Note of rows 26 and 101.
