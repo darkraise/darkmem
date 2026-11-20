@@ -981,6 +981,54 @@ async def test_the_cursor_advances_even_when_the_batch_partly_failed(monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_the_article_rotation_wraps_at_the_last_project(monkeypatch):
+    """The same wrap as topic detection's, on the runner that copied its cursor.
+
+    ``run_article_synthesis`` reads projects strictly past the cursor and
+    echoes the cursor back when none remain, so a runner that saves
+    ``outcome.last_project`` unconditionally parks on the last project and
+    visits nothing on every later tick while still recording ``ok``.
+    """
+    from app.services import dream_jobs
+    from app.services.article_synthesis import SynthesisOutcome
+
+    registry, engine = _fresh_registry()
+    seen: list[str | None] = []
+    rotation = ["alpha", "omega"]
+
+    async def fake_synthesis(session_factory, llm_provider=None, *, batch_size, after_project, **knobs):
+        seen.append(after_project)
+        visited = [name for name in rotation if after_project is None or name > after_project][:batch_size]
+        return SynthesisOutcome(
+            projects=len(visited), visited=visited,
+            last_project=visited[-1] if visited else after_project,
+        )
+
+    async def fake_resynthesis(session_factory, llm_provider=None, **knobs):
+        return None
+
+    try:
+        monkeypatch.setattr(dream_jobs, "run_article_synthesis", fake_synthesis)
+        monkeypatch.setattr(dream_jobs, "run_article_resynthesis", fake_resynthesis)
+        await registry.set_config(ARTICLE_SYNTHESIS_JOB_KEY, {"batch_size": 2})
+        runner = registry.get(ARTICLE_SYNTHESIS_JOB_KEY).runner
+
+        await runner()
+        async with registry.session_factory() as session:
+            assert await dream_jobs._load_article_cursor(session) == "omega"
+
+        await runner()
+        async with registry.session_factory() as session:
+            assert await dream_jobs._load_article_cursor(session) is None
+
+        await runner()
+        assert seen == [None, "omega", None], seen
+    finally:
+        await registry.stop_all()
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_the_rotation_wraps_and_the_real_composition_succeeds():
     """The Critical the monkeypatched cursor tests structurally could not see,
     and the composition assertion the first fix omitted.

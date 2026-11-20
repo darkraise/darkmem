@@ -558,10 +558,11 @@ def _make_article_runner(registry: JobRegistry, key: str, llm_provider) -> JobRu
         async with registry.session_factory() as session:
             after_project = await _load_article_cursor(session)
 
+        batch_size = int(settings_.get("batch_size", 10))
         outcome = await run_article_synthesis(
             registry.session_factory,
             llm_provider,
-            batch_size=int(settings_.get("batch_size", 10)),
+            batch_size=batch_size,
             after_project=after_project,
             hub_cap=int(settings_.get("hub_cap", 40)),
             budget_words=int(settings_.get("length_budget_words", 400)),
@@ -579,9 +580,18 @@ def _make_article_runner(registry: JobRegistry, key: str, llm_provider) -> JobRu
             hub_cap=int(settings_.get("hub_cap", 40)),
             budget_words=int(settings_.get("length_budget_words", 400)),
         )
+        # The same wrap as `_make_topic_runner`'s, for the same reason: the
+        # sweep reads strictly past the cursor and echoes it back when nothing
+        # remains, so saving it unchanged parks the job on the last project.
+        wrapped = len(outcome.visited) < batch_size
         async with registry.session_factory() as session:
-            await _save_article_cursor(session, outcome.last_project)
+            await _save_article_cursor(session, None if wrapped else outcome.last_project)
             await session.commit()
+        logger.info(
+            "article_synthesis: projects=%d attempted=%d written=%d refused=%d%s",
+            outcome.projects, outcome.attempted, outcome.written, outcome.refused,
+            ", rotation wrapped" if wrapped else "",
+        )
 
     return run
 
@@ -606,12 +616,7 @@ async def _load_article_cursor(session) -> str | None:
 
 
 async def _save_article_cursor(session, last_project: str | None) -> None:
-    """Persist the rotation cursor, wrapping when a batch came back short.
-
-    ``None`` means the sweep found no projects past the cursor, which is the
-    end of the rotation — reset so the next tick starts from the beginning
-    rather than sitting past the last project forever.
-    """
+    """Persist the rotation cursor; ``None`` restarts the rotation."""
     from sqlalchemy import select
 
     from app.models.config import Config
