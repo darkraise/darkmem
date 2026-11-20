@@ -111,15 +111,19 @@ def _leiden(g, resolution: float, min_cluster_size: int) -> list[int]:
     import igraph
 
     # A private Random leaves Python's global state alone. igraph's generator
-    # is process-global, which is safe only because the kNN executor runs one
-    # job at a time.
+    # is process-global: the kNN executor runs one job at a time, and the
+    # default is put back so no other igraph caller inherits the seeded one
+    # (leidenalg in app/utils/leiden.py seeds its own generator).
     igraph.set_random_number_generator(random.Random(CLUSTER_SEED))
-    membership = g.community_leiden(
-        objective_function="modularity",
-        weights="weight",
-        resolution=resolution,
-        n_iterations=-1,
-    ).membership
+    try:
+        membership = g.community_leiden(
+            objective_function="modularity",
+            weights="weight",
+            resolution=resolution,
+            n_iterations=-1,
+        ).membership
+    finally:
+        igraph.set_random_number_generator(random)
     return _drop_small(membership, min_cluster_size)
 
 
