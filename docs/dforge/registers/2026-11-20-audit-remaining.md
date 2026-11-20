@@ -79,12 +79,12 @@
 | 72 | B3b-R7: review_ranking has one consumer and could be folded into review_queue (optional) | - | - | deferred | declined in the spec: saves no lines |
 | 73 | B4-4: the working-tree drift scan hashes every file synchronously on the event loop | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 30 contracts | doing | - |
 | 74 | B4-5: per-file deletes scan the whole repository's edge and node tables | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 30 contracts | doing | - |
-| 75 | B4-6: one failed embed loses that file's code chunks until the file changes again | docs/dforge/plans/2026-11-20-audit-remaining.md | A33 (Task 28) | doing | - |
-| 76 | B4-7: incremental diff parsing breaks on non-ASCII and special-character paths | docs/dforge/plans/2026-11-20-audit-remaining.md | A34 (Task 28) | doing | - |
-| 77 | B4-8: incremental runs mis-key cross-file base classes defined in unchanged files | docs/dforge/plans/2026-11-20-audit-remaining.md | A34 (Task 28) | doing | - |
+| 75 | B4-6: one failed embed loses that file's code chunks until the file changes again | docs/dforge/plans/2026-11-20-audit-remaining.md | A33 (Task 28) | done | 96f9a23 |
+| 76 | B4-7: incremental diff parsing breaks on non-ASCII and special-character paths | docs/dforge/plans/2026-11-20-audit-remaining.md | A34 (Task 28) | done | 96f9a23 |
+| 77 | B4-8: incremental runs mis-key cross-file base classes defined in unchanged files | docs/dforge/plans/2026-11-20-audit-remaining.md | A34 (Task 28) | done | 96f9a23 |
 | 78 | B4-9 and F1-4 backend half: blast radius and symbol lookup ignore repository and owner | docs/dforge/plans/2026-11-20-audit-remaining.md | A35 (Task 26) | done | eddcc5e |
 | 79 | B4-10 and B6-4: MCP code_symbol probably raises MissingGreenlet on any hit; no result limit | docs/dforge/plans/2026-11-20-audit-remaining.md | A35 (Task 26) | done | eddcc5e |
-| 80 | B4-11: unchanged dependent and debt files are re-embedded on every incremental run | docs/dforge/plans/2026-11-20-audit-remaining.md | A33 (Task 28) | doing | - |
+| 80 | B4-11: unchanged dependent and debt files are re-embedded on every incremental run | docs/dforge/plans/2026-11-20-audit-remaining.md | A33 (Task 28) | done | 96f9a23 |
 | 81 | B4-12: MCP code_search returns nothing without an embedder, while REST answers from the keyword arm | docs/dforge/plans/2026-11-20-audit-remaining.md | A14 (Task 27) | done | cf10951 |
 | 82 | B4-13: a transient fetch failure deletes the managed clone and re-clones it, with no claim held | docs/dforge/plans/2026-11-20-audit-remaining.md | A36 (Task 29) | doing | - |
 | 83 | B4-14: a file whose parse times out or raises is re-detected as drift on every tick | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 30 contracts | doing | - |
