@@ -57,6 +57,7 @@ changes no code.
   single-project view could name clusters after the project itself) is
   closed by rule 5's sole-project clause, measured in `measure4.out` on the
   darkmem, darkload and darkraise-ai-plugins scopes.
+- **UI-4 surface (ruling seat, 2026-11-20, `.dforge/sdd/2026-11-20-graph-cluster-quality/rulings-blocked-plan-7-report.md`).** The approved draft named a Settings → Assistant Prompts section showing the chat and agent instructions prompts. The SPA has no such section, and no Settings page ever showed `cluster_naming` or `chat`, so UI-4 and A20 now name the two surfaces that do render prompts.
 - **Out of scope, reported:** 5 active production memories hold the literal
   `project/darkraise-modder` in `project`. The namer treats it as a project
   name like any other; the data fix belongs to the owner.
@@ -175,8 +176,7 @@ resolution needs it.
 Removed from `PROMPTS` (`app/services/prompt.py`) and from
 `ORPHAN_PROMPT_KEYS` (`app/services/pipeline_aggregator.py`), and dropped from
 the comment in `frontend/src/features/settings/llm-purpose-prompts.ts`.
-Settings → Assistant Prompts renders orphans from the API, so its textarea
-disappears with no frontend change. `PUT /api/v1/config/system-prompts` with
+No Settings surface ever rendered this key (the LLM tab shows prompts only for the four purposes in `PURPOSE_PROMPT_KEYS`, the Integration tab only `agent_instructions`), so nothing visible changes and no frontend code changes. `PUT /api/v1/config/system-prompts` with
 that key now answers 422 (unknown purpose). Production stores no
 `system_prompts` override row (checked 2026-11-20), so no data is orphaned.
 Historical analyses under `docs/planning/` stay as written.
@@ -208,7 +208,7 @@ Historical analyses under `docs/planning/` stay as written.
 ## UI/UX
 
 **UI/UX depth:** touch — the only visible change is the text of cluster names
-on the memory graph and one prompt leaving Settings; no layout changes.
+on the memory graph; the cluster naming prompt leaves the API, and no Settings surface ever showed it; no layout changes.
 
 The delta (carried into the proof report):
 
@@ -220,8 +220,7 @@ The delta (carried into the proof report):
   carries a project prefix.
 - **UI-3** — The filter panel's cluster list shows the same names as the
   canvas.
-- **UI-4** — Settings → Assistant Prompts shows the chat and agent
-  instructions prompts and no cluster naming prompt.
+- **UI-4** — No Settings surface shows a cluster naming prompt: the LLM tab offers a System prompt only on the extraction, classification, reasoning and summarization purpose cards, and the Integration tab's "View injected MCP prompt" still opens the agent instructions prompt.
 - **OP-1** — Proven on the live page with 0 console or page errors and 0
   attempted writes, after the change is deployed to this host.
 
@@ -248,7 +247,7 @@ A16. [test, high] The `GET /api/v1/graph/unified` response keeps its keys and ty
 A17. [demo, high] UI-1: the live memory graph shows the computed names on islands and region chips at both viewports and themes.
 A18. [demo, high] UI-2: with a project scope selected, no cluster name carries a project prefix.
 A19. [demo, high] UI-3: the filter panel lists the same cluster names as the canvas.
-A20. [demo, high] UI-4: Settings → Assistant Prompts shows the chat and agent instructions prompts and no cluster naming prompt.
+A20. [demo, high] UI-4: no Settings surface shows a cluster naming prompt; the LLM tab's System prompt buttons sit only on the extraction, classification, reasoning and summarization cards, and the Integration tab's injected MCP prompt dialog shows the agent instructions.
 A21. [demo, neg, high] OP-1: the live proof records 0 console or page errors and 0 attempted writes.
 
 ## Riskiest assumption
