@@ -38,7 +38,7 @@ from app.services.config import get_llm_config  # noqa: E402
 from app.services.llm import LLMOrchestrator  # noqa: E402
 from app.services import prompt as prompt_constants  # noqa: E402
 from app.services.extraction import ExtractionService  # noqa: E402
-from app.services.extraction import (  # noqa: E402
+from app.services.extraction_clean import (  # noqa: E402
     clean_extraction, _build_extraction_schema,
 )
 

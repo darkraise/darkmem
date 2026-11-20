@@ -199,34 +199,16 @@ async def lifespan(app: FastAPI):
     refresh_mcp_instructions()
 
     # Feature 2: register retry handlers for the failure tracking system
+    from app.services.pipeline import memory_retry_handler
     from app.services.pipeline_failures import register_retry_handler
     from app.services.code_pipeline import CodePipeline
     from app.services.repo_manager import RepoManager
     from app.repositories.vector import PostgresVectorRepository
 
     if pipeline is not None:
-        _pipeline_ref = pipeline
-
-        @register_retry_handler("memory_ingest")
-        async def _retry_memory(memory_id):
-            from sqlalchemy import select
-            from sqlalchemy.orm import selectinload
-            from app.models.memory import Memory
-            async with async_session_factory() as s:
-                mem = (await s.execute(
-                    select(Memory).options(selectinload(Memory.tags)).where(Memory.id == memory_id)
-                )).scalar_one_or_none()
-                if not mem:
-                    return
-                entry = {
-                    "memory_id": mem.id,
-                    "content": mem.content,
-                    "source": mem.source,
-                    "tags": [t.name for t in mem.tags],
-                    "memory_type": mem.memory_type,
-                    "created_at": mem.created_at.isoformat() if mem.created_at else "",
-                }
-            await _pipeline_ref.process_batch([entry])
+        register_retry_handler("memory_ingest")(
+            memory_retry_handler(pipeline, async_session_factory)
+        )
 
         @register_retry_handler("code_index")
         async def _retry_code_index(repo_id):

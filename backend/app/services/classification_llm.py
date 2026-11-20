@@ -5,12 +5,10 @@ import json
 import logging
 
 from app.services.classification_areas import get_merged_llm_types, SIMPLE_NORMALIZATION
-from app.services.extraction import _strip_json_fences
+from app.services.extraction_clean import _MAX_CONTENT_CHARS, _strip_json_fences
 from app.services.llm import LLMOrchestrator
 
 logger = logging.getLogger(__name__)
-
-_MAX_CONTENT_CHARS = 6000
 
 
 class ClassificationService:

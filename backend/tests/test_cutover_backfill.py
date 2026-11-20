@@ -492,13 +492,14 @@ async def test_updated_at_survives_the_confidence_rewrite(bed):
 
 @pytest.mark.asyncio
 async def test_importance_is_restored_over_the_extractor_value(bed):
-    memory_id = await bed.seed("a carried memory", importance=0.42)
+    # The default: the extractor only replaces an importance nobody set.
+    memory_id = await bed.seed("a carried memory", importance=0.5)
     bed.default_extraction = {**EMPTY_EXTRACTION, "importance": 0.99}
     snapshot = await bed.snapshot()
 
     await _drain(bed, snapshot)
 
-    assert (await bed.row(memory_id))["importance"] == pytest.approx(0.42)
+    assert (await bed.row(memory_id))["importance"] == pytest.approx(0.5)
 
 
 @pytest.mark.asyncio
@@ -1183,7 +1184,7 @@ async def test_a_null_carried_memory_type_is_counted_as_gained(bed):
 async def test_the_violation_bucket_fills_when_the_restore_is_removed(bed, monkeypatch):
     """The mutation proof. A diff that stays green with the restore disabled is
     a diff that proves nothing."""
-    await bed.seed("this deployment is verified", confidence=0.9, importance=0.42)
+    await bed.seed("this deployment is verified", confidence=0.9, importance=0.5)
     bed.default_extraction = {**EMPTY_EXTRACTION, "importance": 0.99}
     snapshot = await bed.snapshot()
 

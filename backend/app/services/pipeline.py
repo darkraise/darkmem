@@ -6,19 +6,20 @@ from contextlib import contextmanager
 from copy import copy
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
 
-from app.config import FEATURE_FLAGS_DEFAULTS
-from app.models.config import Config
 from app.repositories.graph import PostgresGraphRepository
 from app.repositories.vector import MemoryFilter, PostgresVectorRepository
+from app.schemas.memory import MemoryCreate
 from app.services.classification_llm import ClassificationService
 from app.services.extraction import ExtractionService
 from app.services.llm import LLMOrchestrator, lease_llm
 from app.services.confidence import CONFIDENCE_DEFAULT, estimate_confidence
 from app.services.events import record_event
+from app.services.feature_flags import get_feature_flags_dict
 from app.services.stated_expiry import derive_stated_expiry
 from app.services.usage_recorder import UsageSubject, subject_scope
 from app.services.fact_provenance import (
@@ -30,19 +31,54 @@ from app.services.supersession import detect_supersessions, is_supersession_trig
 from app.services import ml_runtime, prompt
 from app.taxonomy import normalize_memory_type
 
+if TYPE_CHECKING:
+    from app.models.memory import Memory
+
 logger = logging.getLogger(__name__)
+
+# A capture that sent no importance stores the schema default; only then does
+# the extractor's estimate replace it.
+_DEFAULT_IMPORTANCE = MemoryCreate.model_fields["importance"].default
 
 async def _get_feature_flags(session_factory) -> dict:
     async with session_factory() as session:
-        result = await session.execute(
-            select(Config).where(Config.key == "feature_flags")
-        )
-        config = result.scalar_one_or_none()
-        if not config:
-            return dict(FEATURE_FLAGS_DEFAULTS)
-        merged = dict(FEATURE_FLAGS_DEFAULTS)
-        merged.update(config.value)
-        return merged
+        return await get_feature_flags_dict(session)
+
+
+def build_pipeline_entry(memory: "Memory") -> dict:
+    """The `process_batch` entry that replays a stored memory."""
+    return {
+        "memory_id": memory.id,
+        "content": memory.content,
+        "source": memory.source,
+        "project": memory.project,
+        "tags": [t.name for t in memory.tags],
+        "memory_type": memory.memory_type,
+        "created_at": memory.created_at.isoformat() if memory.created_at else "",
+    }
+
+
+async def load_pipeline_entry(session_factory, memory_id) -> dict | None:
+    """`build_pipeline_entry` for one memory id, or None once it is deleted."""
+    from sqlalchemy.orm import selectinload
+    from app.models.memory import Memory
+
+    async with session_factory() as session:
+        memory = (await session.execute(
+            select(Memory).options(selectinload(Memory.tags)).where(Memory.id == memory_id)
+        )).scalar_one_or_none()
+        return build_pipeline_entry(memory) if memory else None
+
+
+def memory_retry_handler(pipeline, session_factory):
+    """The `memory_ingest` retry handler: replay one memory through `pipeline`."""
+
+    async def retry(memory_id) -> None:
+        entry = await load_pipeline_entry(session_factory, memory_id)
+        if entry is not None:
+            await pipeline.process_batch([entry])
+
+    return retry
 
 
 _FLAG_CACHE_TTL = 5.0
@@ -639,7 +675,10 @@ class ProcessingPipeline:
                                 mem_record.flags = llm_classification.get("flags") or None
 
                             mem_record.memory_type = resolved_memory_type
-                            if extracted_importance is not None:
+                            if (
+                                extracted_importance is not None
+                                and mem_record.importance == _DEFAULT_IMPORTANCE
+                            ):
                                 try:
                                     mem_record.importance = float(extracted_importance)
                                 except (TypeError, ValueError):

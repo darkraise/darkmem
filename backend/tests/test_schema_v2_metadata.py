@@ -364,7 +364,7 @@ def test_clean_extraction_preserves_specific_predicates():
     """``clean_extraction`` no longer collapses 10-type to 5-type. Specific
     predicates like DEPENDS_ON, HAS_PART, AUTHORED_BY, HAPPENED_ON now
     survive end-to-end."""
-    from app.services.extraction import clean_extraction
+    from app.services.extraction_clean import clean_extraction
 
     result = {
         "memory_type": "fact",

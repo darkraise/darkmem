@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.services.extraction import (
+from app.services.extraction_clean import (
     PASS_REGISTRY,
     STAGE_RELATION_SYNTHESIS,
     CleanState,
@@ -237,7 +237,7 @@ def test_rescue_replaces_pattern_d_b_zone_window_accepts_close_entity():
 def test_rescue_file_path_entities_adds_missing_paths():
     """The deterministic file-path rescue scans the content for
     ``a/b/c.py``-style tokens and adds any that weren't extracted."""
-    from app.services.extraction import _rescue_file_path_entities
+    from app.services.extraction_clean import _rescue_file_path_entities
     text = (
         "Seed data was moved out of Alembic migration 0001 into "
         "backend/app/services/llm_seed.py and the wizard now uses it. "
@@ -256,7 +256,7 @@ def test_rescue_file_path_entities_skips_method_calls():
     """The rescue MUST NOT match plain dotted forms like ``classA.method1()``
     or ``obj.attr.subattr`` — without a slash they're indistinguishable
     from method calls / attribute access."""
-    from app.services.extraction import _rescue_file_path_entities
+    from app.services.extraction_clean import _rescue_file_path_entities
     text = (
         "The handler calls classA.method1() then obj.attr.subattr to finish. "
         "Anthropic.completion() and openai.embeddings.create() are also used."
@@ -268,7 +268,7 @@ def test_rescue_file_path_entities_skips_method_calls():
 
 def test_rescue_file_path_entities_handles_path_with_symbol():
     """``path/to/file.py:func()`` form is captured as a single entity."""
-    from app.services.extraction import _rescue_file_path_entities
+    from app.services.extraction_clean import _rescue_file_path_entities
     text = "The bug fix lives in backend/app/main.py:health() now."
     out = _rescue_file_path_entities([], text)
     names = {e["name"] for e in out}
@@ -280,7 +280,7 @@ def test_rescue_file_path_entities_handles_path_with_symbol():
 def test_rescue_file_path_entities_does_not_duplicate_existing():
     """When the LLM already extracted the path, the rescue must NOT add
     a duplicate row."""
-    from app.services.extraction import _rescue_file_path_entities
+    from app.services.extraction_clean import _rescue_file_path_entities
     existing = [
         {"name": "backend/app/services/llm_seed.py", "type": "artifact", "properties": {}}
     ]
@@ -294,7 +294,7 @@ def test_rescue_file_path_entities_pattern_d_picks_up_rescued_path():
     """End-to-end: when Pattern D's B-zone target is missing from the
     LLM extraction, the file-path rescue adds it, and Pattern D then
     emits the right REPLACES edge — closing the round-9/round-10 gap."""
-    from app.services.extraction import _rescue_file_path_entities
+    from app.services.extraction_clean import _rescue_file_path_entities
 
     text = (
         "Seed data was moved out of Alembic migration 0001 into "
@@ -396,7 +396,7 @@ def test_dedup_drops_uses_when_deployed_on_exists_same_pair():
     rescue adjacency pass emits ``A DEPLOYED_ON B`` for the same pair.
     DEPLOYED_ON is the more specific predicate; USES is redundant.
     """
-    from app.services.extraction import _drop_uses_when_deployed_on_exists
+    from app.services.extraction_clean import _drop_uses_when_deployed_on_exists
 
     rels = [
         {"source": "qwen3-embedding:0.6b", "target": "ollama", "type": "USES", "weight": 0.8},
@@ -410,7 +410,7 @@ def test_dedup_drops_uses_when_deployed_on_exists_same_pair():
 
 def test_dedup_keeps_uses_when_no_deployed_on_pair():
     """A USES whose pair has no DEPLOYED_ON survives untouched."""
-    from app.services.extraction import _drop_uses_when_deployed_on_exists
+    from app.services.extraction_clean import _drop_uses_when_deployed_on_exists
 
     rels = [
         {"source": "darkmem", "target": "pgvector", "type": "USES", "weight": 0.8},
@@ -423,7 +423,7 @@ def test_dedup_keeps_uses_when_no_deployed_on_pair():
 def test_dedup_keeps_reverse_pair_uses():
     """A USES on the reversed pair (B → A) does NOT get dropped by an
     A DEPLOYED_ON B. Could be a legitimate "host uses its own service"."""
-    from app.services.extraction import _drop_uses_when_deployed_on_exists
+    from app.services.extraction_clean import _drop_uses_when_deployed_on_exists
 
     rels = [
         {"source": "qwen3-embedding:0.6b", "target": "ollama",
@@ -438,7 +438,7 @@ def test_dedup_keeps_reverse_pair_uses():
 def test_dedup_drops_only_uses_not_other_predicates():
     """The dedup is specific to USES vs DEPLOYED_ON; other predicates
     (DEPENDS_ON, HAS_PART) are passed through even on the same pair."""
-    from app.services.extraction import _drop_uses_when_deployed_on_exists
+    from app.services.extraction_clean import _drop_uses_when_deployed_on_exists
 
     rels = [
         {"source": "qwen3-embedding:0.6b", "target": "ollama",

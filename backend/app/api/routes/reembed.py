@@ -26,6 +26,7 @@ from app.api.websocket import event_manager
 from app.utils.background import spawn
 from app.services.llm import lease_llm, spawn_with_llm
 from app.database import async_session_factory, get_session
+from app.services.feature_flags import get_feature_flags_dict
 from app.services.usage_recorder import UsageSubject, subject_scope
 from app.services.reembed import (
     CachePruneFingerprintUnresolved,
@@ -44,8 +45,8 @@ router = APIRouter(prefix="/api/v1/reembed", tags=["reembed"])
 
 async def _get_flags() -> dict:
     """Fetch feature flags in a fresh session (for background tasks)."""
-    from app.services.pipeline import _get_feature_flags
-    return await _get_feature_flags(async_session_factory)
+    async with async_session_factory() as session:
+        return await get_feature_flags_dict(session)
 
 
 def _is_sentinel(fingerprint: str) -> bool:

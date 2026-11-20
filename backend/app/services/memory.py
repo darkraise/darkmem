@@ -26,7 +26,6 @@ from app.services import (
     repo_provision,
 )
 from app.services.events import record_event
-from app.services.extraction import _MAX_CONTENT_CHARS
 from app.services.feature_flags import get_feature_flags_dict
 from app.services.memory_buffer import buffered_memory_id
 from app.services.pipeline import ProcessingPipeline
@@ -46,6 +45,9 @@ BUFFER_WAIT_TIMEOUT_SECONDS = 10
 # `reason` has no lineage-labelling surface yet, so its default scope is the
 # live view only; a caller asking for superseded rows must say so explicitly.
 REASON_DEFAULT_STATUSES = ("active",)
+
+# Characters of retrieved memory text `reason` sends the model.
+REASONING_CONTEXT_CHARS = 6000
 
 
 @dataclass(frozen=True)
@@ -901,7 +903,7 @@ limit=params.limit, offset=params.offset,
 
         # Step 3: Ask LLM with context
         context_parts, sources = _fit_context(
-            context_parts, sources, _MAX_CONTENT_CHARS
+            context_parts, sources, REASONING_CONTEXT_CHARS
         )
         context = "\n\n".join(context_parts)
         user_prompt = (

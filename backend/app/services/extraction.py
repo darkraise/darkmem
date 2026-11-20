@@ -6,11 +6,6 @@ import httpx
 from app.services.llm import LLMOrchestrator, LLMTruncationError
 from app.services import prompt as prompt_constants
 
-# Re-export the pure cleanup helpers, constants, and ``clean_extraction`` so
-# every name remains importable as ``app.services.extraction.<name>``. The
-# helper block was split into ``extraction_clean`` for maintainability; this
-# module keeps the ``ExtractionService`` orchestrator that owns the LLM call.
-from app.services.extraction_clean import *  # noqa: F401,F403
 from app.services.extraction_clean import (
     _MAX_CONTENT_CHARS,
     _build_extraction_schema,

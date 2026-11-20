@@ -9,7 +9,8 @@ from sqlalchemy.orm import selectinload
 from app.models.pipeline_failure import PipelineFailure
 from app.models.memory import Memory, Tag, document_tags, memory_tags
 from app.repositories.relational import PostgresAuditRepository
-from app.services.pipeline import ProcessingPipeline
+from app.services.feature_flags import get_feature_flags_dict
+from app.services.pipeline import ProcessingPipeline, build_pipeline_entry
 
 logger = logging.getLogger(__name__)
 
@@ -59,20 +60,9 @@ class AnalyticsService:
         return await self._reprocess_batch(list(result.scalars().all()))
 
     async def _reprocess_batch(self, memories: list[Memory]) -> dict:
-        batch_entries = [
-            {
-                "memory_id": m.id,
-                "content": m.content,
-                "source": m.source,
-                "project": m.project,
-                "tags": [t.name for t in m.tags],
-                "memory_type": m.memory_type,
-                "created_at": m.created_at.isoformat(),
-            }
-            for m in memories
-        ]
-
-        statuses = await self.pipeline.process_batch(batch_entries)
+        statuses = await self.pipeline.process_batch(
+            [build_pipeline_entry(m) for m in memories]
+        )
 
         processed = 0
         errors = 0
@@ -100,14 +90,13 @@ class AnalyticsService:
 
     async def _reprocess_batch_stream(self, memories: list[Memory]):
         import asyncio
-        from app.services.pipeline import _get_feature_flags
 
         total = len(memories)
         if total == 0:
             yield {"type": "done", "processed": 0, "errors": 0, "total": 0}
             return
 
-        flags = await _get_feature_flags(self.pipeline.session_factory)
+        flags = await get_feature_flags_dict(self.session)
         concurrency = flags.get("pipeline_concurrency", 5)
         semaphore = asyncio.Semaphore(concurrency)
 
@@ -124,13 +113,7 @@ class AnalyticsService:
                 status = {}
                 try:
                     status = await self.pipeline.process_memory(
-                        memory_id=memory.id,
-                        content=memory.content,
-                        source=memory.source,
-                        project=memory.project,
-                        tags=[t.name for t in memory.tags],
-                        memory_type=memory.memory_type,
-                        created_at=memory.created_at.isoformat(),
+                        **build_pipeline_entry(memory)
                     )
                     if status.get("error"):
                         status_label = "error"

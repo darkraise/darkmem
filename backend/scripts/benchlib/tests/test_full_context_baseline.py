@@ -553,7 +553,7 @@ async def test_the_arm_dispatches_through_the_reasoning_purpose(tmp_path):
 
 @pytest.mark.asyncio
 async def test_the_arm_forwards_a_content_derived_seed(tmp_path):
-    from app.services.extraction import _content_seed
+    from app.services.extraction_clean import _content_seed
 
     corpus = _corpus(2)
     pairs = _pairs(corpus)

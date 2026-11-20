@@ -22,6 +22,7 @@ from app.api.deps import refuse_when_read_only
 from app.api.websocket import event_manager
 from app.utils.background import spawn
 from app.database import async_session_factory, get_session
+from app.services.pipeline import load_pipeline_entry
 from app.services.pipeline_failures import (
     PipelineFailureService,
     RETRY_HANDLERS,
@@ -31,29 +32,6 @@ from app.services.pipeline_failures import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/pipeline-failures", tags=["pipeline-failures"])
-
-
-async def _build_memory_entry(memory_id: UUID) -> dict | None:
-    """Load a memory and build an entry dict for process_batch. Returns
-    None if the memory has been deleted."""
-    from sqlalchemy import select
-    from sqlalchemy.orm import selectinload
-    from app.models.memory import Memory
-
-    async with async_session_factory() as session:
-        mem = (await session.execute(
-            select(Memory).options(selectinload(Memory.tags)).where(Memory.id == memory_id)
-        )).scalar_one_or_none()
-        if not mem:
-            return None
-        return {
-            "memory_id": mem.id,
-            "content": mem.content,
-            "source": mem.source,
-            "tags": [t.name for t in mem.tags],
-            "memory_type": mem.memory_type,
-            "created_at": mem.created_at.isoformat() if mem.created_at else "",
-        }
 
 
 @router.get("")
@@ -187,7 +165,9 @@ async def retry_all(
                 if not retry_locks.try_acquire(fid):
                     continue
                 try:
-                    entry = await _build_memory_entry(UUID(f["entity_id"]))
+                    entry = await load_pipeline_entry(
+                        async_session_factory, UUID(f["entity_id"]),
+                    )
                 except Exception:
                     logger.exception("Failed to build memory entry for %s", f["entity_id"])
                     retry_locks.release(fid)

@@ -14,7 +14,7 @@ correct LLM output or let a hallucination/false edge through:
 """
 from __future__ import annotations
 
-from app.services.extraction import (
+from app.services.extraction_clean import (
     _drop_unlinked_dates,
     _filter_event_edges,
     _filter_hallucinated_names,

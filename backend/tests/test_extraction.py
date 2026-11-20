@@ -68,7 +68,7 @@ async def test_extract_handles_invalid_json():
 
 
 def test_content_seed_is_deterministic():
-    from app.services.extraction import _content_seed
+    from app.services.extraction_clean import _content_seed
 
     a = _content_seed("Memory about pgvector and Qdrant")
     b = _content_seed("Memory about pgvector and Qdrant")
@@ -76,7 +76,7 @@ def test_content_seed_is_deterministic():
 
 
 def test_content_seed_differs_for_different_content():
-    from app.services.extraction import _content_seed
+    from app.services.extraction_clean import _content_seed
 
     a = _content_seed("Memory A")
     b = _content_seed("Memory B")
@@ -84,7 +84,7 @@ def test_content_seed_differs_for_different_content():
 
 
 def test_content_seed_fits_in_uint32():
-    from app.services.extraction import _content_seed
+    from app.services.extraction_clean import _content_seed
 
     seed = _content_seed("any content")
     assert 0 <= seed < 2**32
@@ -94,7 +94,7 @@ def test_drop_uses_when_replaces_present_same_direction():
     """The exact ``promtail USES grafana alloy`` false positive from real
     runs: REPLACES says ``grafana alloy REPLACES promtail``, the rescue
     layer adds ``promtail USES grafana alloy``. The USES should drop."""
-    from app.services.extraction import _drop_uses_when_replaces_exists
+    from app.services.extraction_clean import _drop_uses_when_replaces_exists
 
     rels = [
         {"source": "grafana alloy", "target": "promtail", "type": "REPLACES"},
@@ -108,7 +108,7 @@ def test_drop_uses_when_replaces_present_same_direction():
 def test_drop_uses_when_replaces_present_reverse_direction():
     """Drop USES even when its source/target match REPLACES exactly,
     not just the swap. Pair-based dedup handles both directions."""
-    from app.services.extraction import _drop_uses_when_replaces_exists
+    from app.services.extraction_clean import _drop_uses_when_replaces_exists
 
     rels = [
         {"source": "alloy", "target": "promtail", "type": "REPLACES"},
@@ -121,7 +121,7 @@ def test_drop_uses_when_replaces_present_reverse_direction():
 
 def test_drop_uses_keeps_uses_when_no_replaces_for_pair():
     """A USES with no matching REPLACES survives untouched."""
-    from app.services.extraction import _drop_uses_when_replaces_exists
+    from app.services.extraction_clean import _drop_uses_when_replaces_exists
 
     rels = [
         {"source": "darkmem", "target": "pgvector", "type": "USES"},
@@ -134,7 +134,7 @@ def test_drop_uses_keeps_uses_when_no_replaces_for_pair():
 def test_drop_uses_treats_improves_on_as_replaces_family():
     """IMPROVES_ON collapses to REPLACES in the 5-type schema, so it
     blocks USES dedup just like REPLACES does."""
-    from app.services.extraction import _drop_uses_when_replaces_exists
+    from app.services.extraction_clean import _drop_uses_when_replaces_exists
 
     rels = [
         {"source": "alloy", "target": "promtail", "type": "IMPROVES_ON"},
@@ -150,7 +150,7 @@ def test_dedup_by_target_predicate_keeps_highest_weight():
     both ``darkmem USES rrf`` (correct, high weight) and
     ``qwen3-embedding USES rrf`` (wrong subject, low weight). Dedup
     must keep the higher-weight one."""
-    from app.services.extraction import _dedup_by_target_predicate
+    from app.services.extraction_clean import _dedup_by_target_predicate
 
     rels = [
         {"source": "darkmem", "target": "rrf", "type": "USES", "weight": 0.7},
@@ -165,7 +165,7 @@ def test_dedup_by_target_predicate_keeps_highest_weight():
 def test_dedup_by_target_predicate_keeps_distinct_predicates():
     """A target with two distinct predicates from different sources
     should NOT be merged — they describe different relationships."""
-    from app.services.extraction import _dedup_by_target_predicate
+    from app.services.extraction_clean import _dedup_by_target_predicate
 
     rels = [
         {"source": "darkmem", "target": "pgvector", "type": "USES", "weight": 0.8},
@@ -178,7 +178,7 @@ def test_dedup_by_target_predicate_keeps_distinct_predicates():
 def test_dedup_by_target_predicate_passes_through_partial_rows():
     """Rows missing source/target/type should not be touched so other
     extractor paths producing partial data don't get silently dropped."""
-    from app.services.extraction import _dedup_by_target_predicate
+    from app.services.extraction_clean import _dedup_by_target_predicate
 
     rels = [
         {"source": "darkmem", "target": "rrf", "type": "USES", "weight": 0.7},
@@ -200,7 +200,7 @@ def test_dedup_prefers_rescue_tagged_over_non_tagged_replaces():
     the higher-weight LLM emission and silently dropped the correct one.
     The tie-break flips this so the pattern-grounded triple wins regardless
     of weight."""
-    from app.services.extraction import _dedup_by_target_predicate
+    from app.services.extraction_clean import _dedup_by_target_predicate
 
     rels = [
         {"source": "darkmem", "target": "qdrant", "type": "REPLACES", "weight": 0.9},
@@ -216,7 +216,7 @@ def test_dedup_prefers_rescue_tagged_over_non_tagged_replaces():
 def test_dedup_falls_back_to_weight_when_no_rescue_tag():
     """The original USES anchoring fix is preserved: when neither
     candidate is rescue-tagged, the higher-weight triple still wins."""
-    from app.services.extraction import _dedup_by_target_predicate
+    from app.services.extraction_clean import _dedup_by_target_predicate
 
     rels = [
         {"source": "darkmem", "target": "rrf", "type": "USES", "weight": 0.7},
@@ -231,7 +231,7 @@ def test_dedup_falls_back_to_weight_when_both_rescue_tagged():
     """When both candidates are rescue-tagged (rare but possible if two
     rescue patterns fire on the same pair), the higher-weight one
     wins."""
-    from app.services.extraction import _dedup_by_target_predicate
+    from app.services.extraction_clean import _dedup_by_target_predicate
 
     rels = [
         {"source": "x", "target": "y", "type": "USES", "weight": 0.6,
@@ -260,7 +260,7 @@ def test_dedup_rescue_preference_generic_across_direction_sensitive_predicates(p
     — even if a given rescue path doesn't exist today, the policy is
     uniform.
     """
-    from app.services.extraction import _dedup_by_target_predicate
+    from app.services.extraction_clean import _dedup_by_target_predicate
 
     rels = [
         # LLM emission with wrong subject, high weight.
@@ -290,7 +290,7 @@ def test_dedup_does_not_prefer_a_rescue_whose_subject_is_only_inferred(predicate
     the model re-introduces the subject anchoring this dedup exists to
     correct — which is what it did on gold e14 before T1.24e narrowed it.
     """
-    from app.services.extraction import _dedup_by_target_predicate
+    from app.services.extraction_clean import _dedup_by_target_predicate
 
     rels = [
         {"source": "model-subject", "target": "shared-target",
@@ -311,7 +311,7 @@ def test_strip_json_fences_handles_anthropic_markdown_wrapping():
     JSON in a markdown code fence. The parser must strip the fence
     so json.loads succeeds.
     """
-    from app.services.extraction import _strip_json_fences
+    from app.services.extraction_clean import _strip_json_fences
 
     fenced = '```json\n{"entities": [], "relationships": []}\n```'
     assert _strip_json_fences(fenced) == '{"entities": [], "relationships": []}'
@@ -333,7 +333,7 @@ def test_filter_noise_drops_year_month_dates():
     ``concept`` and a downstream rescue pattern dragged it into a
     ``DEPLOYED_ON 2026-04`` triple. Fixed by extending the pattern to
     year-month and bare year forms."""
-    from app.services.extraction import _filter_noise
+    from app.services.extraction_clean import _filter_noise
 
     raw = [
         {"name": "2026-04", "type": "concept", "properties": {}},
@@ -348,7 +348,7 @@ def test_filter_noise_drops_year_month_dates():
 
 def test_drop_uses_self_loop_ignored():
     """A self-loop REPLACES (degenerate) doesn't block any USES."""
-    from app.services.extraction import _drop_uses_when_replaces_exists
+    from app.services.extraction_clean import _drop_uses_when_replaces_exists
 
     rels = [
         {"source": "alloy", "target": "alloy", "type": "REPLACES"},

@@ -14,11 +14,8 @@ import json
 import httpx
 
 from app.config import LLMPurposeConfig
-from app.services.extraction import (
-    ExtractionService,
-    _salvage_json_object,
-    _strip_json_fences,
-)
+from app.services.extraction import ExtractionService
+from app.services.extraction_clean import _salvage_json_object, _strip_json_fences
 from app.services.llm import LLMOrchestrator
 
 _VALID = {

@@ -60,7 +60,7 @@ def test_replaces_family_membership():
 def test_improves_on_blocks_uses_dedup_like_replaces():
     """An IMPROVES_ON between a pair suppresses a redundant USES on that pair,
     proving IMPROVES_ON is treated as part of the REPLACES family."""
-    from app.services.extraction import _drop_uses_when_replaces_exists
+    from app.services.extraction_clean import _drop_uses_when_replaces_exists
 
     rels = [
         {"source": "alloy", "target": "promtail", "type": "IMPROVES_ON"},
@@ -72,7 +72,7 @@ def test_improves_on_blocks_uses_dedup_like_replaces():
 
 
 def test_builds_on_blocks_uses_dedup_like_replaces():
-    from app.services.extraction import _drop_uses_when_replaces_exists
+    from app.services.extraction_clean import _drop_uses_when_replaces_exists
 
     rels = [
         {"source": "phoenix", "target": "triton", "type": "BUILDS_ON"},

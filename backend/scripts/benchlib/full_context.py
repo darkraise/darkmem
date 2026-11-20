@@ -46,7 +46,7 @@ from benchlib import bench_db, ledger  # noqa: F401  (DATABASE_URL override firs
 from benchlib.retrieval_scorer import ScoreReport, normalize_memory_id
 from benchlib.twin import EvalRun, LatencyRecorder, live_call_count, served_by_label
 
-from app.services.extraction import _content_seed
+from app.services.extraction_clean import _content_seed
 from app.services.llm import LLMOrchestrator, LLMTruncationError
 
 # The purpose this arm dispatches through. NOT ``extraction`` (ruling 2):
