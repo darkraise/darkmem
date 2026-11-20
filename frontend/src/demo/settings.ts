@@ -18,12 +18,11 @@ export function armStatus(value: number): ArmStatus {
   return value > 0 ? "active" : "inactive"
 }
 
-/** The seven w_* ranking arms in display order. */
+/** The w_* ranking arms in display order. */
 export function allArms(flags: DemoFlagsState): DemoRankArm[] {
   return [
     ...flags.fusion_arms,
     ...flags.graph_flags.flatMap((f) => (f.paired_arm ? [f.paired_arm] : [])),
-    flags.context_boost,
   ]
 }
 

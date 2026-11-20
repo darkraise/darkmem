@@ -41,12 +41,10 @@ const FEATURE_FLAGS_FIXTURE = {
   w_importance: 0,
   w_heat: 0,
   w_recency: 0,
-  w_context_boost: 0.25,
   ppr_enabled: false,
   w_ppr: 0,
   dual_level_enabled: true,
   w_dual: 0.15,
-  community_injection_enabled: false,
   classification_labels: [
     { name: "fact", description: "neutral factual information" },
     { name: "decision", description: "explicit choices made" },
@@ -69,14 +67,6 @@ const FEATURE_FLAGS_FIXTURE = {
       weight: 0.15,
       activation: "T2.50",
     },
-    {
-      name: "community_injection",
-      flag: "community_injection_enabled",
-      enabled: false,
-      weight_flag: null,
-      weight: null,
-      activation: "T2.50",
-    },
   ],
   rank_arms: [
     { name: "confidence", flag: "confidence_rank_gamma", value: 0.4, activation: null },
@@ -84,19 +74,6 @@ const FEATURE_FLAGS_FIXTURE = {
     { name: "heat", flag: "w_heat", value: 0, activation: "T2.31" },
     { name: "recency", flag: "w_recency", value: 0, activation: "T2.31" },
   ],
-  measurable_flags: [
-    "w_importance",
-    "w_heat",
-    "w_recency",
-    "w_context_boost",
-    "reranker_enabled",
-    "ppr_enabled",
-    "w_ppr",
-    "dual_level_enabled",
-    "w_dual",
-    "community_injection_enabled",
-  ],
-  measured_flags: [],
 }
 
 const LADDER_FIXTURE = {
@@ -210,22 +187,19 @@ describe("useFlagsTabBinding (DEMO off — real /config/feature-flags)", () => {
   it("pairs each graph flag with the weight the backend named, never a guess", async () => {
     mockApiFetch()
     const { result } = renderHook(() => useFlagsTabBinding(), { wrapper })
-    await waitFor(() => expect(result.current.graphFlags.length).toBe(3))
+    await waitFor(() => expect(result.current.graphFlags.length).toBe(2))
 
     const graph = (key: string) =>
       result.current.graphFlags.find((f) => f.key === key)
     expect(graph("ppr_enabled")?.paired_arm?.key).toBe("w_ppr")
     expect(graph("dual_level_enabled")?.paired_arm?.key).toBe("w_dual")
     expect(graph("dual_level_enabled")?.paired_arm?.value).toBe(0.15)
-    // Context augmentation produces no ranked list, so there is no weight —
-    // rendering a 0 here would invent a knob the fusion never reads.
-    expect(graph("community_injection_enabled")?.paired_arm).toBeNull()
   })
 
   it("reads the enabled graph flag as an override, the default one as a default", async () => {
     mockApiFetch()
     const { result } = renderHook(() => useFlagsTabBinding(), { wrapper })
-    await waitFor(() => expect(result.current.graphFlags.length).toBe(3))
+    await waitFor(() => expect(result.current.graphFlags.length).toBe(2))
 
     const graph = (key: string) =>
       result.current.graphFlags.find((f) => f.key === key)
@@ -443,18 +417,6 @@ describe("useFlagsTabBinding (DEMO off — real /config/feature-flags)", () => {
     expect(toast.error).toHaveBeenCalledWith("Not saved: boom")
   })
 
-  it("gives w_context_boost a real description, not its own flag name", async () => {
-    mockApiFetch()
-    const { result } = renderHook(() => useFlagsTabBinding(), { wrapper })
-    await waitFor(() => expect(result.current.isLoading).toBe(false))
-
-    // The fallback in `armFrom` is the flag name, so a missing meta entry
-    // renders as a "description" that says nothing. It had no entry until
-    // 2026-08-21.
-    expect(result.current.contextBoost.desc).not.toBe("w_context_boost")
-    expect(result.current.contextBoost.desc).toMatch(/context conditions/)
-  })
-
   it("saveFlags PUTs the section patch to /config/feature-flags, never the demo store", async () => {
     mockApiFetch()
     const { result } = renderHook(() => useFlagsTabBinding(), { wrapper })
@@ -511,7 +473,6 @@ describe("FlagsTab — the ranking dialog enforces the server's ranges", () => {
             w_importance: bounds,
             w_heat: bounds,
             w_recency: bounds,
-            w_context_boost: bounds,
           },
         })
       if (path === "/config/verification-ladder")

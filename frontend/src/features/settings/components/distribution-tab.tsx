@@ -1,4 +1,4 @@
-import { Clock, Eye, FileText, Gauge, Plug, ShieldCheck } from "lucide-react"
+import { Clock, FileText, Plug } from "lucide-react"
 import { useState } from "react"
 import { Button } from "darkraise-ui/components/button"
 import { Card, CardContent, CardHeader } from "darkraise-ui/components/card"
@@ -7,17 +7,10 @@ import { Label } from "darkraise-ui/components/label"
 import { ApiKeysCard } from "./api-keys-card"
 import { McpPromptDialog } from "./mcp-prompt-dialog"
 import { McpConnectSnippets, mcpEndpoint } from "./mcp-connect-snippets"
-import { Switch } from "darkraise-ui/components/switch"
-import { cn } from "darkraise-ui/lib"
-import { NumberField } from "@/components/darkmem"
 import { ModuleSurface } from "@/features/activity/components/module-surface"
 import { DEMO } from "@/lib/demo-flag"
 import { useDetailLevel } from "@/components/darkmem"
-import {
-  useDistribution,
-  useEvents,
-  useSetDistributionPolicy,
-} from "@/hooks/api"
+import { useDistribution, useEvents } from "@/hooks/api"
 import { relativeTime } from "@/lib/format"
 
 function SectionHead({
@@ -32,69 +25,6 @@ function SectionHead({
       <Icon aria-hidden className="text-muted-foreground h-4 w-4" />
       {children}
     </h3>
-  )
-}
-
-/** The token-budget input, controlled and re-seeded from the server's value.
- *
- *  Its own component so the state hook mounts only once the policy has been
- *  read — a conditional return in `LiveDistribution` still runs every hook
- *  above it, so a hook there would have to sit above the loading and error
- *  returns and hold a value that does not exist yet.
- *
- *  Uncontrolled with `defaultValue` was the bug: `<input type="number">`
- *  reports `""` for text it cannot parse, `Number("")` is 0 and 0 is finite,
- *  so blurring a typo wrote a budget of zero while the field went on showing
- *  the typo — the screen asserting something other than what is in force,
- *  which is the exact failure this route's 200-not-204 response exists to
- *  prevent.
- */
-function TokenBudgetField({
-  budget,
-  onCommit,
-}: {
-  budget: number
-  /** Resolves when the server has accepted the value, rejects when it has not.
-   *
-   *  A promise rather than a shared `isError` flag: the curb switch and this
-   *  field write through the same mutation, so keying the reset on that flag
-   *  meant a *failed curb* wiped an uncommitted budget edit — a control the
-   *  human was not touching discarding their typing. This way each write
-   *  learns its own outcome. */
-  onCommit: (next: number) => Promise<unknown>
-}) {
-  const [draft, setDraft] = useState(budget)
-  const [seed, setSeed] = useState(budget)
-  if (seed !== budget) {
-    // The server's value moved (a write landed, or a refetch): take it.
-    setSeed(budget)
-    setDraft(budget)
-  }
-
-  return (
-    <NumberField
-      value={draft}
-      min={0}
-      max={100000}
-      aria-label="Token budget"
-      className="w-32"
-      // `valueAsNumber` is NaN for text the field cannot parse, which is the
-      // distinction a raw number input lost: it reported "" for a typo, and
-      // Number("") is 0 and 0 is finite, so blurring a typo wrote a budget of
-      // zero while the field went on showing the typo.
-      onValueChange={setDraft}
-      onBlur={() => {
-        if (!Number.isFinite(draft)) {
-          setDraft(budget)
-          return
-        }
-        if (draft !== budget) {
-          // The field must not go on showing a number the server refused,
-          // while the banner above says the value in force is shown below.
-          onCommit(draft).catch(() => setDraft(budget))
-        }
-      }}
-    />
   )
 }
 
@@ -192,11 +122,10 @@ function RecentInjects() {
   )
 }
 
-/** The registry's targets, the policy, and the one curb. */
+/** The registry's targets and the configured rows it refused. */
 function LiveDistribution() {
   const level = useDetailLevel((s) => s.level)
   const { data, isLoading, isError } = useDistribution({ enabled: !DEMO })
-  const setPolicy = useSetDistributionPolicy()
 
   if (isError) {
     return (
@@ -209,58 +138,10 @@ function LiveDistribution() {
     return <p className="text-muted-foreground text-sm">loading…</p>
   }
 
-  const { targets, policy, rejected } = data
+  const { targets, rejected } = data
 
   return (
     <div className="space-y-3">
-      {setPolicy.isError && (
-        // The switch snaps back to server truth on the next render, so without
-        // this a human who believes they stopped push has no signal that they
-        // did not — on the one control whose whole purpose is "you can always
-        // stop it".
-        <p className="border-destructive-edge/55 text-destructive-text rounded-md border border-dashed px-2.5 py-1.5 text-sm">
-          The change was not saved.
-        </p>
-      )}
-      <div className="border-inset flex flex-wrap items-center gap-3 rounded-md border p-3">
-        <ShieldCheck aria-hidden className="text-muted-foreground h-4 w-4" />
-        <div className="flex-1">
-          <p className="text-sm font-semibold">
-            {policy.curbed ? "Push is curbed" : "Push is live"}
-          </p>
-          <p className="text-muted-foreground text-sm">
-            Turning push off stops every target at once.
-          </p>
-        </div>
-        <Switch
-          aria-label="Allow push"
-          checked={!policy.curbed}
-          disabled={setPolicy.isPending}
-          onCheckedChange={(on) => setPolicy.mutate({ ...policy, curbed: !on })}
-        />
-      </div>
-
-      <div className="border-inset flex flex-wrap items-center gap-3 rounded-md border p-3">
-        <Eye aria-hidden className="text-muted-foreground h-4 w-4" />
-        <div className="flex-1">
-          <p className="text-sm font-semibold">
-            {policy.watch_enabled ? "Watch is on" : "Watch is off"}
-          </p>
-          <p className="text-muted-foreground text-sm">
-            Lets targets set to watch re-inject when the project or open file
-            changes, instead of only at session start.
-          </p>
-        </div>
-        <Switch
-          aria-label="Watch mode"
-          checked={policy.watch_enabled}
-          disabled={setPolicy.isPending}
-          onCheckedChange={(on) =>
-            setPolicy.mutate({ ...policy, watch_enabled: on })
-          }
-        />
-      </div>
-
       <div className="flex flex-col gap-2">
         <SectionHead icon={FileText}>Managed block per target</SectionHead>
         {targets.length === 0 ? (
@@ -277,27 +158,9 @@ function LiveDistribution() {
               <code className="text-muted-foreground font-mono">
                 {target.context_file}
               </code>
-              {/* The effective state, not the declared one, and at both
-                  detail levels: whether a tool is being watched is what the
-                  human curbs, not a technical aside. */}
-              <span
-                className={cn(
-                  "rounded-full border px-2 py-0.5 font-mono text-xs tracking-wide uppercase",
-                  target.watched
-                    ? "border-info-edge/55 text-info-text"
-                    : "border-border text-muted-foreground",
-                )}
-              >
-                {target.watched ? "watched" : "session start"}
-              </span>
-              {target.refresh === "watch" && !target.watched && (
-                <span className="text-muted-foreground text-sm">
-                  set to watch, but watch is off
-                </span>
-              )}
               {level === "advanced" && (
                 <span className="text-muted-foreground ml-auto font-mono text-sm">
-                  mcp: {target.mcp_config} · refresh: {target.refresh}
+                  mcp: {target.mcp_config}
                 </span>
               )}
             </div>
@@ -321,21 +184,6 @@ function LiveDistribution() {
 
       <RecentInjects />
 
-      <div className="flex flex-col gap-2">
-        <SectionHead icon={Gauge}>Inject content policy</SectionHead>
-        <label className="flex flex-wrap items-center gap-2 text-sm">
-          <span>Token budget</span>
-          <TokenBudgetField
-            budget={policy.token_budget}
-            onCommit={(token_budget) =>
-              setPolicy.mutateAsync({ ...policy, token_budget })
-            }
-          />
-          <span className="text-muted-foreground">
-            spent truth-first: facts, then articles, then memory summaries
-          </span>
-        </label>
-      </div>
     </div>
   )
 }

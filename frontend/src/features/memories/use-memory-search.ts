@@ -15,9 +15,9 @@ export interface MemoryTraceView {
 
 // Human copy for the schema-v2 exclusion reasons `_schema_v2_exclusion_reasons`
 // actually emits (T1.33 amendment log) — deliberately not doc 07 §8's
-// forward-looking {by_project, by_status, by_context_conflict}, which SQL
-// pushdown (T1.29 series) closed before this code path can see, let alone
-// count, the rows they would have named.
+// forward-looking {by_project, by_status}, which SQL pushdown (T1.29 series)
+// closed before this code path can see, let alone count, the rows they would
+// have named.
 const EXCLUSION_COPY: Record<string, string> = {
   memory_type: "did not match the requested memory type",
   source: "did not match the requested source",

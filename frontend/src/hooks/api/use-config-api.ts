@@ -133,7 +133,6 @@ export interface FeatureFlags {
   w_importance: number
   w_heat: number
   w_recency: number
-  w_context_boost: number
   // Doc 07 §4's graph arms. In FEATURE_FLAGS_DEFAULTS since T2.32; absent from
   // the response model until 2026-08-21, which is why the Flags tab reported
   // "no config row exists for these yet" — it was reading a missing field.
@@ -141,17 +140,12 @@ export interface FeatureFlags {
   w_ppr: number
   dual_level_enabled: boolean
   w_dual: number
-  community_injection_enabled: boolean
   rank_arms: RankArmInfo[]
   graph_channels: GraphChannelInfo[]
   classification_labels: ClassificationLabel[]
   /** False in simple mode: the merge function returns SIMPLE_TYPES and never
    *  reads the enabled areas, so the area toggles change nothing. */
   classification_areas_apply: boolean
-  // Which flags are subject to the gate-ledger's "flip on a measured win"
-  // rule, and which of those have actually cleared one (T1.57 ruling 3).
-  measurable_flags: string[]
-  measured_flags: string[]
   /** The range the PUT accepts for each numeric flag, read off the server's
    *  own update schema. Optional so an older payload still reads. */
   numeric_bounds?: Record<string, { min: number; max: number }>

@@ -146,24 +146,6 @@ export function useGraphEntities(type?: string) {
   })
 }
 
-export function useVectorProjection() {
-  return useQuery({
-    queryKey: ["vectorProjection"],
-    queryFn: () =>
-      apiFetch<{
-        points: {
-          memory_id: string
-          x: number
-          y: number
-          content: string
-          source: string
-          tags: string[]
-          memory_type: string | null
-        }[]
-      }>("/vectors/projection"),
-  })
-}
-
 export function useReason() {
   return useMutation({
     mutationFn: (data: { question: string; limit?: number }) =>

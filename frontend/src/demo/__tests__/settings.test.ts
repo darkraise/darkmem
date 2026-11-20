@@ -24,7 +24,7 @@ describe("armStatus — invariant 23", () => {
 })
 
 describe("allArms", () => {
-  it("returns exactly the seven w_* arms", () => {
+  it("returns exactly the six w_* arms", () => {
     const flags = useDemoStore.getState().flags
     expect(allArms(flags).map((a) => a.key)).toEqual([
       "w_conf",
@@ -33,12 +33,11 @@ describe("allArms", () => {
       "w_recency",
       "w_ppr",
       "w_dual",
-      "w_context_boost",
     ])
   })
 
   it("counts the measured activations on this instance", () => {
-    expect(activeArmCount(useDemoStore.getState().flags)).toBe(3)
+    expect(activeArmCount(useDemoStore.getState().flags)).toBe(2)
   })
 })
 
@@ -107,10 +106,10 @@ describe("store — flags", () => {
   })
 
   it("setGraphFlag marks the flag an override", () => {
-    useDemoStore.getState().setGraphFlag("community_injection_enabled", true)
+    useDemoStore.getState().setGraphFlag("ppr_enabled", true)
     const flag = useDemoStore
       .getState()
-      .flags.graph_flags.find((f) => f.key === "community_injection_enabled")
+      .flags.graph_flags.find((f) => f.key === "ppr_enabled")
     expect(flag).toMatchObject({ enabled: true, source: "override" })
   })
 })

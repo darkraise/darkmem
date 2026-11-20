@@ -39,14 +39,14 @@ describe("ExclusionStrip", () => {
           {
             count: 3,
             unit: "facts",
-            reason: "context env=prod conflicts with a dev-only row",
-            tag: "by_context_conflict",
+            reason: "ranked below the context limit",
+            tag: "by_result_limit",
           },
         ]}
       />,
     )
     expect(screen.getByText("3 facts excluded")).toBeInTheDocument()
-    expect(screen.getByText(/conflicts with a dev-only row/)).toBeInTheDocument()
+    expect(screen.getByText(/ranked below the context limit/)).toBeInTheDocument()
   })
 
   it("renders nothing when there are no exclusions", () => {

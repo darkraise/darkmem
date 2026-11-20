@@ -44,10 +44,27 @@ afterEach(() => {
 describe("FlagsTab — invariant 23 honesty (demo mode)", () => {
   it("renders every dormant arm as inactive, never omitted", () => {
     renderTab()
-    // 4 dormant (w_importance, w_heat, w_recency, w_ppr) vs 3 active
-    // (w_conf, w_context_boost, w_dual).
+    // 4 dormant (w_importance, w_heat, w_recency, w_ppr) vs 2 active
+    // (w_conf, w_dual).
     expect(screen.getAllByText("inactive")).toHaveLength(4)
-    expect(screen.getAllByText("active")).toHaveLength(3)
+    expect(screen.getAllByText("active")).toHaveLength(2)
+  })
+
+  it("shows no control that steers nothing", () => {
+    const { container } = renderTab()
+    // Topic summaries had no reader and the context match boost no caller;
+    // neither may render a control, and no arm may wear an "unmeasured" badge.
+    expect(screen.queryByText("Topic summaries")).not.toBeInTheDocument()
+    expect(screen.queryByText("Context match")).not.toBeInTheDocument()
+    expect(screen.queryByText(/unmeasured/i)).not.toBeInTheDocument()
+
+    const note = "Turned on only after a measured retrieval win"
+    for (const name of ["Importance", "Read frequency", "Recency"]) {
+      const row = within(container).getByText(name).closest(".border-inset")
+      expect(row).not.toBeNull()
+      expect(within(row as HTMLElement).getByText(note)).toBeInTheDocument()
+    }
+    expect(within(container).getAllByText(note)).toHaveLength(3)
   })
 
   it("marks written overrides and leaves defaults unmarked", () => {
@@ -119,7 +136,6 @@ describe("FlagsTab — every section names itself", () => {
     for (const name of [
       "ranking arms",
       "feature flags",
-      "context match boost",
       "graph augmentation",
       "pipeline & embedding tunables",
       "classification",
@@ -138,20 +154,13 @@ describe("FlagsTab — every section names itself", () => {
     // override that matters.
     const { container } = renderTab()
     const headers = container.querySelectorAll(".dr-card-header")
-    expect(headers.length).toBe(8)
+    expect(headers.length).toBe(7)
     for (const header of headers) {
       expect(header.className).toContain("flex-row")
       expect(header.className).toContain("flex-nowrap")
     }
   })
 
-  it("gives w_context_boost a description rather than its own key", () => {
-    renderTab()
-    // `armFrom` falls back to the flag name when the meta table has no entry,
-    // so a missing row rendered as a "description" that said nothing.
-    const tip = screen.getByLabelText("About w_context_boost")
-    expect(tip).toBeInTheDocument()
-  })
 })
 
 describe("FlagsTab — graph augmentation is editable", () => {

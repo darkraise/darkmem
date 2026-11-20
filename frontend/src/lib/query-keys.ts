@@ -67,7 +67,7 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
   distribution: {
     kind: "global",
     reason:
-      "Distribution config is per-installation, not per-project: the adapter registry maps a tool to a file path, and the curb stops push everywhere at once (doc 13 §6.5). Scoping it to a project would imply push could be curbed for one and live for another, which is the opposite of what a single stop control means",
+      "Distribution config is per-installation, not per-project: the adapter registry maps a tool to a file path for every project at once (doc 13 §6.5), so scoping it to a project would imply a per-project mapping that does not exist",
   },
   reviewQueue: {
     kind: "manual",
@@ -220,7 +220,6 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
   },
   fullGraph: { kind: "global" },
   graphEntities: { kind: "global" },
-  vectorProjection: { kind: "global" },
   knowledgeEntities: { kind: "global" },
   knowledgeTimeline: { kind: "global" },
   jobs: { kind: "global" },

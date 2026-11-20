@@ -130,7 +130,6 @@ interface ScoredMemory {
   keyword: number
   hits: number
   tokenCount: number
-  contextMatch: boolean
   rrf: number
 }
 
@@ -138,7 +137,6 @@ function scoreMemory(
   m: DemoMemory,
   tokens: string[],
   query: string,
-  context: string | null,
 ): ScoredMemory | null {
   const hay = haystack(m)
   const hits = tokens.filter((t) => hay.includes(t)).length
@@ -147,16 +145,13 @@ function scoreMemory(
   const jitter = hash01(m.id + query)
   const semantic =
     Math.round((0.4 + 0.55 * (0.6 * keyword + 0.4 * jitter)) * 100) / 100
-  const contextMatch = context != null && m.applies_when === context
-  let rrf = 0.015 + 0.035 * (0.7 * semantic + 0.3 * keyword)
-  if (contextMatch) rrf *= 1.18
+  const rrf = 0.015 + 0.035 * (0.7 * semantic + 0.3 * keyword)
   return {
     memory: m,
     semantic,
     keyword: Math.round(keyword * 100) / 100,
     hits,
     tokenCount: tokens.length,
-    contextMatch,
     rrf: Math.round(rrf * 10_000) / 10_000,
   }
 }
@@ -182,7 +177,6 @@ function buildTrace(s: ScoredMemory, rank: number): MemoryTrace {
     `${strength} semantic match`,
     `${s.hits} of ${s.tokenCount} keyword${s.tokenCount === 1 ? "" : "s"} hit`,
   ]
-  if (s.contextMatch) parts.push("boosted by the matching declared context")
   if (!reranked) parts.push("rode the unscored tail past the rerank window")
   return {
     channels,
@@ -199,7 +193,7 @@ function buildTrace(s: ScoredMemory, rank: number): MemoryTrace {
  */
 export function searchDemoMemories(
   memories: DemoMemory[],
-  { query, project, context }: MemorySearchQuery,
+  { query, project }: MemorySearchQuery,
 ): MemorySearchOutcome {
   const tokens = tokenize(query)
   if (tokens.length === 0) {
@@ -208,19 +202,12 @@ export function searchDemoMemories(
 
   const scoped: ScoredMemory[] = []
   let outOfProject = 0
-  let contextConflicts = 0
-  const conflictingContexts = new Set<string>()
 
   for (const m of memories) {
-    const scored = scoreMemory(m, tokens, query, context)
+    const scored = scoreMemory(m, tokens, query)
     if (!scored) continue
     if (project !== "all" && m.project !== project) {
       outOfProject += 1
-      continue
-    }
-    if (context != null && m.applies_when && m.applies_when !== context) {
-      contextConflicts += 1
-      conflictingContexts.add(m.applies_when)
       continue
     }
     scoped.push(scored)
@@ -231,14 +218,6 @@ export function searchDemoMemories(
   )
 
   const exclusions: MemoryExclusion[] = []
-  if (contextConflicts > 0) {
-    exclusions.push({
-      count: contextConflicts,
-      unit: contextConflicts === 1 ? "memory" : "memories",
-      reason: `your declared context ${context} conflicts with a ${[...conflictingContexts].join(", ")}-only row`,
-      tag: "by_context_conflict",
-    })
-  }
   if (outOfProject > 0) {
     exclusions.push({
       count: outOfProject,

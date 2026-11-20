@@ -6,9 +6,9 @@ import type {
 } from "../types"
 
 // ---------------------------------------------------------------------------
-// S25 — Flags. w_conf, w_dual, and w_context_boost are measured, non-zero
-// overrides on this instance (the same weights snapshot the S03 trace reads);
-// the rest sit at their coded default of 0 and render inactive.
+// S25 — Flags. w_conf and w_dual are measured, non-zero overrides on this
+// instance (the same weights snapshot the S03 trace reads); the rest sit at
+// their coded default of 0 and render inactive.
 // ---------------------------------------------------------------------------
 
 export const CURATED_FLAGS: DemoFlagsState = {
@@ -30,7 +30,6 @@ export const CURATED_FLAGS: DemoFlagsState = {
       source: "default",
       step: 0.05,
       activatesWith: "T2.30",
-      unmeasured: true,
     },
     {
       key: "w_heat",
@@ -40,7 +39,6 @@ export const CURATED_FLAGS: DemoFlagsState = {
       source: "default",
       step: 0.05,
       activatesWith: "T2.31",
-      unmeasured: true,
     },
     {
       key: "w_recency",
@@ -50,7 +48,6 @@ export const CURATED_FLAGS: DemoFlagsState = {
       source: "default",
       step: 0.05,
       activatesWith: "T2.31",
-      unmeasured: true,
     },
   ],
   graph_flags: [
@@ -82,25 +79,7 @@ export const CURATED_FLAGS: DemoFlagsState = {
         step: 0.05,
       },
     },
-    {
-      key: "community_injection_enabled",
-      desc: "Adds a summary of the matching entity group as context. It adds no ranked list, so it has no weight",
-      enabled: false,
-      source: "default",
-      paired_arm: null,
-      no_weight_note:
-        "context augmentation, not a ranking signal — no paired RRF weight",
-    },
   ],
-  context_boost: {
-    key: "w_context_boost",
-    desc: "Boosts results whose context conditions match the query; results whose conditions conflict are left out",
-    value: 0.25,
-    coded_default: 0,
-    source: "override",
-    step: 0.05,
-    unmeasured: true,
-  },
   corroboration: {
     // The shipped floors, uncommitted — an instance nobody has tuned. Demo
     // mode renders the same committed/effective split real mode does, so the
@@ -128,7 +107,6 @@ export const CURATED_FLAGS: DemoFlagsState = {
       desc: "Has an LLM re-score the top 40 results before they are returned. Adds latency and cost",
       enabled: false,
       source: "default",
-      unmeasured: true,
     },
     {
       key: "relation_rescue",
@@ -184,7 +162,7 @@ export const CURATED_FLAGS: DemoFlagsState = {
   repo_allowlist: {
     patterns: ["github.com/darkraise/*"],
   },
-  overrides_written: 4,
+  overrides_written: 3,
 }
 
 // ---------------------------------------------------------------------------

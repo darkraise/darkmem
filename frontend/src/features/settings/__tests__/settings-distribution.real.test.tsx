@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
 import type { ReactNode } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -41,18 +41,13 @@ const STATE = {
       tool: "test-tool-alpha",
       context_file: "ALPHA_CONTEXT.md",
       mcp_config: ".alpha/mcp.json",
-      refresh: "session_start",
-      watched: false,
     },
     {
       tool: "test-tool-beta",
       context_file: ".beta/rules/darkmem.mdc",
       mcp_config: ".beta/mcp.json",
-      refresh: "session_start",
-      watched: false,
     },
   ],
-  policy: { token_budget: 2000, curbed: false, watch_enabled: false },
   rejected: [],
 }
 
@@ -119,58 +114,42 @@ describe("Distribution tab — live", () => {
     expect(screen.getByText(/1 configured entry did not take effect/)).toBeInTheDocument()
   })
 
-  it("offers one control that stops every target, and posts it", async () => {
-    const calls: Array<[string, RequestInit | undefined]> = []
-    vi.mocked(apiFetch).mockImplementation(async (url: string, init?: RequestInit) => {
-      calls.push([url, init])
-      if (url === "/distribution/policy") return JSON.parse((init?.body as string) ?? "{}")
-      return STATE
-    })
-
-    render(withQuery(<DistributionTab />))
-    fireEvent.click(await screen.findByLabelText("Allow push"))
-
-    await waitFor(() =>
-      expect(calls.some(([url]) => url === "/distribution/policy")).toBe(true),
-    )
-    const [, init] = calls.find(([url]) => url === "/distribution/policy")!
-    expect(JSON.parse((init?.body as string) ?? "{}").curbed).toBe(true)
-  })
-
-  it("states plainly when the policy could not be read", async () => {
-    // A screen that showed "push is live" because the read failed would assert
-    // the opposite of what it knows — and this is the control a human reaches
-    // for when they want push to stop.
+  it("states plainly when the targets could not be read", async () => {
     vi.mocked(apiFetch).mockRejectedValue(new Error("boom"))
 
     render(withQuery(<DistributionTab />))
 
-    expect(await screen.findByText(/could not be loaded/)).toBeInTheDocument()
-    expect(screen.queryByText("Push is live")).not.toBeInTheDocument()
+    expect(
+      await screen.findByText(/distribution settings could not be loaded/),
+    ).toBeInTheDocument()
   })
 
-  it("edits the content policy", async () => {
-    const calls: Array<[string, RequestInit | undefined]> = []
-    vi.mocked(apiFetch).mockImplementation(async (url: string, init?: RequestInit) => {
-      calls.push([url, init])
-      if (url === "/distribution/policy") return JSON.parse((init?.body as string) ?? "{}")
-      return STATE
+  it("carries no token budget, watch switch or curb", async () => {
+    // Nothing ever read the policy those three controls wrote, so the tab
+    // keeps only what the registry answers.
+    const calls: string[] = []
+    vi.mocked(apiFetch).mockImplementation(async (url: string) => {
+      calls.push(url)
+      if (url.includes("event_type=")) return { items: [], total: 0 } as never
+      return STATE as never
     })
 
     render(withQuery(<DistributionTab />))
     await liveHalfRendered()
-    // change-then-blur, because the field is controlled: a blur carrying a
-    // `target` mutates the DOM node behind React's back, which is how the
-    // uncontrolled version let an unparseable entry through.
-    const field = await screen.findByLabelText("Token budget")
-    fireEvent.change(field, { target: { value: "500" } })
-    fireEvent.blur(field)
 
-    await waitFor(() =>
-      expect(calls.some(([url]) => url === "/distribution/policy")).toBe(true),
-    )
-    const [, init] = calls.find(([url]) => url === "/distribution/policy")!
-    expect(JSON.parse((init?.body as string) ?? "{}").token_budget).toBe(500)
+    expect(screen.getByText("test-tool-alpha")).toBeInTheDocument()
+    expect(screen.queryByLabelText("Token budget")).not.toBeInTheDocument()
+    expect(screen.queryByText(/token budget/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText("Watch mode")).not.toBeInTheDocument()
+    expect(screen.queryByLabelText("Allow push")).not.toBeInTheDocument()
+
+    for (const control of screen.queryAllByRole("switch")) fireEvent.click(control)
+    for (const field of screen.queryAllByRole("spinbutton")) {
+      fireEvent.change(field, { target: { value: "500" } })
+      fireEvent.blur(field)
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(calls.filter((url) => url.includes("/distribution/policy"))).toEqual([])
   })
 
   it("honours Simple/Advanced on the per-target detail", async () => {
@@ -191,91 +170,17 @@ describe("Distribution tab — live", () => {
     expect(await screen.findByText(/mcp: \.alpha\/mcp\.json/)).toBeInTheDocument()
   })
 
-  it("does not write a budget of zero for text it could not parse", async () => {
-    // `<input type="number">` reports "" for an unparseable entry and
-    // `Number("")` is 0 — finite, so the guard passed and the server was told
-    // the budget was zero while the field kept showing the typo.
-    const calls: string[] = []
-    vi.mocked(apiFetch).mockImplementation(async (url: string, init?: RequestInit) => {
-      calls.push(url)
-      if (url === "/distribution/policy") return JSON.parse((init?.body as string) ?? "{}")
-      return STATE
-    })
-
-    render(withQuery(<DistributionTab />))
-    await liveHalfRendered()
-    const field = (await screen.findByLabelText("Token budget")) as HTMLInputElement
-    fireEvent.change(field, { target: { value: "" } })
-    fireEvent.blur(field)
-
-    // The field snaps back to what is in force, and nothing was written.
-    await waitFor(() => expect(field.value).toBe("2000"))
-    expect(calls).not.toContain("/distribution/policy")
-  })
-
-  it("puts the field back to what is in force when the write is rejected", async () => {
-    // The banner says "push is still whatever the server last accepted, shown
-    // below" — so the field below it must not go on showing the number the
-    // server just refused.
-    vi.mocked(apiFetch).mockImplementation(async (url: string) => {
-      if (url === "/distribution/policy") throw new Error("boom")
-      return STATE
-    })
-
-    render(withQuery(<DistributionTab />))
-    await liveHalfRendered()
-    const field = (await screen.findByLabelText("Token budget")) as HTMLInputElement
-    fireEvent.change(field, { target: { value: "999999" } })
-    fireEvent.blur(field)
-
-    await screen.findByText(/was not saved/)
-    await waitFor(() => expect(field.value).toBe("2000"))
-  })
-
-  it("keeps an uncommitted budget edit when a different control fails", async () => {
-    // The curb switch and the budget field write through the same mutation, so
-    // resetting on its shared error state meant a failed *curb* discarded
-    // typing in a field the human was not touching.
-    vi.mocked(apiFetch).mockImplementation(async (url: string) => {
-      if (url === "/distribution/policy") throw new Error("boom")
-      return STATE
-    })
-
-    render(withQuery(<DistributionTab />))
-    await liveHalfRendered()
-    const field = (await screen.findByLabelText("Token budget")) as HTMLInputElement
-    fireEvent.change(field, { target: { value: "5000" } })
-    fireEvent.click(screen.getByLabelText("Allow push"))
-
-    await screen.findByText(/was not saved/)
-    expect(field.value).toBe("5000")
-  })
-
-  it("says so when the curb could not be saved", async () => {
-    // The switch snaps back to server truth, so a silent failure leaves a
-    // human believing they stopped push when they did not.
-    vi.mocked(apiFetch).mockImplementation(async (url: string) => {
-      if (url === "/distribution/policy") throw new Error("boom")
-      return STATE
-    })
-
-    render(withQuery(<DistributionTab />))
-    await liveHalfRendered()
-    fireEvent.click(screen.getByLabelText("Allow push"))
-
-    expect(await screen.findByText(/was not saved/)).toBeInTheDocument()
-  })
 })
 
-// ─────────────── T4.08: watch + curb surfaces ───────────────
+// ─────────────── T4.08: the inject log ───────────────
 
-describe("Distribution tab — watch and curb (T4.08)", () => {
+describe("Distribution tab — the inject log (T4.08)", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     useDetailLevel.setState({ level: "simple" })
   })
 
-  /** Routes by path so the policy read and the inject log never answer for
+  /** Routes by path so the targets read and the inject log never answer for
    *  each other — a single `mockResolvedValue` makes the log render the
    *  distribution state, which is a passing test about nothing. */
   function route(state: unknown, injects: unknown[] = [], curbs: unknown[] = []) {
@@ -313,90 +218,6 @@ describe("Distribution tab — watch and curb (T4.08)", () => {
       ...over,
     }
   }
-
-  it("shows watch off by default, and per target", async () => {
-    route(STATE)
-    render(withQuery(<DistributionTab />))
-    await liveHalfRendered()
-
-    expect(screen.getByText("Watch is off")).toBeInTheDocument()
-    expect(screen.getAllByText("session start").length).toBe(STATE.targets.length)
-  })
-
-  it("names a target as watched from the server's own verdict", async () => {
-    // `refresh` alone does not answer it — the install's flag does too, and
-    // the server is where the two meet.
-    route({
-      ...STATE,
-      policy: { ...STATE.policy, watch_enabled: true },
-      targets: [{ ...STATE.targets[0]!, refresh: "watch", watched: true }],
-    })
-    render(withQuery(<DistributionTab />))
-    await liveHalfRendered()
-
-    expect(screen.getByText("Watch is on")).toBeInTheDocument()
-    expect(screen.getByText("watched")).toBeInTheDocument()
-  })
-
-  it("says so when a target asks for watch the install has not enabled", async () => {
-    // Otherwise the row reads `refresh: watch` and the operator concludes it
-    // is being watched, while `resolve_adapter` refuses that adapter.
-    route({
-      ...STATE,
-      targets: [{ ...STATE.targets[0]!, refresh: "watch", watched: false }],
-    })
-    render(withQuery(<DistributionTab />))
-    await liveHalfRendered()
-
-    expect(
-      screen.getByText(/set to watch, but watch is off/),
-    ).toBeInTheDocument()
-  })
-
-  it("turning watch on writes the policy without touching the curb", async () => {
-    route(STATE)
-    render(withQuery(<DistributionTab />))
-    await liveHalfRendered()
-
-    fireEvent.click(screen.getByLabelText("Watch mode"))
-
-    await waitFor(() =>
-      expect(apiFetch).toHaveBeenCalledWith(
-        "/distribution/policy",
-        expect.objectContaining({
-          method: "PUT",
-          body: JSON.stringify({
-            token_budget: 2000,
-            curbed: false,
-            watch_enabled: true,
-          }),
-        }),
-      ),
-    )
-  })
-
-  it("the curb is one control that stops every target", async () => {
-    route(STATE)
-    render(withQuery(<DistributionTab />))
-    await liveHalfRendered()
-
-    expect(screen.getByText(/stops every target at once/)).toBeInTheDocument()
-    expect(screen.getAllByLabelText("Allow push").length).toBe(1)
-
-    fireEvent.click(screen.getByLabelText("Allow push"))
-    await waitFor(() =>
-      expect(apiFetch).toHaveBeenCalledWith(
-        "/distribution/policy",
-        expect.objectContaining({
-          body: JSON.stringify({
-            token_budget: 2000,
-            curbed: true,
-            watch_enabled: false,
-          }),
-        }),
-      ),
-    )
-  })
 
   it("lists recent injects inline with their items and budget", async () => {
     route(STATE, [injectEvent()])

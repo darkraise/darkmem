@@ -33,7 +33,6 @@ const CODED_DEFAULTS: Record<string, number> = {
   w_importance: 0,
   w_heat: 0,
   w_recency: 0,
-  w_context_boost: 0,
   w_ppr: 0,
   w_dual: 0,
 }
@@ -47,7 +46,6 @@ const BEHAVIORAL_DEFAULTS: Record<string, boolean> = {
 const GRAPH_DEFAULTS: Record<string, boolean> = {
   ppr_enabled: false,
   dual_level_enabled: false,
-  community_injection_enabled: false,
 }
 
 const FUSION_ARM_META: Record<string, { desc: string; step: number }> = {
@@ -65,13 +63,6 @@ const FUSION_ARM_META: Record<string, { desc: string; step: number }> = {
   },
   w_recency: {
     desc: "Ranks recently used or created memories higher",
-    step: 0.05,
-  },
-  // Absent until 2026-08-21, which made this arm's help tip render the literal
-  // string "w_context_boost": `armFrom` falls back to the flag name when the
-  // meta table has no entry, so a missing row here reads as a description.
-  w_context_boost: {
-    desc: "Boosts results whose context conditions match the query; results whose conditions conflict are left out",
     step: 0.05,
   },
 }
@@ -94,8 +85,6 @@ const GRAPH_META: Record<string, string> = {
     "Adds results ranked by how close they are in the entity graph to the entities in the query",
   dual_level_enabled:
     "Adds results found by searching the relations between entities",
-  community_injection_enabled:
-    "Adds a summary of the matching entity group as context. It adds no ranked list, so it has no weight",
 }
 
 const GRAPH_WEIGHT_META: Record<string, string> = {
@@ -151,7 +140,6 @@ const TUNABLE_META: Record<
 export const SECTIONS = {
   arms: "arms",
   flags: "flags",
-  contextBoost: "context_boost",
   graph: "graph",
   tunables: "tunables",
   classification: "classification",
@@ -163,7 +151,6 @@ export type SectionKey = (typeof SECTIONS)[keyof typeof SECTIONS]
 
 export interface FlagsTabBinding {
   fusionArms: DemoRankArm[]
-  contextBoost: DemoRankArm
   behavioralFlags: DemoBehavioralFlag[]
   /** Live in both modes since 2026-08-21. The five doc 07 §4 flags have been in
    *  `FEATURE_FLAGS_DEFAULTS` since T2.32; what was missing was the response
@@ -284,7 +271,6 @@ export function useFlagsTabBinding(): FlagsTabBinding {
   if (DEMO) {
     return {
       fusionArms: demoFlags.fusion_arms,
-      contextBoost: demoFlags.context_boost,
       behavioralFlags: demoFlags.behavioral_flags,
       graphAugmentationAvailable: true,
       graphFlags: demoFlags.graph_flags,
@@ -347,15 +333,6 @@ export function useFlagsTabBinding(): FlagsTabBinding {
         armFrom(key, flags[key], undefined, flags.numeric_bounds?.[key]),
       )
     : []
-
-  const contextBoost: DemoRankArm = flags
-    ? armFrom(
-        "w_context_boost",
-        flags.w_context_boost,
-        undefined,
-        flags.numeric_bounds?.w_context_boost,
-      )
-    : armFrom("w_context_boost", 0)
 
   const behavioralFlags: DemoBehavioralFlag[] = flags
     ? (
@@ -434,7 +411,6 @@ export function useFlagsTabBinding(): FlagsTabBinding {
 
   return {
     fusionArms,
-    contextBoost,
     behavioralFlags,
     graphAugmentationAvailable: Boolean(flags),
     graphFlags,

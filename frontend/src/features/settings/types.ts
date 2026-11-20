@@ -33,9 +33,6 @@ export interface DemoRankArm {
   /** Task id that turns this arm on; absent = already live (T1.57 ruling 1,
    *  read from the backend's own `RankArm.activation`, never guessed here). */
   activatesWith?: string
-  /** No entry in the gate-ledger's "Arm activation log" yet — flipping this
-   *  arm is possible but its win, if any, is unmeasured (T1.57 ruling 3). */
-  unmeasured?: boolean
 }
 
 export interface DemoGraphFlag {
@@ -49,8 +46,6 @@ export interface DemoGraphFlag {
   /** Task id whose measurement may turn this channel on, read off the
    *  backend's `GRAPH_CHANNELS` registry rather than guessed here. */
   activatesWith?: string
-  /** No recorded gate-ledger win — see DemoRankArm.unmeasured. */
-  unmeasured?: boolean
 }
 
 /** What happened to one verification-ladder threshold between the config row
@@ -115,8 +110,6 @@ export interface DemoBehavioralFlag {
   desc: string
   enabled: boolean
   source: FlagSource
-  /** No recorded gate-ledger win — see DemoRankArm.unmeasured. */
-  unmeasured?: boolean
 }
 
 export type ApiKind =

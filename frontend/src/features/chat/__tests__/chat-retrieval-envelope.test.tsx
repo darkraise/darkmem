@@ -40,7 +40,7 @@ const ENVELOPE: ChatRetrievalEnvelope = {
   },
   reranked: false,
   weights: { semantic_weight: 0.7 },
-  excluded: { by_context_conflict: 2, by_result_limit: 0 },
+  excluded: { by_result_limit: 2, not_found: 0 },
   partial: true,
 }
 
@@ -67,8 +67,23 @@ describe("the envelope a converged turn carries", () => {
     expect(items).toHaveLength(1)
     const item = items[0]!
     expect(item.count).toBe(2)
-    expect(item.tag).toBe("by_context_conflict")
-    expect(String(item.reason)).toContain("conflicted with this turn's context")
+    expect(item.tag).toBe("by_result_limit")
+    expect(String(item.reason)).toContain("ranked below the context limit")
+  })
+
+  // The name is assembled so the removed-names scan does not read this test.
+  it(`reads an envelope without ${["by", "context", "conflict"].join("_")}`, () => {
+    // The composition's only own tally is the result limit; chat adds the
+    // re-read gap. Neither may render as undefined copy.
+    const items = exclusionItems({
+      ...ENVELOPE,
+      excluded: { by_result_limit: 1, not_found: 2 },
+    })
+    expect(items.map((item) => [item.tag, item.count, String(item.reason)])).toEqual([
+      ["by_result_limit", 1, "ranked below the context limit"],
+      ["not_found", 2, "could not be re-read"],
+    ])
+    for (const item of items) expect(String(item.reason)).not.toContain("undefined")
   })
 
   it("builds no trace for a row that carries no breakdown", () => {

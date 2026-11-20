@@ -1,7 +1,6 @@
 import { useState, type ReactNode } from "react"
 import {
   BadgeCheck,
-  Crosshair,
   Flag,
   FolderGit2,
   Gauge,
@@ -21,6 +20,7 @@ import {
 } from "darkraise-ui/components/dialog"
 import { Card, CardContent, CardHeader } from "darkraise-ui/components/card"
 import { Checkbox } from "darkraise-ui/components/checkbox"
+import { FieldDescription } from "darkraise-ui/components/field"
 import {
   SegmentGroup,
   SegmentGroupIndicator,
@@ -58,13 +58,11 @@ const SETTING_NAMES: Record<string, string> = {
   w_importance: "Importance",
   w_heat: "Read frequency",
   w_recency: "Recency",
-  w_context_boost: "Context match",
   hybrid_search_enabled: "Hybrid search",
   reranker_enabled: "LLM reranker",
   relation_rescue: "Relation rescue",
   ppr_enabled: "Graph proximity",
   dual_level_enabled: "Relation search",
-  community_injection_enabled: "Topic summaries",
   w_ppr: "Weight",
   w_dual: "Weight",
   pipeline_concurrency: "Parallel memories",
@@ -324,6 +322,12 @@ function ArmRange({ arm, error }: { arm: DemoRankArm; error: string | null }) {
  *  The same row renders at rest and under edit, so the two cannot disagree
  *  about what an arm is — which help text it carries, which badges apply.
  *  Only the value slot changes: a number, or the input that edits it. */
+// The three dormant rank arms. Each flips only on a measured retrieval win
+// recorded in the gate ledger, which the row says rather than implying a
+// switch an operator should simply turn.
+const DORMANT_RANK_ARMS = new Set(["w_importance", "w_heat", "w_recency"])
+const DORMANT_ARM_NOTE = "Turned on only after a measured retrieval win"
+
 function ArmRow({
   arm,
   help,
@@ -355,6 +359,11 @@ function ArmRow({
         {!error && <ArmPill value={shown} />}
       </RowValue>
       {editing && <ArmRange arm={arm} error={error} />}
+      {DORMANT_RANK_ARMS.has(arm.key) && (
+        <FieldDescription className="basis-full">
+          {DORMANT_ARM_NOTE}
+        </FieldDescription>
+      )}
     </div>
   )
 }
@@ -1277,16 +1286,6 @@ export function FlagsTab() {
         </Section>
 
         <Section
-          icon={Crosshair}
-          name="context match boost"
-          help="How much a result is boosted when its context conditions match the query. At 0 there is no boost."
-          onEdit={() => setEditing(SECTIONS.contextBoost)}
-          saving={binding.isSaving(SECTIONS.contextBoost)}
-        >
-          <ArmRow arm={binding.contextBoost} />
-        </Section>
-
-        <Section
           icon={Network}
           name="graph augmentation"
           help="Each channel adds results from the entity graph. Its paired weight sets how much that list counts in the ranking; a channel that is on with weight 0 has no effect."
@@ -1375,16 +1374,6 @@ export function FlagsTab() {
           section={SECTIONS.flags}
           binding={binding}
           flags={binding.behavioralFlags}
-          onOpenChange={close}
-        />
-      )}
-      {editing === SECTIONS.contextBoost && (
-        <FlagsSectionDialog
-          title="context match boost"
-          description="How much a result is boosted when its context conditions match. 0 has no effect."
-          section={SECTIONS.contextBoost}
-          binding={binding}
-          arms={[binding.contextBoost]}
           onOpenChange={close}
         />
       )}

@@ -186,7 +186,6 @@ const countOverrides = (flags: DemoFlagsState): number => {
   const armOverrides = [
     ...flags.fusion_arms,
     ...flags.graph_flags.flatMap((f) => (f.paired_arm ? [f.paired_arm] : [])),
-    flags.context_boost,
   ].filter((a) => a.source === "override").length
   const flagOverrides = flags.graph_flags.filter(
     (f) => f.source === "override",
@@ -446,7 +445,6 @@ export const useDemoStore = create<DemoStoreState>((set, get) => ({
             ? { ...f, paired_arm: writeArm(f.paired_arm, key, value) }
             : f,
         ),
-        context_boost: writeArm(s.flags.context_boost, key, value),
       }
       return { flags: { ...flags, overrides_written: countOverrides(flags) } }
     }),

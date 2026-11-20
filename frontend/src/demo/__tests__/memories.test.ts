@@ -110,29 +110,22 @@ describe("searchDemoMemories", () => {
     )
   })
 
-  it("excludes context-conflicting rows with a counted reason", () => {
+  it("ranks the same rows with or without a declared context", () => {
+    const query = "plain-http lan logins"
     const withContext = searchDemoMemories(memories, {
-      query: "plain-http lan logins",
+      query,
       project: "all",
       context: "env=prod",
     })
-    expect(
-      withContext.results.some((r) => r.memory.id === CURATED_IDS.cookieLan),
-    ).toBe(false)
-    const conflict = withContext.exclusions.find(
-      (e) => e.tag === "by_context_conflict",
-    )
-    expect(conflict).toBeDefined()
-    expect(conflict!.count).toBeGreaterThanOrEqual(1)
-
     const withoutContext = searchDemoMemories(memories, {
-      query: "plain-http lan logins",
+      query,
       project: "all",
       context: null,
     })
-    expect(
-      withoutContext.results.some((r) => r.memory.id === CURATED_IDS.cookieLan),
-    ).toBe(true)
+    expect(withContext.results.map((r) => r.memory.id)).toEqual(
+      withoutContext.results.map((r) => r.memory.id),
+    )
+    expect(withContext.exclusions).toEqual(withoutContext.exclusions)
   })
 
   it("counts out-of-scope matches as by_project exclusions", () => {

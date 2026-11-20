@@ -595,10 +595,8 @@ export interface DemoAllowlistState {
 export interface DemoFlagsState {
   /** rank_fusion_factor arms: w_conf, w_importance, w_heat, w_recency. */
   fusion_arms: DemoRankArm[]
-  /** ppr_enabled, dual_level_enabled, community_injection_enabled. */
+  /** ppr_enabled, dual_level_enabled. */
   graph_flags: DemoGraphFlag[]
-  /** w_context_boost — post-fusion multiplier on a MATCH outcome only. */
-  context_boost: DemoRankArm
   corroboration: DemoCorroborationGate
   /** hybrid_search_enabled, reranker_enabled, relation_rescue. */
   behavioral_flags: DemoBehavioralFlag[]
@@ -729,8 +727,6 @@ export interface DemoStoreState {
   saveJobCron: (key: string, cron: string) => void
   /** Confirmed maintenance op — mutates counts and records the outcome. */
   runMaintenanceOp: (op: MaintenanceOpKey) => void
-  /** Curbing stops push only; pull is unaffected. Appends an inject_curbed
-   *  (or resumed inject) log row and updates the client's watermark. */
   resetSettings: () => void
 }
 

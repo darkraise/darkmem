@@ -8,7 +8,7 @@ export interface ExclusionItem {
   unit?: string
   /** Human explanation, e.g. "your context env=prod conflicts with a dev-only row". */
   reason: ReactNode
-  /** Machine reason tag, e.g. "by_context_conflict". Not rendered. */
+  /** Machine reason tag, e.g. "by_result_limit". Not rendered. */
   tag?: string
 }
 

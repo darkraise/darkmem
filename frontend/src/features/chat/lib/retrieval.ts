@@ -83,10 +83,9 @@ export interface ChatContextFact {
 
 // Human copy for the counts the composed envelope actually carries. Distinct
 // from the Memories surface's schema-v2 reasons: those name a filter applied
-// after the fusion, these name the composition's own two tallies plus the
-// re-read gap chat counts for itself.
+// after the fusion, these name the composition's own tally plus the re-read
+// gap chat counts for itself.
 const EXCLUSION_COPY: Record<string, string> = {
-  by_context_conflict: "conflicted with this turn's context",
   by_result_limit: "ranked below the context limit",
   not_found: "could not be re-read",
 }
