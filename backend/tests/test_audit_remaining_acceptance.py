@@ -1129,3 +1129,56 @@ async def test_a17_memory_graph_predicates_plan_as_gin_index_scans(session):
         )
     ).all()
     assert "Seq Scan" in "\n".join(r[0] for r in rows)
+
+
+# ------------------------------------------------------------------ A15
+
+
+@pytest.mark.asyncio
+async def test_a15_two_concurrent_supersessions_of_one_candidate_leave_one_pointer_and_one_event(setup_database):
+    from datetime import timedelta
+
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from tests.conftest import test_engine
+    from tests.test_supersession import _detect, _mem
+
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    now = datetime.now(timezone.utc)
+    project = f"qa15-{uuid.uuid4().hex[:8]}"
+    candidate = _mem(project=project, created_at=now - timedelta(days=1))
+    first = _mem(project=project, technologies=[], created_at=now)
+    second = _mem(project=project, technologies=[], created_at=now)
+    async with factory() as seed:
+        seed.add_all([candidate, first, second])
+        await seed.commit()
+    try:
+        async def one(new):
+            async with factory() as s:
+                await _detect(s, new, now=now)
+                await s.commit()
+
+        await asyncio.wait_for(asyncio.gather(one(first), one(second)), 20)
+        async with factory() as check:
+            row = (
+                await check.execute(
+                    text("SELECT status, superseded_by FROM memories WHERE id = CAST(:i AS uuid)"), {"i": str(candidate.id)}
+                )
+            ).one()
+            n = (
+                await check.execute(
+                    text("SELECT count(*) FROM events WHERE event_type='superseded' AND object_id = CAST(:i AS uuid)"),
+                    {"i": str(candidate.id)},
+                )
+            ).scalar_one()
+        assert row[0] == "superseded"
+        assert row[1] in (first.id, second.id)
+        assert n == 1
+    finally:
+        async with factory() as cleanup:
+            await cleanup.execute(
+                text("DELETE FROM memories WHERE id = ANY(CAST(:ids AS uuid[]))"),
+                {"ids": [str(candidate.id), str(first.id), str(second.id)]},
+            )
+            await cleanup.commit()
