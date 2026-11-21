@@ -21,7 +21,8 @@ import uuid
 from datetime import datetime, timezone
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import event, text
+from sqlalchemy.engine import Engine
 
 from app.repositories.fact_sources import STALE_DETAIL_KEY, FactSourceRepository
 from app.repositories.knowledge_triples import KnowledgeTripleRepository
@@ -143,7 +144,13 @@ async def test_an_empty_vault_is_an_empty_list_not_a_failure(client, auth_header
     response = await client.get(f"{FACTS}?project=nothing-here", headers=auth_headers)
     assert response.status_code == 200
     body = response.json()
-    assert body == {"items": [], "total": 0, "limit": 50, "offset": 0}
+    assert body == {
+        "items": [],
+        "total": 0,
+        "limit": 50,
+        "offset": 0,
+        "facets": {"project": [], "rel_type": [], "verification_status": []},
+    }
 
 
 async def test_the_list_answers_the_paginated_envelope(client, auth_headers, session):
@@ -166,6 +173,91 @@ async def test_the_list_answers_the_paginated_envelope(client, auth_headers, ses
         f"{FACTS}?project={PROJECT}&limit=2&offset=2", headers=auth_headers
     )
     assert len(page_two.json()["items"]) == 1
+
+
+# ──────────────────────── filter facets ────────────────────────
+
+
+async def test_facets_cover_facts_beyond_the_page(client, auth_headers, session):
+    for index in range(60):
+        fact_id = await _fact(
+            session,
+            obj=f"host-{index}",
+            status="disputed" if index == 54 else "candidate",
+        )
+        if index == 54:
+            disputed = fact_id
+    # Arrival order is newest first; dated earliest, the disputed fact sits
+    # on the last page of twenty.
+    await session.execute(
+        text(
+            "UPDATE knowledge_triples SET created_at = created_at - interval '1 day' "
+            "WHERE id = CAST(:id AS uuid)"
+        ),
+        {"id": disputed},
+    )
+    await session.flush()
+    response = await client.get(
+        f"{FACTS}?project={PROJECT}&limit=20", headers=auth_headers
+    )
+    body = response.json()
+    assert response.status_code == 200
+    assert len(body["items"]) == 20
+    assert "disputed" not in {item["verification_status"] for item in body["items"]}
+    assert body["facets"]["verification_status"] == ["candidate", "disputed"]
+
+
+async def test_facets_follow_the_project_scope_only(client, auth_headers, session):
+    await _fact(session, rel="RUNS_ON", status="candidate")
+    await _fact(session, rel="USES", status="disputed")
+    await _fact(session, rel="DEPENDS_ON", project="another-project", status="candidate")
+
+    filtered = (
+        await client.get(
+            f"{FACTS}?project={PROJECT}&verification_status=disputed&rel_type=USES",
+            headers=auth_headers,
+        )
+    ).json()
+    assert len(filtered["items"]) == 1
+    assert filtered["facets"] == {
+        "project": [PROJECT],
+        "rel_type": ["RUNS_ON", "USES"],
+        "verification_status": ["candidate", "disputed"],
+    }
+
+    everywhere = (await client.get(FACTS, headers=auth_headers)).json()
+    assert {PROJECT, "another-project"} <= set(everywhere["facets"]["project"])
+    assert "DEPENDS_ON" in everywhere["facets"]["rel_type"]
+
+
+async def test_facets_serve_the_status_a_reader_is_served(client, auth_headers, session):
+    """With the promotion gate closed a corroborated fact is served as a
+    candidate, so offering `corroborated` as a filter value would say which
+    rung the label withholds."""
+    await _fact(session, status="corroborated")
+    body = (
+        await client.get(f"{FACTS}?project={PROJECT}", headers=auth_headers)
+    ).json()
+    assert body["items"][0]["verification_status"] == "candidate"
+    assert body["facets"]["verification_status"] == ["candidate"]
+
+
+async def test_facets_cost_one_statement(session):
+    await _fact(session, rel="RUNS_ON")
+    await _fact(session, rel="USES", status="disputed")
+    statements: list[str] = []
+
+    def capture(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    event.listen(Engine, "before_cursor_execute", capture)
+    try:
+        facets = await facts_read.fact_facets(session, project=PROJECT)
+    finally:
+        event.remove(Engine, "before_cursor_execute", capture)
+
+    assert facets["rel_type"] == ["RUNS_ON", "USES"]
+    assert len(statements) == 1
 
 
 # ──────────────────────── never a gate on the read ────────────────────────

@@ -106,11 +106,21 @@ class FactListItem(BaseModel):
     created_at: datetime
 
 
+class FactFacets(BaseModel):
+    """Every value each list filter can take within the request's project
+    scope, independent of paging and of the other filters."""
+
+    project: list[str]
+    rel_type: list[str]
+    verification_status: list[str]
+
+
 class FactListResponse(BaseModel):
     items: list[FactListItem]
     total: int
     limit: int
     offset: int
+    facets: FactFacets
 
 
 class FactDisputeTriple(BaseModel):

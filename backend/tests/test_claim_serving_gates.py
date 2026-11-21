@@ -520,6 +520,21 @@ def _wholesale_copies(tree: ast.AST, known: set[str]):
                 yield node.lineno, node.value.value
 
 
+def _collects_labels(node: ast.AST, bound: set[str]) -> bool:
+    """``sorted({<labels>["verification_status"] for ...})``: a list of
+    labels, each one read out of a mapping the producer built."""
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in {"sorted", "list", "set"}
+        and len(node.args) == 1
+    ):
+        node = node.args[0]
+    return isinstance(
+        node, (ast.ListComp, ast.SetComp, ast.GeneratorExp)
+    ) and _reads_a_labels_mapping(node.elt, bound)
+
+
 def ungated_label_emissions(sources) -> list[str]:
     """Emissions whose value came from neither the producer nor a declaration.
 
@@ -537,7 +552,7 @@ def ungated_label_emissions(sources) -> list[str]:
         tree = ast.parse(source)
         bound = _labels_bindings(tree)
         for lineno, value in _emissions(tree):
-            if _reads_a_labels_mapping(value, bound):
+            if _reads_a_labels_mapping(value, bound) or _collects_labels(value, bound):
                 continue
             if any(_calls(value, marker) for marker in claim_gates.STATUS_DECLARATIONS):
                 continue
@@ -631,6 +646,8 @@ def test_no_path_under_app_emits_a_label_the_producer_did_not_build():
         'item["verification_status"] = candidate.verification_status',
         'item = {"verification_status": rung}',
         'item = {"verification_status": badge.as_dict()["verification_status"]}',
+        'facets = {"verification_status": sorted({s for s in raw})}',
+        'facets = {"verification_status": [row["verification_status"] for row in rows]}',
     ],
 )
 def test_the_scan_fires_on_a_path_that_bypassed_the_producer(snippet):
@@ -649,6 +666,8 @@ def test_the_scan_fires_on_a_path_that_bypassed_the_producer(snippet):
         'item = {"verification_status": row.labels.get("verification_status")}',
         f'item = {{"verification_status": {UNSERVED}(row["verification_status"])}}',
         f'item = {{"verification_status": {JOURNALLED}(row["verification_status"])}}',
+        'facets = {"verification_status": sorted({row_labels(id_kind="fact", '
+        'verification_status=s)["verification_status"] for s in raw})}',
     ],
 )
 def test_the_scan_admits_the_producer_and_declared_derivations(snippet):
@@ -1976,6 +1995,10 @@ AGGREGATES_NAMING_THE_RUNG = {
     "app/services/pin_suggestions.py",
     "app/services/review_ranking.py",
     "app/services/article_eligibility.py",
+    # The fact list's filter facets list the distinct stored rungs and serve
+    # each through `fact_badge.row_labels`, so a withheld rung is offered as
+    # the rung it is served as (test_facts_read_surface pins it).
+    "app/services/facts_read.py",
 }
 
 

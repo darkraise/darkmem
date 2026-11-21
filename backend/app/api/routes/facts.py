@@ -58,7 +58,14 @@ async def list_facts(
         limit=limit,
         offset=offset,
     )
-    return {"items": items, "total": total, "limit": limit, "offset": offset}
+    facets = await facts_read.fact_facets(session, project=project)
+    return {
+        "items": items,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "facets": facets,
+    }
 
 
 @router.get("/facts/{fact_id}", response_model=FactDetailResponse)

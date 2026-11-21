@@ -40,10 +40,11 @@ from collections.abc import Mapping
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.fact_sources import FactSourceRepository, OriginGroup
-from app.repositories.knowledge_triples import KnowledgeTripleRepository
+from app.repositories.knowledge_triples import LIVE_PREDICATE, KnowledgeTripleRepository
 from app.services.claim_gates import gated_journal_payload, raw_statuses_for_served
 from app.services.events import object_timeline
 from app.services.fact_badge import badges_for_facts, row_labels
@@ -172,6 +173,46 @@ async def list_facts(
     )
     badges = await badges_for_facts(session, rows)
     return [_base_item(row, badges[str(row["id"])]) for row in rows], total
+
+
+async def fact_facets(session: AsyncSession, *, project: str | None) -> dict[str, list[str]]:
+    """The values each list filter can take: every distinct one among the live
+    facts in ``project`` (all projects when None), whatever the page and the
+    other filters, in one statement.
+
+    The status values are the served ones, for the same reason the status
+    filter matches on them: offering a promoted rung the gate withholds would
+    say which facts hold it.
+    """
+    result = await session.execute(
+        text(f"""
+            SELECT
+                coalesce(array_agg(DISTINCT project ORDER BY project), '{{}}') AS projects,
+                coalesce(array_agg(DISTINCT rel_type ORDER BY rel_type), '{{}}') AS rel_types,
+                coalesce(
+                    array_agg(DISTINCT verification_status ORDER BY verification_status),
+                    '{{}}'
+                ) AS statuses
+            FROM knowledge_triples
+            WHERE {LIVE_PREDICATE}
+              AND (CAST(:project AS text) IS NULL OR project = CAST(:project AS text))
+        """),
+        {"project": project},
+    )
+    row = result.mappings().one()
+    return {
+        "project": [value for value in row["projects"] if value is not None],
+        "rel_type": [value for value in row["rel_types"] if value is not None],
+        "verification_status": sorted(
+            {
+                row_labels(id_kind=FACT_ID_KIND, verification_status=status)[
+                    "verification_status"
+                ]
+                for status in row["statuses"]
+                if status is not None
+            }
+        ),
+    }
 
 
 async def get_fact(session: AsyncSession, fact_id: UUID | str) -> dict | None:
