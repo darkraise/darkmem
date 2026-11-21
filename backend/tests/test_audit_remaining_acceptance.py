@@ -1761,3 +1761,40 @@ async def test_a21_the_digest_marks_an_associate_undoable_exactly_when_its_undo_
     await undo_ids(committing, by_source[untouched[0]].event_id)
     with pytest.raises(undo.UndoRefused):
         await undo_ids(committing, by_source[rewritten[0]].event_id)
+
+
+# ------------------------------------------------------------------ A23
+
+from tests.test_article_synthesis import factory  # noqa: E402,F401 - fixture
+
+
+@pytest.mark.asyncio
+async def test_a23_two_subjects_with_one_name_and_different_types_get_articles_from_their_own_facts(session, factory):
+    from sqlalchemy import text
+
+    from app.services import article_synthesis as asyn
+    from tests.test_article_synthesis import _CitingLLM, _fact, _selection_config
+
+    project = f"qa23-{uuid.uuid4().hex[:6]}"
+    own = {}
+    for etype in ("tool", "concept"):
+        ent = uuid.uuid4()
+        await session.execute(
+            text("INSERT INTO entities (id, name, entity_type, memory_ids) VALUES (CAST(:i AS uuid), 'saturn', CAST(:t AS text), '{}'::uuid[])"),
+            {"i": str(ent), "t": etype},
+        )
+        own[etype] = {str(await _fact(session, subject_name="saturn", subject_id=ent, project=project)) for _ in range(3)}
+    await _selection_config(session, {"synthesis_budget": 5, "min_verified_facts": 3})
+    await session.commit()
+
+    llm = _CitingLLM()
+    await asyn.run_article_synthesis(factory, lambda: llm, batch_size=50)
+
+    prompted = {frozenset(p) for p in llm.prompted}
+    assert prompted == {frozenset(own["tool"]), frozenset(own["concept"])}
+    rows = (
+        await session.execute(
+            text("SELECT subject_key FROM knowledge_articles WHERE project = CAST(:p AS text) ORDER BY subject_key"), {"p": project}
+        )
+    ).scalars().all()
+    assert rows == ["saturn::concept", "saturn::tool"]
