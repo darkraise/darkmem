@@ -996,3 +996,93 @@ def test_a49_the_restore_cycle_exits_nonzero_on_a_migrate_failure_unless_an_olde
     assert re.search(r"\bexit 0\b", cond.group("then"))
     assert re.search(r"\bexit 1\b", cond.group("after"))
     assert not re.search(r"\bexit 0\b", cond.group("after"))
+
+
+# ------------------------------------------------------------------ A14 / A35
+
+from app.models.code import CodeEdge, CodeFile, CodeSymbol, Repository
+
+
+async def _qa_repo(session, name):
+    repo = Repository(name=name)
+    session.add(repo)
+    await session.flush()
+    return repo
+
+
+async def _qa_symbol(session, repo, path, name, *, kind="function", parent=None):
+    f = (
+        await session.execute(
+            __import__("sqlalchemy").select(CodeFile).where(CodeFile.repo_id == repo.id, CodeFile.file_path == path)
+        )
+    ).scalar_one_or_none()
+    if f is None:
+        f = CodeFile(id=uuid.uuid4(), repo_id=repo.id, file_path=path, language="python", content_hash=f"h-{uuid.uuid4()}")
+        session.add(f)
+        await session.flush()
+    sym = CodeSymbol(
+        id=uuid.uuid4(), file_id=f.id, name=name, kind=kind, line_start=1, line_end=2,
+        source_code=f"def {name}(): ...", parent_symbol_id=parent.id if parent is not None else None,
+    )
+    session.add(sym)
+    await session.flush()
+    return sym
+
+
+async def _mcp(client, tool, args):
+    r = await client.post(
+        "/", json={"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": tool, "arguments": args}}
+    )
+    assert r.status_code == 200, r.text
+    return r.json()["result"]
+
+
+@pytest.mark.asyncio
+async def test_a14_code_search_with_no_embedder_returns_keyword_rows_marked_degraded(mcp_http_client, session, monkeypatch):
+    import app.api.mcp.server as mcp_server
+
+    monkeypatch.setattr(mcp_server, "_pipeline", None)
+    repo = await _qa_repo(session, f"qa14-{uuid.uuid4().hex[:6]}")
+    await _qa_symbol(session, repo, "cfg.py", "load_settings_blob")
+    result = await _mcp(mcp_http_client, "code_search", {"query": "load_settings_blob", "repo_name": repo.name})
+    assert not result.get("isError"), result
+    reply = json.loads(result["content"][0]["text"])
+    assert reply["degraded"] is True
+    assert [r["symbol_name"] for r in reply["results"]] == ["load_settings_blob"]
+
+
+@pytest.mark.asyncio
+async def test_a35_code_symbol_and_blast_radius_answer_and_honour_the_repository(mcp_http_client, session):
+    a = await _qa_repo(session, f"qa35a-{uuid.uuid4().hex[:6]}")
+    b = await _qa_repo(session, f"qa35b-{uuid.uuid4().hex[:6]}")
+    await _qa_symbol(session, a, "m.py", "shared_name")
+    await _qa_symbol(session, b, "m.py", "shared_name")
+    await _qa_symbol(session, b, "other.py", "only_in_b")
+
+    ra = await _mcp(mcp_http_client, "code_symbol", {"name": "shared_name", "repo_name": a.name})
+    rows = json.loads(ra["content"][0]["text"])
+    assert not ra.get("isError") and len(rows) == 1 and rows[0]["name"] == "shared_name"
+    rb = await _mcp(mcp_http_client, "code_symbol", {"name": "only_in_b", "repo_name": a.name})
+    assert rb.get("isError") is True, "a symbol of repository b must not answer under repository a"
+
+    blast = await _mcp(mcp_http_client, "code_blast_radius", {"symbol_name": "shared_name", "repo_name": a.name})
+    assert not blast.get("isError"), blast
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "tool,args",
+    [("code_symbol", {"name": "h"}), ("code_file_symbols", {"file_path": "x.py"}), ("code_context", {"symbol_name": "h"}),
+     ("code_dependencies", {}), ("code_processes", {}), ("code_communities", {}), ("code_blast_radius", {"symbol_name": "h"})],
+)
+async def test_a35_an_ambiguous_repository_name_lists_candidates(mcp_http_client, session, tool, args):
+    name = f"qa35-{uuid.uuid4().hex[:6]}"
+    one = await _qa_repo(session, name)
+    two = await _qa_repo(session, name)
+    for r in (one, two):
+        await _qa_symbol(session, r, "x.py", "h")
+    result = await _mcp(mcp_http_client, tool, {**args, "repo_name": name})
+    assert not result.get("isError"), result
+    env = json.loads(result["content"][0]["text"])
+    assert env["status"] == "ambiguous"
+    assert {c["id"] for c in env["candidates"]} == {str(one.id), str(two.id)}
