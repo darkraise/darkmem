@@ -973,3 +973,32 @@ async def test_reconciliation_failure_keeps_committed_statuses(
         logged = [r for r in caplog.records if "reconciliation read failed" in r.getMessage()
                   or (r.exc_info and "reconciliation read failed" in str(r.exc_info[1]))]
         assert len(logged) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_failed_reconciliation_flags_the_supersession_it_lost(
+    setup_database, monkeypatch,
+):
+    import app.services.pipeline as pipeline_module
+    from app.models.memory import Memory
+
+    real_select = pipeline_module.select
+
+    def failing_reconciliation_select(*columns):
+        if len(columns) > 1 and columns[0] is Memory.id and columns[1] is Memory.content:
+            raise RuntimeError("reconciliation read failed")
+        return real_select(*columns)
+
+    monkeypatch.setattr(pipeline_module, "select", failing_reconciliation_select)
+    async with savepoint_bed(["older", "newer"], "savepoint-reconcile-flag|4") as bed:
+        results = await bed.pipe.process_batch([bed.entry(index) for index in range(2)])
+
+        # Every entry's extraction carries a REPLACES relation.
+        assert [r["supersession"] for r in results] == ["error", "error"]
+        async with bed.factory() as s:
+            failed_steps = (await s.execute(
+                text("SELECT failed_step FROM pipeline_failures "
+                     "WHERE entity_id = ANY(:ids) AND resolved_at IS NULL"),
+                {"ids": bed.memory_ids},
+            )).scalars().all()
+        assert sorted(failed_steps) == ["batch_supersession", "batch_supersession"]

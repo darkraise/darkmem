@@ -1334,8 +1334,16 @@ class ProcessingPipeline:
                             payload={**status, "outcome": _derive_outcome(status)},
                         )
                     await session.commit()
-            except Exception:
+            except Exception as error:
+                # The Phase 5 writes stand, but a memory that asked to
+                # supersede a batch-mate did not: mark it so a failure row
+                # carries it to a retry instead of the row settling done.
                 logger.exception("Same-batch reconciliation failed; keeping the committed statuses")
+                for memory_id, relations in replacements.items():
+                    if any(is_supersession_trigger(relation.get("type")) for relation in relations):
+                        status = statuses[memory_id]
+                        status["supersession"] = "error"
+                        status["error"] = status["error"] or f"Same-batch reconciliation failed: {error}"
 
         return normalized
 

@@ -95,6 +95,8 @@ def derive_memory_failed_step(status: dict) -> str | None:
         return "vector_write"
     if status.get("graph") == "error":
         return "graph_write"
+    if status.get("supersession") == "error":
+        return "batch_supersession"
     if status.get("extract") == "partial":
         return "extraction_partial"
     return None
