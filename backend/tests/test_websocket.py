@@ -360,3 +360,23 @@ async def test_a_rotation_whose_commit_fails_keeps_the_token_usable(
         assert not socket.closed.is_set()
     finally:
         await _shut(task)
+
+
+async def test_a_frozen_tab_cannot_hold_a_rotation_on_its_close(monkeypatch):
+    monkeypatch.setattr(websocket, "SEND_TIMEOUT_SECONDS", 0.05)
+    manager = websocket.EventManager()
+
+    class _FrozenSocket(_Socket):
+        async def close(self, code=1000, reason=None):
+            await asyncio.Event().wait()
+
+    frozen = _FrozenSocket(_token())
+    healthy = _Socket(_token())
+    await manager.connect(frozen, token_id="rotated")
+    await manager.connect(healthy)
+
+    await asyncio.wait_for(manager.close_token("rotated", 4001, "Session renewed"), 1)
+    await asyncio.wait_for(manager.broadcast("memory.created", {"id": "m1"}), 1)
+
+    assert frozen not in manager.connections
+    assert len(healthy.sent) == 1

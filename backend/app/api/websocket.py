@@ -20,6 +20,16 @@ REVOKED_CLOSE = (1008, "Session expired or revoked")
 RENEWED_CLOSE = (4001, "Session renewed")
 
 
+async def _close_quietly(ws: WebSocket, code: int, reason: str) -> None:
+    # Bounded like a send: a close can wait on a frozen tab's closing
+    # handshake, and every caller holds the send lock, one of them on the
+    # request path of a session rotation.
+    try:
+        await asyncio.wait_for(ws.close(code=code, reason=reason), timeout=SEND_TIMEOUT_SECONDS)
+    except Exception:
+        pass
+
+
 class SessionRenewed(HTTPException):
     """The token was rotated by a refresh or a password change: its holder
     has, or is about to receive, a new cookie."""
@@ -170,19 +180,13 @@ class EventManager:
             if ws not in self.connections:
                 return
             self.disconnect(ws)
-            try:
-                await ws.close(code=code, reason=reason)
-            except Exception:
-                pass
+            await _close_quietly(ws, code, reason)
 
     async def close_token(self, token_id: str, code: int, reason: str) -> None:
         async with self._send_lock:
             for ws in list(self._by_token.get(token_id, ())):
                 self.disconnect(ws)
-                try:
-                    await ws.close(code=code, reason=reason)
-                except Exception:
-                    pass
+                await _close_quietly(ws, code, reason)
 
     async def broadcast(self, event_type: str, data: dict):
         schema = EVENT_SCHEMAS.get(event_type)
@@ -223,10 +227,7 @@ class EventManager:
             for ws, (code, reason) in refused:
                 if ws not in self.connections:
                     continue
-                try:
-                    await ws.close(code=code, reason=reason)
-                except Exception:
-                    pass
+                await _close_quietly(ws, code, reason)
                 dead.append(ws)
             for ws in targets:
                 # Closed while this broadcast waited for the lock.
@@ -242,7 +243,7 @@ class EventManager:
                             validator()
                         except HTTPException as refusal:
                             code, reason = _close_for(refusal)
-                            await ws.close(code=code, reason=reason)
+                            await _close_quietly(ws, code, reason)
                             dead.append(ws)
                             continue
                     await asyncio.wait_for(ws.send_text(message), timeout=SEND_TIMEOUT_SECONDS)
