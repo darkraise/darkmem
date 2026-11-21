@@ -141,15 +141,15 @@
 | 134 | B6-D4: job last_* state is rewritten into config on every tick | docs/dforge/plans/2026-11-20-audit-remaining.md | A30 (Task 40) | done | f976565 |
 | 135 | B6-D5: inject_* and client_connect live under app/services but are reached at runtime only by a CLI script | docs/dforge/plans/2026-11-20-audit-remaining.md | A51 (Task 69) | doing | - |
 | 136 | B6-D6: per-socket, per-second revalidation is a heavy polling contract; close sockets directly and drop the polling | - | - | deferred | declined in the spec: CLAUDE.md records the one-second revalidation as contract; B6-21 removes its cost |
-| 137 | F1-1 (high): the Edit Repository dialog cannot save URL-cloned repositories | docs/dforge/plans/2026-11-20-audit-remaining.md | A3 (Task 49) | doing | - |
+| 137 | F1-1 (high): the Edit Repository dialog cannot save URL-cloned repositories | docs/dforge/plans/2026-11-20-audit-remaining.md | A3 (Task 49) | done | fd9b5c7 |
 | 138 | F1-2 (high): the 3D graph data is rebuilt in 2D view, in O(n squared) | docs/dforge/plans/2026-11-20-audit-remaining.md | A4 (Task 53) | doing | - |
-| 139 | F1-4: Blast Radius silently fails on the folded graph; no onError handler | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 49 contracts | doing | - |
+| 139 | F1-4: Blast Radius silently fails on the folded graph; no onError handler | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 49 contracts | done | fd9b5c7 |
 | 140 | F1-5: Code Graph and Wiki show No repositories indexed yet while loading or after an error | docs/dforge/plans/2026-11-20-audit-remaining.md | A41 (Task 50) | doing | - |
 | 141 | F1-6: the code canvas rebuilds Sigma and restarts the layout on every keystroke | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 51 contracts | doing | - |
 | 142 | F1-7: per-frame string-keyed density grid on the memory canvas | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 54 contracts | doing | - |
 | 143 | F1-9: dead or test-only exports in live modules (graph-geometry hull helpers, lightenHex, clusterAnchors, code-graph-theme colour functions, groupMemories, placeIslands, zoomLevel, setGraphReady, inner GraphSkeleton, duplicate stableHash) | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 54 contracts | doing | - |
-| 144 | F1-10: wiki and edit-repository mutation failures are not reported | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 49 contracts | doing | - |
-| 145 | F1-11: Copy Mermaid misreports and fails in production (navigator.clipboard undefined on plain HTTP) | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 49 contracts | doing | - |
+| 144 | F1-10: wiki and edit-repository mutation failures are not reported | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 49 contracts | done | fd9b5c7 |
+| 145 | F1-11: Copy Mermaid misreports and fails in production (navigator.clipboard undefined on plain HTTP) | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 49 contracts | done | fd9b5c7 |
 | 146 | F1-12: clicking an entity in 3D shows the graph summary | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 53 contracts | doing | - |
 | 147 | F1-13: colour-mode changes rebuild what is already recoloured in place | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 53 contracts | doing | - |
 | 148 | F1-14: the detail panel's close button has no accessible name | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 53 contracts | doing | - |
