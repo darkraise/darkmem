@@ -323,6 +323,13 @@ function MemoryDetail({
       <p className="text-foreground text-sm leading-relaxed">
         {full.data?.content ?? memory.content}
       </p>
+      {!DEMO && memory.content_truncated === true && !full.data && (
+        <p role="status" className="text-muted-foreground text-xs">
+          {full.isError
+            ? "Showing a preview: the full text could not be loaded."
+            : "Showing a preview; loading the full text…"}
+        </p>
+      )}
 
       {memory.tags.length > 0 && (
         <div className="flex flex-wrap gap-1">

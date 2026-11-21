@@ -451,6 +451,19 @@ describe("graph detail panel", () => {
     expect(apiFetch).not.toHaveBeenCalled()
   })
 
+  it("a cut preview says so until the full text arrives, and when it fails", async () => {
+    const truncated = { ...MEMORIES[0]!, id: "m9", content: "x".repeat(280), content_truncated: true }
+    let fail: (error: Error) => void = noop
+    vi.mocked(apiFetch).mockImplementation(
+      () => new Promise((_resolve, reject) => { fail = reject }),
+    )
+    render(panel(truncated), { wrapper })
+    expect(screen.getByText(/preview; loading the full text/i)).toBeInTheDocument()
+
+    await act(async () => fail(new Error("HTTP 500")))
+    expect(await screen.findByText(/full text could not be loaded/i)).toBeInTheDocument()
+  })
+
   it("in demo mode a truncated node requests nothing", () => {
     h.demo = true
     try {
