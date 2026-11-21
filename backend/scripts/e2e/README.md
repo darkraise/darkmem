@@ -3,13 +3,15 @@
 One documented entry point:
 
 ```
-cd backend && python scripts/e2e/run_e2e.py
+cd backend && .venv/bin/python scripts/e2e/run_e2e.py [pytest arguments]
 ```
+
+Arguments pass through to pytest, so `-k session_rotation` runs one test.
 
 Nothing else needs to be true first — no fresh deployment, no pre-set password,
 no already-running server. This is the normal starting condition, not a
 failure mode: the script resets and migrates `TEST_DATABASE_URL` (default
-`darkmem_test`, overridable — this lane runs against `darkmem_test_1`),
+`darkmem_test`, overridable),
 boots `app.main:app` as its own subprocess on a scratch port, seeds the
 admin account through the real `POST /api/v1/setup` front door (password
 only, no LLM config), runs `pytest scripts/e2e/tests -q` against it with
@@ -26,8 +28,10 @@ only, no LLM config), runs `pytest scripts/e2e/tests -q` against it with
   `teardown()` kills the whole process group (TERM, a grace period, then
   KILL) — mirrors `scripts/gate.sh`'s own `cleanup()` trap.
 - `run_e2e.py` — the one entry point. Exit code 2 (BLOCKED, matching
-  `scripts/gate.sh`'s own "missing toolchain, not a red gate" precedent) if
-  every collected test skipped this run — a suite that skips everything has
+  `scripts/gate.sh`'s own "missing toolchain, not a red gate" precedent)
+  before the stack boots when the model endpoint
+  (`DARKMEM_OLLAMA_BASE_URL`) does not serve the seed's extraction model, and
+  after the run if every collected test skipped — a suite that skips everything has
   proven nothing and must not report the same exit code as a suite that
   proved something. Any real pass or failure propagates pytest's own code.
 - `tests/test_f1_capture.py` — F1 Capture (docs/planning/e2e-test-plan.md):
@@ -36,17 +40,24 @@ only, no LLM config), runs `pytest scripts/e2e/tests -q` against it with
   of the four tests are unconditional (accept and flush need no embedder);
   only the search leg may skip, and only with the real `pipeline_failures`
   error recorded for that run.
+- `tests/test_session_rotation.py` — a refresh closes the presented token's
+  socket with 4001 over a real WebSocket.
+- `run_playwright_e2e.py` — boots a disposable stack on its own port and runs
+  `npm run test:e2e` against it with `E2E_API_TARGET` and
+  `E2E_DISPOSABLE_STACK=1` exported. This is the only way to run Playwright
+  here: a bare `npx playwright test` proxies `/api` to `localhost:8000`,
+  which is production on this host.
 
 ## Exercising the disposable stack manually (Playwright)
 
 `auth.spec.ts`, `code-real-mode.spec.ts` and `code-wiki-empty.spec.ts` need a
-live, authenticated backend. The shared dev stack (`darkmem`, T1.58 Ruling 4)
-is one way to get one; `stack.py --keep-running` is the other, for a machine
-that has never run `docker compose up` against `darkmem`:
+live, authenticated backend. `run_playwright_e2e.py` (above) does all of this
+in one command; by hand, `stack.py --keep-running` boots one on a free port
+(never `:8000`, which is production on this host):
 
 ```
-# terminal 1 — disposable, migrated, seeded backend on :8000
-cd backend && python -m scripts.e2e.stack --keep-running --port 8000 --password <pw>
+# terminal 1 — disposable, migrated, seeded backend on its own port
+cd backend && .venv/bin/python -m scripts.e2e.stack --keep-running --port 8321 --password <pw>
 
 # terminal 2 — .env-e2e (written by stack.py) exports E2E_DISPOSABLE_STACK=1
 # and E2E_BASE_URL/E2E_ADMIN_PASSWORD, so auth.spec.ts / code-real-mode.spec.ts /
@@ -55,12 +66,12 @@ cd backend && python -m scripts.e2e.stack --keep-running --port 8000 --password 
 # stack was already seeded with at boot
 cd frontend
 source ../backend/scripts/e2e/.env-e2e
-VITE_DEMO=0 npx playwright test tests/auth.spec.ts tests/code-real-mode.spec.ts tests/code-wiki-empty.spec.ts
+E2E_API_TARGET=http://localhost:8321 VITE_DEMO=0 npx playwright test tests/auth.spec.ts tests/code-real-mode.spec.ts tests/code-wiki-empty.spec.ts
 ```
 
-`vite.config.ts`'s dev proxy already hardcodes `http://localhost:8000`, so
-no frontend config changes are needed — the disposable stack binds the same
-port the proxy already expects. `playwright.config.ts` also drops to a single
+`vite.config.ts`'s dev proxy reads `E2E_API_TARGET` and falls back to
+`http://localhost:8000` only when it is unset, so the target must always be
+named. `playwright.config.ts` also drops to a single
 worker and one retry whenever `E2E_DISPOSABLE_STACK` is set: these specs
 share the one live backend the stack boots, and running them in parallel
 races its session/rate-limiter state — the same race can happen by hand,

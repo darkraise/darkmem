@@ -78,10 +78,6 @@ EXEMPT = {
     "benchlib/full_context.py": "matched text is prose ('context-truncated', 'truncate'), not SQL",
     "benchlib/replacement_premise_draw.py": "matched text is prose ('truncated'), not SQL",
     "benchlib/resample_sheet.py": "matched text is prose ('update _RULEBOOK_HEADINGS'), not SQL",
-    # seed_test_memories.py's matches live entirely inside sample memory
-    # content strings used as fixture data (fake debugging tips); the script
-    # itself only adds rows through the pipeline, never raw destructive SQL.
-    "seed_test_memories.py": "matched text is inside seed fixture content strings, not SQL the script issues",
     # isolation_probe.py has one real `DELETE FROM memories` statement, but it
     # imports benchlib.bench_db before any app.database import (overriding the
     # ambient DATABASE_URL to the bench database as an import-time side
@@ -117,17 +113,6 @@ EXEMPT = {
     # review. The matched "DROP SCHEMA" is prose in its own docstring/comments
     # describing why it must not touch darkmem_test.
     "benchlib/run_promotion_metrics.py": "read-only by connection GUC (default_transaction_read_only=on); matched text is prose",
-    # The whole cutover/ package (the LLM-providers-transition dump loader)
-    # requires explicit --source-dsn/--target-dsn CLI arguments; no file in
-    # the package reads DATABASE_URL or imports app.database, so there is no
-    # ambient default to guard. It carries its own bespoke guard chain
-    # (assert_source_not_production, assert_distinct_databases,
-    # assert_distinct_live_databases, and a read-only source connection)
-    # purpose-built for its two-DSN transform shape, which
-    # assert_destructive_target_allowed (a single ambient URL) does not fit.
-    "cutover/backfill.py": "requires --target-dsn explicitly; no ambient DATABASE_URL fallback in this package",
-    "cutover/stage.py": "requires --target-dsn explicitly; no ambient DATABASE_URL fallback in this package",
-    "cutover/transform.py": "requires --target-dsn explicitly; no ambient DATABASE_URL fallback in this package",
 }
 
 # Entry points this task added a guard call to. Two of them -- run.py and

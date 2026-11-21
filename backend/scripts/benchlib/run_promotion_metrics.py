@@ -21,8 +21,7 @@ never as a pass or a bare percentage.
 database — this is the one sanctioned "read-only gate probe measuring
 production behaviour" exception the runbook and CLAUDE.md carve out of the
 three-databases rule, and it is enforced at the connection level
-(``default_transaction_read_only=on``, mirroring
-``scripts/cutover/db.py``'s pattern) rather than by convention: an
+(``default_transaction_read_only=on``) rather than by convention: an
 accidental write in this module would fail in Postgres, not in review.
 `darkmem` carries no schema on this dev machine (never migrated here), so a
 bare run reports that fact explicitly rather than crashing on
