@@ -422,6 +422,24 @@ describe("settings dialogs and their lists", () => {
   })
 })
 
+describe("the notifications tab", () => {
+  it("asks for the token again once the chat id changes", async () => {
+    serve(refuse, {
+      "/config/notifications": () =>
+        Promise.resolve({
+          telegram: { enabled: true, bot_token: "***", chat_id: "42" },
+          notify_on: { job_failure: true },
+        }),
+    })
+    render(<NotificationsTab />, { wrapper })
+    expect(await screen.findByText(/a token is stored/i)).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText("Telegram chat id"), { target: { value: "77" } })
+    expect(screen.queryByText(/a token is stored/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/enter the bot token again/i)).toBeInTheDocument()
+  })
+})
+
 describe("settings tabs share one failure style", () => {
   it.each([
     { name: "Notifications", element: () => <NotificationsTab />, path: "/config/notifications" },

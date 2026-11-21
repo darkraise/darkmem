@@ -137,11 +137,17 @@ export function NotificationsTab() {
               onChange={(e) => setToken(e.target.value)}
             />
           </Field>
-          {stored.telegram.bot_token === MASK && token === null && (
-            <p className="text-muted-foreground text-sm">
-              A token is stored. Leave the field as-is to keep it.
-            </p>
-          )}
+          {stored.telegram.bot_token === MASK &&
+            token === null &&
+            (stored.telegram.chat_id && chat !== stored.telegram.chat_id ? (
+              <p className="text-muted-foreground text-sm">
+                Enter the bot token again to send alerts to another chat.
+              </p>
+            ) : (
+              <p className="text-muted-foreground text-sm">
+                A token is stored. Leave the field as-is to keep it.
+              </p>
+            ))}
 
           <Field label="Chat id">
             <Input

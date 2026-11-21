@@ -40,6 +40,31 @@ async def test_writing_the_mask_back_keeps_the_stored_token(session):
 
 
 @pytest.mark.asyncio
+async def test_a_stored_token_is_not_moved_to_another_chat(session):
+    from app.services.notifications import NotificationsInvalid
+
+    await save_settings(session, {"telegram": {"bot_token": "123:secret", "chat_id": "42"}})
+    with pytest.raises(NotificationsInvalid):
+        await save_settings(session, {"telegram": {"bot_token": MASK, "chat_id": "77"}})
+
+    stored = await get_settings(session)
+    assert stored["telegram"]["chat_id"] == "42"
+    await save_settings(session, {"telegram": {"bot_token": "123:secret", "chat_id": "77"}})
+    assert (await get_settings(session))["telegram"]["chat_id"] == "77"
+
+
+@pytest.mark.asyncio
+async def test_the_route_answers_422_for_a_moved_masked_token(client, auth_headers):
+    url = "/api/v1/config/notifications"
+    first = {"telegram": {"enabled": False, "bot_token": "123:secret", "chat_id": "42"}}
+    assert (await client.put(url, json=first, headers=auth_headers)).status_code == 200
+    moved = {"telegram": {"enabled": False, "bot_token": MASK, "chat_id": "77"}}
+    response = await client.put(url, json=moved, headers=auth_headers)
+    assert response.status_code == 422
+    assert "bot token" in response.text
+
+
+@pytest.mark.asyncio
 async def test_send_refuses_clearly_when_unconfigured():
     sent, error = await send_telegram(
         {"telegram": {"enabled": True, "bot_token": "", "chat_id": ""}}, "hi"

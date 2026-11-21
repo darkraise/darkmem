@@ -34,6 +34,10 @@ DEFAULTS: dict = {
 }
 
 
+class NotificationsInvalid(ValueError):
+    """A save the settings cannot take; the route answers it as 422."""
+
+
 def _merged(stored: dict | None) -> dict:
     settings = {k: dict(v) for k, v in DEFAULTS.items()}
     for section, values in (stored or {}).items():
@@ -63,6 +67,18 @@ async def save_settings(session: AsyncSession, patch: dict) -> dict:
         for section, values in (patch or {}).items():
             if section not in current or not isinstance(values, dict):
                 continue
+            stored_chat = current[section].get("chat_id")
+            if (
+                section == "telegram"
+                and values.get("bot_token") == MASK
+                and stored_chat
+                and values.get("chat_id", stored_chat) != stored_chat
+            ):
+                # A session cannot send a stored secret to a new destination
+                # without entering it again.
+                raise NotificationsInvalid(
+                    "enter the bot token again to send alerts to another chat"
+                )
             for key, value in values.items():
                 # The mask is what a client echoes back when it did not touch
                 # the secret; writing it through would destroy the real token.

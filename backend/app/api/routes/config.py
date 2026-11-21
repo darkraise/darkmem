@@ -1009,9 +1009,12 @@ async def update_notifications(
     _user=Depends(require_auth),
     session: AsyncSession = SessionDep,
 ):
-    from app.services.notifications import masked, save_settings
+    from app.services.notifications import NotificationsInvalid, masked, save_settings
 
-    saved = await save_settings(session, body.model_dump(exclude_none=True))
+    try:
+        saved = await save_settings(session, body.model_dump(exclude_none=True))
+    except NotificationsInvalid as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
     return masked(saved)
 
 
