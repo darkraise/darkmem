@@ -204,17 +204,17 @@
 | 197 | P1-8: the e2e database reset bypasses the destructive-SQL guard on a false premise | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 4 contracts | done | f0b79c0 |
 | 198 | P1-9: the worker's restore loop treats every migrate failure as an old-baseline snapshot and exits 0 | docs/dforge/plans/2026-11-20-audit-remaining.md | A49 (Task 67) | done | 97a4026 |
 | 199 | P1-10: start_dev_server.sh calls bare python and by default migrates localhost:5432, which is production on this host | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 4 contracts | done | f0b79c0 |
-| 200 | P1-11: five seed and test scripts are broken and unreferenced | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 68 contracts | doing | - |
-| 201 | P1-12 remainder: publish_production_models.sh changes into the deleted fine-tuning directory | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 68 contracts | doing | - |
-| 202 | P1-13: the cutover package is the one-time 0006-to-baseline loader and only its own tests use it (llm_providers_transition.py stays) | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 68 contracts | doing | - |
+| 200 | P1-11: five seed and test scripts are broken and unreferenced | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 68 contracts | done | bfbd27a |
+| 201 | P1-12 remainder: publish_production_models.sh changes into the deleted fine-tuning directory | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 68 contracts | done | bfbd27a |
+| 202 | P1-13: the cutover package is the one-time 0006-to-baseline loader and only its own tests use it (llm_providers_transition.py stays) | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 68 contracts | done | bfbd27a |
 | 203 | P1-14: entailment/cache_span (about 549 judge-cache files) appears to be tracked although judge output is quarantined | - | - | deferred | kept: faithfulness_gate.py reads the directory and the G-F replay ran from it |
 | 204 | P1-15: CI skips the extension suite, both SDK suites and the SDK build | docs/dforge/plans/2026-11-20-audit-remaining.md | A50 (Task 66) | done | 1583bda |
 | 205 | P1-16: the Dockerfile's chown -R duplicates layers and leaves the code writable; the app package is installed twice; Node 20 is end-of-life | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 67 contracts | done | 97a4026 |
 | 206 | P1-17: build-push.sh tags the HEAD sha even from a dirty tree | docs/dforge/plans/2026-11-20-audit-remaining.md | A49 (Task 67) | done | 97a4026 |
 | 207 | P1-18: backup.sh accepts any complete dump, so a dump of the wrong database would push real dumps out of retention | docs/dforge/plans/2026-11-20-audit-remaining.md | A49 (Task 67) | done | 97a4026 |
 | 208 | P1-19: frontend/nginx.conf is used by no build path | - | - | deferred | kept: frontend/Dockerfile:17 copies it for the deliberate nginx-in-image fallback |
-| 209 | P1-20: stale comments: the ml extra in pyproject.toml, alembic.ini's ignored URL, the e2e README | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 68 contracts | doing | - |
-| 210 | P1-21: the two GitNexus files at the repo root are unreferenced | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 68 contracts | doing | - |
+| 209 | P1-20: stale comments: the ml extra in pyproject.toml, alembic.ini's ignored URL, the e2e README | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 68 contracts | done | bfbd27a |
+| 210 | P1-21: the two GitNexus files at the repo root are unreferenced | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 68 contracts | done | bfbd27a |
 | 211 | P1-22: eval_round3 is held in place by the guard test and still waits on owner decision D5 | - | - | deferred | owner decision D5 is not this programme's to make |
 | 212 | P1-23: import_docs_corpus.py is likely superseded by the dr-forge mirror | - | - | deferred | declined in the spec: supersession by the dr-forge mirror is likely, not shown |
 | 213 | P1-24: the worker compose comment says the receiver has no network, but it joins the default one | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 67 contracts | done | 97a4026 |
