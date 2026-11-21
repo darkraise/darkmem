@@ -20,6 +20,18 @@ REVOKED_CLOSE = (1008, "Session expired or revoked")
 RENEWED_CLOSE = (4001, "Session renewed")
 
 
+class SessionRenewed(HTTPException):
+    """The token was rotated by a refresh or a password change: its holder
+    has, or is about to receive, a new cookie."""
+
+    def __init__(self) -> None:
+        super().__init__(status_code=401, detail="Session renewed")
+
+
+def _close_for(refusal: HTTPException) -> tuple[int, str]:
+    return RENEWED_CLOSE if isinstance(refusal, SessionRenewed) else REVOKED_CLOSE
+
+
 class SessionRevocations:
     """The blocklisted token ids and the password-change epoch, in process.
 
@@ -33,12 +45,17 @@ class SessionRevocations:
 
     def __init__(self) -> None:
         self._revoked: dict[str, float] = {}
+        # Rotated token ids, marked when their sockets close and before the
+        # rotation commits, so a socket opened on one in that window is told
+        # it was renewed rather than accepted and later closed as revoked.
+        self._renewed: dict[str, float] = {}
         self._epoch: int | None = None
         self._loaded = False
         self._lock = asyncio.Lock()
 
     def reset(self) -> None:
         self._revoked.clear()
+        self._renewed.clear()
         self._epoch = None
         self._loaded = False
 
@@ -71,6 +88,17 @@ class SessionRevocations:
             del self._revoked[stale]
         self._revoked[jti] = expires_at
 
+    def mark_renewed(self, jti: str, expires_at: float) -> None:
+        now = time.time()
+        for stale in [k for k, exp in self._renewed.items() if exp <= now]:
+            del self._renewed[stale]
+        self._renewed[jti] = expires_at
+
+    def forget_renewed(self, jti: str) -> None:
+        """For a rotation whose commit failed: the presented token stays the
+        session's token."""
+        self._renewed.pop(jti, None)
+
     def set_epoch(self, ts: int) -> None:
         self._epoch = ts if self._epoch is None else max(self._epoch, ts)
 
@@ -91,6 +119,11 @@ class SessionRevocations:
             raise HTTPException(status_code=401, detail="Token has been revoked")
         if self._epoch is not None and payload.iat < self._epoch:
             raise HTTPException(status_code=401, detail="Token has been revoked")
+        # After the revocations: once the rotation commits, its token is
+        # revoked like any other; before that, and under the read-only
+        # posture, which revokes nothing, it reads as renewed.
+        if payload.jti in self._renewed:
+            raise SessionRenewed()
 
 
 session_revocations = SessionRevocations()
@@ -170,7 +203,7 @@ class EventManager:
         # Validation happens before the send lock, so a slow check can never
         # hold every other producer's broadcast behind it.
         targets: list[WebSocket] = []
-        refused: list[WebSocket] = []
+        refused: list[tuple[WebSocket, tuple[int, str]]] = []
         dead: list[WebSocket] = []
         for ws in list(self.connections):
             validator = self._validators.get(ws)
@@ -179,19 +212,19 @@ class EventManager:
                     verdict = validator()
                     if inspect.isawaitable(verdict):
                         await verdict
-            except HTTPException:
-                refused.append(ws)
+            except HTTPException as refusal:
+                refused.append((ws, _close_for(refusal)))
                 continue
             except Exception:
                 dead.append(ws)
                 continue
             targets.append(ws)
         async with self._send_lock:
-            for ws in refused:
+            for ws, (code, reason) in refused:
                 if ws not in self.connections:
                     continue
                 try:
-                    await ws.close(code=REVOKED_CLOSE[0], reason=REVOKED_CLOSE[1])
+                    await ws.close(code=code, reason=reason)
                 except Exception:
                     pass
                 dead.append(ws)
@@ -207,8 +240,9 @@ class EventManager:
                     if validator is not None and not inspect.iscoroutinefunction(validator):
                         try:
                             validator()
-                        except HTTPException:
-                            await ws.close(code=REVOKED_CLOSE[0], reason=REVOKED_CLOSE[1])
+                        except HTTPException as refusal:
+                            code, reason = _close_for(refusal)
+                            await ws.close(code=code, reason=reason)
                             dead.append(ws)
                             continue
                     await asyncio.wait_for(ws.send_text(message), timeout=SEND_TIMEOUT_SECONDS)
@@ -221,13 +255,16 @@ class EventManager:
 event_manager = EventManager()
 
 
-async def close_renewed_sockets(token_id: str) -> None:
-    """Close every socket opened with ``token_id`` as renewed, not revoked.
+async def close_renewed_sockets(token_id: str, expires_at: float) -> None:
+    """Mark ``token_id`` renewed and close every socket opened with it as
+    renewed, not revoked.
 
     Refresh and change-password call this before their blocklist write
-    commits, so the client learns of the rotation from the close code; it
-    reconnects only once it holds the new cookie, so a commit that then fails
-    leaves it signed out rather than on a revoked token."""
+    commits, so the client learns of the rotation from the close code and
+    reconnects once it holds the new cookie; a socket opened on the old
+    token from here on is closed the same way. A rotation whose commit fails
+    calls ``session_revocations.forget_renewed``."""
+    session_revocations.mark_renewed(token_id, expires_at)
     await event_manager.close_token(token_id, code=RENEWED_CLOSE[0], reason=RENEWED_CLOSE[1])
 
 
@@ -240,12 +277,19 @@ async def websocket_endpoint(ws: WebSocket):
         await ws.close(code=1008, reason="Unauthorized")
         return
     try:
+        await session_revocations.load(async_session_factory)
+        # First, so a token rotated but not yet committed is told it was
+        # renewed rather than accepted by the query below.
+        session_revocations.check(token)
         async with async_session_factory() as session:
             claims = await validate_session_token(token, session)
-        await session_revocations.load(async_session_factory)
-        # A rotation that committed while the checks above awaited is already
-        # in this copy, so its token opens no socket.
+        # Again: a rotation may have landed while the query awaited.
         session_revocations.check(token)
+    except SessionRenewed:
+        # Accepted only to carry the close code; a refused handshake has none.
+        await ws.accept()
+        await ws.close(code=RENEWED_CLOSE[0], reason=RENEWED_CLOSE[1])
+        return
     except HTTPException:
         await ws.close(code=1008, reason="Unauthorized")
         return
@@ -269,8 +313,8 @@ async def websocket_endpoint(ws: WebSocket):
             if done:
                 receive_task.result()
                 receive_task = asyncio.create_task(ws.receive_text())
-    except HTTPException:
-        await manager.close(ws, *REVOKED_CLOSE)
+    except HTTPException as refusal:
+        await manager.close(ws, *_close_for(refusal))
     except WebSocketDisconnect:
         pass
     except Exception:

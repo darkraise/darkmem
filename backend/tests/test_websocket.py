@@ -319,3 +319,44 @@ async def test_a_new_socket_with_the_new_cookie_connects(manager, client, auth_h
         await _shut(renewed_task)
     finally:
         await _shut(first_task)
+
+
+async def test_a_socket_opened_inside_the_rotation_window_is_told_renewed(
+    manager, client, auth_headers, session,
+):
+    presented = _presented(auth_headers)
+    with _held_commit(session) as (entered, release):
+        answer = asyncio.create_task(
+            client.post("/api/v1/auth/refresh", headers=auth_headers)
+        )
+        await asyncio.wait_for(entered.wait(), 5)
+        late = _Socket(presented)
+        await asyncio.wait_for(websocket.websocket_endpoint(late), 5)
+        assert (late.close_code, late.close_reason) == (4001, RENEWED)
+        assert manager.connections == []
+        release.set()
+        assert (await answer).status_code == 200
+
+
+async def test_a_rotation_whose_commit_fails_keeps_the_token_usable(
+    manager, client, auth_headers, session,
+):
+    presented = _presented(auth_headers)
+    original = session.commit
+
+    async def refuse():
+        raise RuntimeError("commit refused")
+
+    session.commit = refuse
+    try:
+        with pytest.raises(RuntimeError):
+            await client.post("/api/v1/auth/refresh", headers=auth_headers)
+    finally:
+        session.commit = original
+
+    socket, task = await _open(presented)
+    try:
+        await asyncio.sleep(INTERVAL * 4)
+        assert not socket.closed.is_set()
+    finally:
+        await _shut(task)
