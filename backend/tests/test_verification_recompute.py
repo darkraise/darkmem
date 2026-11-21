@@ -560,6 +560,46 @@ class TestCommitSkewMargin:
         assert await _status_of(session, fact_id) == "corroborated"
 
 
+    async def test_an_event_its_producer_holds_past_the_margin_is_still_drained(
+        self, session,
+    ):
+        """A producer whose transaction outlives the margin (a lift batch
+        waiting out its lock budget) stamps its event with its BEGIN time; an
+        idle tick in that window must not stand the watermark past it."""
+        await _prime_slow_arm(session)
+
+        fact_id = await _make_fact(session, key="skew-held")
+        await _add_origin(session, fact_id, "sess-a", kind="memory")
+        await _add_origin(session, fact_id, "repo-b", kind="code")
+
+        engine = create_async_engine(settings.test_database_url)
+        try:
+            async with async_sessionmaker(engine, expire_on_commit=False)() as producer:
+                await record_event(
+                    producer,
+                    event_type="sources_changed",
+                    object_type="fact",
+                    object_id=UUID(fact_id),
+                    project="default",
+                    payload={"fact_id": fact_id, "memory_id": "repo-b"},
+                )
+                # The tick runs with the event's created_at already past the
+                # margin while its transaction is still open.
+                idle = await run_recompute(session, now=_safe_now())
+                await session.commit()
+                assert idle.drain.events_scanned == 0
+                await producer.commit()
+        finally:
+            await engine.dispose()
+
+        drained = await run_recompute(session, now=_safe_now())
+        await session.commit()
+        assert drained.drain.events_scanned == 1, (
+            "the watermark passed an event its producer had not committed yet"
+        )
+        assert await _status_of(session, fact_id) == "corroborated"
+
+
 class TestLockTimeoutAndLivenessAreActuallyWired:
     """N-3: `TestLockWaitIsBounded` proves `_set_local_lock_timeout` itself
     works, but calls it directly through its own savepoint -- it never

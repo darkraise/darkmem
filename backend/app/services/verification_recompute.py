@@ -93,9 +93,11 @@ ticks and the withdrawal emits overlap by construction, not only under
 failure. **Hardening: the fast arm never reads an event newer than
 ``moment - _COMMIT_SKEW_MARGIN`` (5s)**, so a drain never advances the
 watermark past a timestamp an in-flight, earlier-started transaction might
-still land behind. This closes the gap outright rather than merely
-bounding its cost, for exactly as long as no producer transaction takes
-longer than the margin to go from ``BEGIN`` to ``COMMIT``. What each of the
+still land behind. The read is also capped just before the start of the
+oldest open transaction in the database, which closes the gap for a
+producer that takes longer than the margin to go from ``BEGIN`` to
+``COMMIT`` (a lift batch waiting out its memory-lock budget, a pipeline
+batch holding its memory locks to the batch commit). What each of the
 four producers actually does in one transaction, since the bound rests on
 the count and not on the intent:
 
@@ -484,6 +486,27 @@ async def _still_live(session: AsyncSession, fact_id: str) -> bool:
 # advances to can never land past a still-in-flight, earlier-started
 # producer transaction. See the module docstring's commit-order-skew
 # paragraph for the mechanical scenario this closes.
+# An event's created_at is its transaction's start, so no uncommitted event
+# is older than the oldest open transaction in this database. Capping the read
+# there means neither a read row nor an idle advance can pass one, however long
+# a producer holds its locks (a lift batch's lock waits, a pipeline batch held
+# to its commit). A long unrelated transaction (a pg_dump) only delays the
+# drain. Sessions of other roles report a NULL xact_start and are not counted;
+# every producer connects as the app's own role.
+_OLDEST_OPEN_TRANSACTION = text("""
+    SELECT min(xact_start)
+    FROM pg_stat_activity
+    WHERE datname = current_database()
+      AND pid <> pg_backend_pid()
+      AND xact_start IS NOT NULL
+""")
+
+# pg_stat_activity is a snapshot taken at its first read in a transaction;
+# without clearing it, a tick in a long transaction reads stale backends.
+_CLEAR_STATS_SNAPSHOT = text("SELECT pg_stat_clear_snapshot()")
+
+_MICROSECOND = timedelta(microseconds=1)
+
 _DRAIN_EVENTS = text("""
     SELECT id, created_at, payload
     FROM events
@@ -529,6 +552,10 @@ async def _drain_sources_changed(
     wm_ts = state.watermark_created_at or _EPOCH
     wm_id = state.watermark_id if state.watermark_id is not None else -1
     safe_until = moment - _COMMIT_SKEW_MARGIN
+    await session.execute(_CLEAR_STATS_SNAPSHOT)
+    oldest_open = (await session.execute(_OLDEST_OPEN_TRANSACTION)).scalar_one()
+    if oldest_open is not None:
+        safe_until = min(safe_until, oldest_open - _MICROSECOND)
     result = await session.execute(
         _DRAIN_EVENTS,
         {"wm_ts": wm_ts, "wm_id": wm_id, "batch": batch_size, "safe_until": safe_until},
