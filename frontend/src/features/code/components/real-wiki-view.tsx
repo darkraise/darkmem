@@ -101,7 +101,7 @@ export function RealWikiView({
     )
   }
 
-  if (reposQuery.isError) {
+  if (reposQuery.isError && !reposQuery.data) {
     return (
       <EmptyState
         kind="failed"
@@ -151,7 +151,7 @@ export function RealWikiView({
         </div>
       )}
 
-      {!isPending && isError && (
+      {!isPending && isError && !wiki && (
         <EmptyState
           kind="failed"
           title="Failed to load wiki"

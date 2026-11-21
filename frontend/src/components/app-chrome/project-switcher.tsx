@@ -182,7 +182,7 @@ export function ProjectSwitcher({
                 <Skeleton className="h-8 w-full rounded-md" />
                 <Skeleton className="h-8 w-full rounded-md" />
               </div>
-            ) : projectsQuery.isError ? (
+            ) : projectsQuery.isError && !projectsQuery.data ? (
               <EmptyState
                 kind="failed"
                 className="py-4"

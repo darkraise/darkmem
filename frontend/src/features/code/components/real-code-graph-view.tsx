@@ -235,7 +235,7 @@ export function RealCodeGraphView({
 
   if (reposQuery.isPending) return <CodeGraphSkeleton />
 
-  if (reposQuery.isError) {
+  if (reposQuery.isError && !reposQuery.data) {
     return (
       <EmptyState
         kind="failed"

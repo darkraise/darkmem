@@ -42,6 +42,41 @@ import { DEFAULT_PROJECT, useProjectStore } from "@/stores/project-store"
 
 const noop = () => {}
 
+const REPO = {
+  id: "r1",
+  name: "kept-repository",
+  url: null,
+  local_path: "/repo",
+  provider: "local",
+  default_branch: "main",
+  last_indexed_commit: "abc1234",
+  last_indexed_at: "2026-07-27T00:00:00Z",
+  status: "ready",
+  status_message: null,
+  fetch_enabled: false,
+  fetch_interval_seconds: 300,
+  index_on_commit_enabled: false,
+  commit_poll_seconds: 60,
+  index_uncommitted: false,
+  file_count: 1,
+  symbol_count: 2,
+  index_debt: { queued: 0, deferred_total: 0, drained_total: 0, last_defer: null, last_drain: null },
+  created_at: "2026-01-01T00:00:00Z",
+  updated_at: "2026-07-27T00:00:00Z",
+}
+
+const PROJECT = {
+  name: "kept-project",
+  kind: "project",
+  memory_count: 3,
+  document_count: 0,
+  page_count: 0,
+  workstream_count: 0,
+  open_workstream_count: 0,
+  last_worklog_at: null,
+  last_event_day: null,
+}
+
 interface Surface {
   name: string
   /** The request whose state the surface renders. */
@@ -50,6 +85,9 @@ interface Surface {
   failureTitle: RegExp
   /** What a successful empty load serves, and the copy it shows. */
   empty?: { body: unknown; copy: RegExp }
+  /** What a successful load serves, and the text it shows; `others` answers
+   *  the surface's other requests by path prefix. */
+  loaded?: { body: unknown; copy: RegExp; others?: Record<string, unknown> }
   /** Reaching the surface takes a click (the switcher lives in a popover). */
   open?: (user: ReturnType<typeof userEvent.setup>) => Promise<void>
 }
@@ -67,6 +105,11 @@ const SURFACES: Surface[] = [
     ),
     failureTitle: /repositories could not be loaded/i,
     empty: { body: [], copy: /no repositories indexed yet/i },
+    loaded: {
+      body: [REPO],
+      copy: /kept-repository/,
+      others: { "/code/graph": { nodes: [], edges: [] } },
+    },
   },
   {
     name: "Wiki",
@@ -74,6 +117,19 @@ const SURFACES: Surface[] = [
     element: () => <RealWikiView repoId={undefined} onRepoChange={noop} />,
     failureTitle: /repositories could not be loaded/i,
     empty: { body: [], copy: /no repositories indexed yet/i },
+    loaded: {
+      body: [REPO],
+      copy: /kept-repository/,
+      others: {
+        "/code/wiki": {
+          repo_name: "kept-repository",
+          overview: "kept overview",
+          modules: [],
+          total_modules: 0,
+          total_files: 0,
+        },
+      },
+    },
   },
   {
     name: "the project switcher",
@@ -81,6 +137,7 @@ const SURFACES: Surface[] = [
     element: () => <ProjectSwitcher />,
     failureTitle: /projects could not be loaded/i,
     empty: { body: [], copy: /no project holds anything yet/i },
+    loaded: { body: [PROJECT], copy: /kept-project/ },
     open: async (user) => {
       await user.click(screen.getByRole("button", { name: /project scope/i }))
     },
@@ -128,7 +185,7 @@ async function show(surface: Surface) {
   const user = userEvent.setup()
   const view = render(surface.element(), { wrapper })
   await surface.open?.(user)
-  return { user, view }
+  return { user, view, qc }
 }
 
 describe("load-failure states", () => {
@@ -172,6 +229,33 @@ describe("load-failure states", () => {
       expect(await screen.findByText(surface.empty!.copy)).toBeInTheDocument()
       expect(screen.queryByRole("button", { name: "Retry" })).toBeNull()
       expect(screen.queryByText(surface.failureTitle)).toBeNull()
+    },
+  )
+
+  it.each(SURFACES.filter((s) => s.loaded))(
+    "a failed refetch keeps what was loaded: $name",
+    async (surface) => {
+      const others = Object.entries(surface.loaded!.others ?? {})
+      vi.mocked(apiFetch).mockImplementation(((path: string) => {
+        if (path.startsWith(surface.path)) return Promise.resolve(surface.loaded!.body)
+        const other = others.find(([prefix]) => path.startsWith(prefix))
+        return Promise.resolve(other ? other[1] : [])
+      }) as typeof apiFetch)
+      const { qc } = await show(surface)
+      expect((await screen.findAllByText(surface.loaded!.copy)).length).toBeGreaterThan(0)
+
+      vi.mocked(apiFetch).mockImplementation((() =>
+        Promise.reject(new Error("HTTP 500"))) as typeof apiFetch)
+      await qc.refetchQueries()
+      await waitFor(() =>
+        expect(
+          qc.getQueryCache().findAll().some((q) => q.state.status === "error" && q.state.data !== undefined),
+        ).toBe(true),
+      )
+
+      expect(screen.getAllByText(surface.loaded!.copy).length).toBeGreaterThan(0)
+      expect(screen.queryByText(surface.failureTitle)).toBeNull()
+      expect(screen.queryByText(/failed to load/i)).toBeNull()
     },
   )
 
