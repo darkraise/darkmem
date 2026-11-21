@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react"
 import { MessageSquare } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
+import { toast } from "darkraise-ui/components/sonner"
 import { PageChrome } from "@/components/app-chrome"
 import { EmptyState } from "@/components/darkmem"
 import {
@@ -138,8 +139,13 @@ export function RealChatPage({
               if (conversationId) onSelect(null)
             }}
             onDelete={(id) => {
-              deleteConversation.mutate(id)
-              if (id === conversationId) onSelect(null, { replace: true })
+              deleteConversation.mutate(id, {
+                onSuccess: () => {
+                  if (activeKeyRef.current === id) onSelect(null, { replace: true })
+                },
+                onError: (error) =>
+                  toast.error(`Conversation not deleted: ${error.message}`),
+              })
             }}
             isLoading={conversationsLoading}
             isError={conversationsError}

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo } from "react"
+import { memo, useEffect, useRef, useMemo } from "react"
 import { type Components } from "react-markdown"
 import { AppMarkdown } from "@/components/markdown"
 import { Bot, User, FileText, Diamond, MessageCircle } from "lucide-react"
@@ -412,7 +412,19 @@ export function ChatMessages({
   )
 }
 
-function AssistantMessage({
+// The transcript re-renders on every streamed token; a finished turn's
+// markdown is parsed again only when its own text or sources change.
+const AssistantMessage = memo(
+  AssistantMessageBody,
+  (prev, next) =>
+    prev.msg.id === next.msg.id &&
+    prev.msg.content === next.msg.content &&
+    prev.msg.context === next.msg.context &&
+    prev.msg.created_at === next.msg.created_at &&
+    prev.onNodeSelect === next.onNodeSelect,
+)
+
+function AssistantMessageBody({
   msg,
   onNodeSelect,
 }: {

@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react"
+import { useReducer, useRef, useCallback, useEffect } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { handleUnauthorized } from "@/lib/api"
 import type {
@@ -33,21 +33,51 @@ interface ChatStreamState {
   pendingUserMessage: string | null
 }
 
+interface StreamEntry {
+  state: ChatStreamState
+  controller: AbortController
+}
+
+const idle = (conversationId: string | null): ChatStreamState => ({
+  conversationId,
+  retryDraft: null,
+  uncertainDraft: null,
+  isStreaming: false,
+  streamingContent: "",
+  sources: null,
+  error: null,
+  pendingUserMessage: null,
+})
+
+const NO_CONVERSATION = "\u0000none"
+const keyOf = (id: string | null) => id ?? NO_CONVERSATION
+
+/** One stream per conversation: a send aborts only an earlier turn of its
+ *  own conversation, so a reader can switch conversations, or send in
+ *  another, while a turn is still answering. Every stream ends with the
+ *  hook's owner. */
 export function useChatStream(activeConversationId?: string | null) {
-  const [state, setState] = useState<ChatStreamState>({
-    conversationId: null,
-    retryDraft: null,
-    uncertainDraft: null,
-    isStreaming: false,
-    streamingContent: "",
-    sources: null,
-    error: null,
-    pendingUserMessage: null,
-  })
-  const abortRef = useRef<AbortController | null>(null)
+  const streams = useRef(new Map<string, StreamEntry>())
+  // A draft has no id until its first turn's events name one; from then the
+  // turn is also found under that id.
+  const named = useRef(new Map<string, string>())
+  const lastSent = useRef<string | null>(null)
+  const [, rerender] = useReducer((n: number) => n + 1, 0)
   const qc = useQueryClient()
 
-  useEffect(() => () => abortRef.current?.abort(), [])
+  useEffect(() => {
+    const owned = streams.current
+    return () => {
+      for (const entry of owned.values()) entry.controller.abort()
+    }
+  }, [])
+
+  const entryFor = useCallback((key: string) => {
+    const direct = streams.current.get(key)
+    if (direct) return direct
+    const alias = named.current.get(key)
+    return alias === undefined ? undefined : streams.current.get(alias)
+  }, [])
 
   const sendMessage = useCallback(
     async (
@@ -58,26 +88,25 @@ export function useChatStream(activeConversationId?: string | null) {
       // several drafts names which one is sending; it defaults to the id.
       owner: string | null = conversationId,
     ) => {
-      abortRef.current?.abort()
+      const key = keyOf(owner)
+      streams.current.get(key)?.controller.abort()
+      named.current.delete(key)
       const controller = new AbortController()
-      abortRef.current = controller
-
-      setState({
-        conversationId: owner,
-        retryDraft: null,
-        uncertainDraft: null,
-        isStreaming: true,
-        streamingContent: "",
-        sources: null,
-        error: null,
-        pendingUserMessage: content,
-      })
+      const entry: StreamEntry = {
+        controller,
+        state: { ...idle(owner), isStreaming: true, pendingUserMessage: content },
+      }
+      streams.current.set(key, entry)
+      lastSent.current = key
+      rerender()
 
       let resultConversationId: string | null = conversationId
       let completed = false
       let failed = false
       const updateState = (update: (previous: ChatStreamState) => ChatStreamState) => {
-        if (abortRef.current === controller && !controller.signal.aborted) setState(update)
+        if (streams.current.get(key) !== entry || controller.signal.aborted) return
+        entry.state = update(entry.state)
+        rerender()
       }
       const fail = (message: string, retryable = false) => {
         failed = true
@@ -130,7 +159,7 @@ export function useChatStream(activeConversationId?: string | null) {
 
         while (true) {
           const { done, value } = await reader.read()
-          if (controller.signal.aborted || abortRef.current !== controller) {
+          if (controller.signal.aborted || streams.current.get(key) !== entry) {
             await reader.cancel()
             return
           }
@@ -147,6 +176,9 @@ export function useChatStream(activeConversationId?: string | null) {
               const event = JSON.parse(json)
               if (event.conversation_id) {
                 resultConversationId = event.conversation_id
+                if (event.conversation_id !== key && !streams.current.has(event.conversation_id)) {
+                  named.current.set(event.conversation_id, key)
+                }
               }
               switch (event.type) {
                 case "sources":
@@ -193,22 +225,19 @@ export function useChatStream(activeConversationId?: string | null) {
     [qc],
   )
 
+  const activeKey =
+    activeConversationId === undefined ? lastSent.current : keyOf(activeConversationId)
+  const active = activeKey === null ? undefined : entryFor(activeKey)
+
   const abort = useCallback(() => {
-    abortRef.current?.abort()
-    setState((s) => ({ ...s, isStreaming: false, pendingUserMessage: null }))
-  }, [])
+    if (!active) return
+    active.controller.abort()
+    active.state = { ...active.state, isStreaming: false, pendingUserMessage: null }
+    rerender()
+  }, [active])
 
   return {
-    ...(activeConversationId === undefined || state.conversationId === activeConversationId ? state : {
-      conversationId: activeConversationId,
-      isStreaming: false,
-      streamingContent: "",
-      sources: null,
-      error: null,
-      pendingUserMessage: null,
-      retryDraft: null,
-      uncertainDraft: null,
-    }),
+    ...(active?.state ?? idle(activeConversationId ?? null)),
     sendMessage,
     abort,
   }

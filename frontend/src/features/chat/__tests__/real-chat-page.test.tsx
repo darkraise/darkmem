@@ -4,6 +4,22 @@ import userEvent from "@testing-library/user-event"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { useState, type ReactNode } from "react"
 import { ApiError } from "@/lib/api"
+import type { ChatMessage } from "@/hooks/api"
+
+const markdownRenders = vi.hoisted(() => [] as string[])
+vi.mock("@/components/markdown", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/components/markdown")>()
+  return {
+    ...real,
+    AppMarkdown: (props: Parameters<typeof real.AppMarkdown>[0]) => {
+      markdownRenders.push(String(props.children))
+      return real.AppMarkdown(props)
+    },
+  }
+})
+vi.mock("darkraise-ui/components/sonner", () => ({
+  toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn(), info: vi.fn() },
+}))
 
 const mockUseConversations = vi.fn()
 const mockUseConversation = vi.fn()
@@ -16,7 +32,9 @@ vi.mock("@/hooks/api", async (importOriginal) => ({
   useDeleteConversation: () => mockUseDeleteConversation(),
 }))
 
+import { toast } from "darkraise-ui/components/sonner"
 import { RealChatPage } from "../components/real-chat-page"
+import { ChatMessages } from "../components/chat-messages"
 
 function wrapper({ children }: { children: ReactNode }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -295,7 +313,45 @@ describe("RealChatPage", () => {
     await userEvent.click(screen.getByRole("button", { name: "Delete conversation First" }))
     await userEvent.click(screen.getByRole("button", { name: "Delete" }))
 
-    expect(mutate).toHaveBeenCalledWith("c1")
+    expect(mutate).toHaveBeenCalledWith("c1", expect.anything())
+    act(() => mutate.mock.calls[0]![1].onSuccess())
     expect(navigations.mock.calls).toEqual([[null, { replace: true }]])
+  })
+
+  it("a failed delete says so and keeps the conversation", async () => {
+    const mutate = vi.fn((_id: string, options: { onError: (error: Error) => void }) =>
+      options.onError(new ApiError("Internal Server Error", 500)),
+    )
+    mockUseDeleteConversation.mockReturnValue({ mutate })
+    listing(conversation("c1", "First"))
+    render(<Routed initial="c1" />, { wrapper })
+
+    await userEvent.click(screen.getByRole("button", { name: "Delete conversation First" }))
+    await userEvent.click(screen.getByRole("button", { name: "Delete" }))
+
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("not deleted"))
+    expect(navigations).not.toHaveBeenCalled()
+    expect(screen.getByRole("button", { name: "Delete conversation First" })).toBeInTheDocument()
+    expect(mockUseConversation).toHaveBeenLastCalledWith("c1")
+  })
+
+  it("a streaming token re-renders only the streaming message", () => {
+    const finished: ChatMessage[] = Array.from({ length: 20 }, (_, i) => ({
+      id: `m${i}`,
+      role: "assistant",
+      content: `finished answer ${i}`,
+      context: null,
+      created_at: "2026-11-21T00:00:00Z",
+    }))
+    const view = render(<ChatMessages messages={finished} isStreaming />)
+    markdownRenders.length = 0
+    let partial = ""
+    for (let token = 0; token < 30; token++) {
+      partial += `t${token} `
+      view.rerender(<ChatMessages messages={finished} isStreaming streamingContent={partial} />)
+    }
+    const finishedRenders = markdownRenders.filter((text) => text.startsWith("finished answer"))
+    expect(finishedRenders).toHaveLength(0)
+    expect(markdownRenders.length).toBeGreaterThan(0)
   })
 })
