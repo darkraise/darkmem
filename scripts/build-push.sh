@@ -4,6 +4,11 @@ set -euo pipefail
 REGISTRY="darkraise"
 VERSION="${1:-latest}"
 GIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+# The sha tag is how `docker inspect` answers which commit is running, and a
+# build of uncommitted changes to tracked files is not that commit.
+if [ "$GIT_SHA" != "unknown" ] && [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+  GIT_SHA="${GIT_SHA}-dirty"
+fi
 
 echo "Building darkmem image..."
 echo "  Version: $VERSION"

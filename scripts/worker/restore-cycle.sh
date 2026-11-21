@@ -17,7 +17,8 @@
 # A snapshot from an older baseline fails schema_guard at step 4, the side
 # database is dropped, and this exits 0 having changed nothing -- the viewer
 # keeps serving what it had. That is B1's schema-mismatch answer: the surface
-# must not go down for exactly the snapshots one most wants to inspect.
+# must not go down for exactly the snapshots one most wants to inspect. Any
+# other migrate failure also swaps nothing, but exits 1.
 #
 # Usage: restore-cycle.sh   (configuration is env, see the runbook)
 set -euo pipefail
@@ -228,18 +229,36 @@ STAGE="side_replayed"
 # older baseline: schema_guard hashes the baseline file and refuses a database
 # it does not match. The side database is dropped and this exits 0, because a
 # viewer that went down for exactly those snapshots would be worse than useless.
+# That reading needs the snapshot's stamped hash to differ from the image's: a
+# failure on a snapshot of this image's own baseline (a broken revision, or
+# revisions newer than this image) is a real failure and exits 1, or it would
+# report a green night every night.
 
 echo "Migrating and stamping '$SIDE_DB'..."
 if ! $COMPOSE run --rm --no-deps \
         -e DB_USER="$OWNER_USER" -e DB_PASSWORD="$OWNER_PASSWORD" \
         -e DB_NAME="$SIDE_DB" \
         "$APP_SERVICE" sh -c "python -m alembic upgrade head && python -m app.schema_guard"; then
-    echo >&2
-    echo "SNAPSHOT REJECTED: $NEWEST does not match this image's baseline." >&2
-    echo "The viewer keeps serving its previous snapshot; nothing was swapped." >&2
+    STAMPED="$(psql_owner -d "$SIDE_DB" -At \
+        -c "SELECT value->>'sha' FROM config WHERE key = 'schema_baseline_sha'" \
+        | tr -d '\r' | tail -n 1 || true)"
+    IMAGE_SHA="$($COMPOSE run --rm --no-deps "$APP_SERVICE" \
+        python -c "from app.schema_guard import baseline_sha; print(baseline_sha())" \
+        | tr -d '\r' | tail -n 1 || true)"
     psql_owner -d postgres -c "DROP DATABASE IF EXISTS \"$SIDE_DB\";" || true
     STAGE="none"
-    exit 0
+    echo >&2
+    if [ -n "$STAMPED" ] && [ -n "$IMAGE_SHA" ] && [ "$STAMPED" != "$IMAGE_SHA" ]; then
+        echo "SNAPSHOT REJECTED: $NEWEST was taken against an older baseline" >&2
+        echo "(${STAMPED:0:16}; this image carries ${IMAGE_SHA:0:16})." >&2
+        echo "The viewer keeps serving its previous snapshot; nothing was swapped." >&2
+        exit 0
+    fi
+    echo "MIGRATE FAILED on $NEWEST, which is not an older-baseline snapshot" >&2
+    echo "(stamped ${STAMPED:-nothing}, image ${IMAGE_SHA:-unreadable})." >&2
+    echo "A worker image older than the snapshot's revisions fails here: move it with the primary." >&2
+    echo "The viewer keeps serving its previous snapshot; nothing was swapped." >&2
+    exit 1
 fi
 STAGE="side_migrated"
 

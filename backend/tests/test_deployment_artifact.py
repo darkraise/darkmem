@@ -655,6 +655,7 @@ def _write_tarball(tmp_path: Path, dumps: Path, stamp: str, marker: str) -> None
 def _run_cycle(
     tmp_path: Path, *, snapshot: str | None, complete: bool = True,
     migrate_ok: bool = True, attachments: tuple[tuple[str, str], ...] = (),
+    stamped_sha: str = "a" * 64, image_sha: str = "b" * 64,
 ) -> tuple[subprocess.CompletedProcess, list[list[str]], Path]:
     dumps = tmp_path / "dumps"
     dumps.mkdir(exist_ok=True)
@@ -671,12 +672,18 @@ def _run_cycle(
     log_path.write_text("")
     stub = _write_stub(tmp_path, log_path)
     if not migrate_ok:
-        # The stub exits 0 for everything; a `run` that must fail needs its own.
+        # The stub exits 0 for everything; a migrate that must fail needs its
+        # own, and it also answers the two hash reads the failure is judged by:
+        # the snapshot's stamped baseline and the image's.
         failing = tmp_path / "compose_failing.sh"
         failing.write_text(
             _STUB_TEMPLATE.replace("__LOG_PATH__", str(log_path)).replace(
                 "exit 0",
-                'for a in "$@"; do [ "$a" = "run" ] && exit 3; done\nexit 0',
+                'case "$*" in\n'
+                '  *alembic*) exit 3 ;;\n'
+                f'  *schema_baseline_sha*) echo {stamped_sha} ;;\n'
+                f'  *"baseline_sha()"*) echo {image_sha} ;;\n'
+                'esac\nexit 0',
             )
         )
         failing.chmod(0o755)
@@ -785,6 +792,32 @@ def test_a_snapshot_that_fails_the_schema_guard_never_stops_the_app(tmp_path):
     )
     assert not state.exists(), "a rejected snapshot was recorded as being served"
 
+
+
+def test_restore_cycle_fails_on_a_real_migrate_error(tmp_path):
+    """Only a snapshot stamped with another baseline is the expected
+    rejection. A migrate that fails on a snapshot of this very baseline (a
+    broken revision, or one newer than the worker image) is a real failure,
+    and exiting 0 for it would read as a green night every night."""
+    sha = "c" * 64
+    result, records, state = _run_cycle(
+        tmp_path, snapshot=SNAPSHOT, migrate_ok=False, stamped_sha=sha, image_sha=sha,
+    )
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert "REJECTED" not in result.stdout + result.stderr
+    assert not any("stop" in fields for fields in records)
+    assert not any("ALTER DATABASE" in " ".join(fields) for fields in records)
+    assert not state.exists()
+
+    (tmp_path / "older").mkdir()
+    older, older_records, older_state = _run_cycle(
+        tmp_path / "older", snapshot=SNAPSHOT, migrate_ok=False,
+        stamped_sha="a" * 64, image_sha="b" * 64,
+    )
+    assert older.returncode == 0, older.stderr
+    assert "older baseline" in older.stdout + older.stderr
+    assert not any("ALTER DATABASE" in " ".join(fields) for fields in older_records)
+    assert not older_state.exists()
 
 DUMP_0102 = "darkmem-app-20260102-000000.sql.gz.age"
 
@@ -1124,16 +1157,55 @@ def test_the_receiver_healthcheck_asserts_the_bearer_guard_is_armed():
     )
 
 
-def test_the_image_creates_the_attachments_dir_before_chowning_app():
+def _runtime_stage() -> str:
+    return _unwrapped(DOCKERFILE).split("AS runtime", 1)[1]
+
+
+def _app_owned_dirs() -> list[str]:
+    """The directories the runtime stage creates owned by the `app` user."""
+    owned: list[str] = []
+    for line in _runtime_stage().splitlines():
+        match = re.search(r"install -d (?:-m \S+ )?-o app -g app ((?:\S+ ?)+)", line)
+        if match:
+            owned.extend(match.group(1).split())
+    return owned
+
+
+def test_the_image_creates_the_attachments_dir_owned_by_app():
     """A named volume mounted on a path the image lacks is created root-owned,
     and the unprivileged `app` user then cannot write a single attachment."""
+    runtime = _runtime_stage()
+    assert "/app/data/attachments" in _app_owned_dirs()
+    assert runtime.find("install -d") < runtime.find("USER app")
+
+
+def test_dockerfile_copies_with_ownership_and_installs_once():
+    """A recursive chown re-writes every copied file into a second layer and
+    leaves the code writable by the user the app runs as."""
     dockerfile = _unwrapped(DOCKERFILE)
-    mkdir = dockerfile.find("/app/data/attachments")
-    chown = dockerfile.find("chown -R app:app /app")
-    assert mkdir != -1, "the Dockerfile never creates /app/data/attachments"
-    assert chown != -1 and mkdir < chown, (
-        "/app/data/attachments must exist before `chown -R app:app /app`"
-    )
+    assert "chown -R" not in dockerfile
+    copies = [ln.strip() for ln in _runtime_stage().splitlines() if ln.strip().startswith("COPY ")]
+    assert copies, "the runtime stage copies nothing"
+    for line in copies:
+        assert line.startswith("COPY --chown=root:root "), line
+    # The app is imported from /app/app; a second copy installed into the venv
+    # is never imported and only doubles the code in the image.
+    assert dockerfile.count("backend/app/") == 1
+    assert not re.search(r"pip install[^\n]*\s\.\s*$", dockerfile, re.M)
+    assert re.search(r"^FROM node:22\b", dockerfile, re.M)
+    owned = _app_owned_dirs()
+    for path in ("/app/data/attachments", "/app/data/repositories", "/dumps"):
+        assert path in owned, (path, owned)
+
+
+def test_worker_compose_comment_matches_its_network():
+    """The receiver has no `networks:` key, so Compose puts it on the
+    project's default network; a comment saying it has none misleads the
+    next change to its reach."""
+    text = WORKER_COMPOSE.read_text()
+    receiver = text.split("\n  receiver:\n", 1)[1].split("\n  postgres:\n", 1)[0]
+    assert "no network" not in receiver.lower()
+    assert "networks" not in _compose(WORKER_COMPOSE)["services"]["receiver"]
 
 
 def test_prod_app_service_mounts_the_attachment_volume():

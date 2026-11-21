@@ -34,7 +34,13 @@ DUMP_TAIL = (
     "--\n\n"
     "\\unrestrict 8kvVxEh2RfunUmIMTeMD2xzvdmSViN3iUM5sEn1PcqEZ2dw76TtkvKS087t25gb\n\n"
 )
-DUMP_BODY = "--\n-- PostgreSQL database dump\n--\n\nCREATE TABLE public.memories (id uuid);\n\n"
+DUMP_BODY = (
+    "--\n-- PostgreSQL database dump\n--\n\nCREATE TABLE public.memories (id uuid);\n\n"
+    "COPY public.alembic_version (version_num) FROM stdin;\n0006\n\\.\n\n"
+)
+# A complete dump of some other database: the completion marker is there,
+# the darkmem schema and its alembic stamp are not.
+OTHER_DATABASE_BODY = "--\n-- PostgreSQL database dump\n--\n\nCREATE TABLE public.notes (id uuid);\n\n"
 
 
 def _stub(tmp_path: Path, name: str, body: str) -> Path:
@@ -144,6 +150,45 @@ def test_retention_never_deletes_a_real_dump_to_keep_a_failure_artefact(dest, tm
     assert old in survivors, "retention pruned a real dump"
     for dump in survivors:
         assert gzip.decompress(dump.read_bytes()), f"{dump.name} is an empty dump"
+
+
+
+def _seed_dumps(dest: Path, count: int) -> list[Path]:
+    """Older real dumps, oldest first by mtime."""
+    seeded = []
+    for index in range(count):
+        dump = dest / f"darkmem-202001{index + 1:02d}-000000.sql.gz"
+        dump.write_bytes(gzip.compress((DUMP_BODY + DUMP_TAIL).encode()))
+        os.utime(dump, (1000 + index, 1000 + index))
+        seeded.append(dump)
+    return seeded
+
+
+def test_wrong_database_dump_triggers_no_prune(dest, tmp_path):
+    older = _seed_dumps(dest, 14)
+    wrong = _stub(tmp_path, "compose-wrong.sh", f"cat <<'SQL'\n{OTHER_DATABASE_BODY}{DUMP_TAIL}SQL\n")
+
+    result = _run_backup(dest, wrong, keep="14")
+    assert result.returncode != 0
+    assert "CREATE TABLE public.memories" in result.stderr
+    assert "COPY public.alembic_version" in result.stderr
+    assert _dumps(dest) == older, "a dump of the wrong database pruned a real one"
+    (suspect,) = dest.glob("*.suspect")
+    assert suspect.name.startswith("darkmem-") and suspect.name.endswith(".sql.gz.suspect")
+    assert gzip.decompress(suspect.read_bytes()).decode().startswith(OTHER_DATABASE_BODY)
+
+    result = _run_backup(dest, _good_compose(tmp_path), keep="14")
+    assert result.returncode == 0, result.stderr
+    survivors = _dumps(dest)
+    assert len(survivors) == 14
+    assert older[0] not in survivors and older[1:] == [d for d in survivors if d in older]
+
+
+def test_failed_dump_still_prunes_nothing(dest, tmp_path):
+    older = _seed_dumps(dest, 14)
+    result = _run_backup(dest, _failing_compose(tmp_path), keep="2")
+    assert result.returncode != 0
+    assert _dumps(dest) == older
 
 
 # ── Task 7: the attachment tarball stage ─────────────────────────────

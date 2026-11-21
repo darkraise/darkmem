@@ -35,6 +35,23 @@ if ! gunzip -c "$PART" | tail -c 512 | grep -F 'PostgreSQL database dump complet
     exit 1
 fi
 
+# A complete dump of the wrong database (another stack's, an empty one) passes
+# the marker above, and BACKUP_KEEP such nights would prune every real dump.
+# pipefail is off for these reads: grep -m1 stops at the first match, and gzip
+# then fails writing to the closed pipe.
+MISSING=()
+for marker in 'CREATE TABLE public.memories (' 'COPY public.alembic_version '; do
+    if ! (set +o pipefail; gzip -dc "$PART" 2>/dev/null | grep -m1 -F -- "$marker" >/dev/null); then
+        MISSING+=("$marker")
+    fi
+done
+if [ "${#MISSING[@]}" -gt 0 ]; then
+    mv -- "$PART" "$OUT.suspect"
+    printf "Suspect dump: no '%s' line in it.\n" "${MISSING[@]}" >&2
+    echo "Not a darkmem database dump. Kept as $OUT.suspect; nothing pruned." >&2
+    exit 1
+fi
+
 mv -- "$PART" "$OUT"
 
 echo "Backup complete: $OUT ($(du -h "$OUT" | cut -f1))"

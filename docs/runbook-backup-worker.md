@@ -284,6 +284,13 @@ for exactly the snapshots one most wants to inspect would be worse than useless.
 Fix it by rebuilding the worker's image from the commit that produced the
 snapshot, or by taking a fresh snapshot from a production that matches.
 
+The script reads a failure as an older baseline only when the snapshot's
+stamped baseline hash differs from the image's. Any other migrate failure also
+drops the side database and swaps nothing, but exits **non-zero** with a
+`MIGRATE FAILED` line. That includes an older worker image meeting a snapshot
+that carries newer revisions than it knows, so the worker image must move with
+the primary's.
+
 ### If a cycle fails partway
 
 The script prints what to do, per stage. The one window worth knowing about

@@ -1,4 +1,4 @@
-FROM node:20-alpine AS web
+FROM node:22-alpine AS web
 
 WORKDIR /app
 
@@ -29,15 +29,10 @@ ENV PATH="/opt/venv/bin:$PATH"
 ENV PIP_DEFAULT_TIMEOUT=120 \
     PIP_RETRIES=10
 
-# Install pinned dependencies from the lockfile first (reproducible images,
-# cache-friendly), then the package itself without re-resolving deps.
+# Pinned dependencies only. The app itself is not installed into the venv:
+# it runs from /app/app, which the runtime stage copies.
 COPY backend/requirements.lock ./
 RUN pip install --no-cache-dir -r requirements.lock
-
-# Version-only releases must not invalidate the expensive dependency layer.
-COPY backend/pyproject.toml ./
-COPY backend/app/ app/
-RUN pip install --no-cache-dir --no-deps .
 
 
 FROM python:3.12-slim AS runtime
@@ -62,18 +57,21 @@ RUN apt-get update \
         git postgresql-client age openssh-client rsync \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /opt/venv /opt/venv
+COPY --chown=root:root --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-COPY backend/app/ app/
-COPY backend/migrations/ migrations/
-COPY backend/alembic.ini .
-COPY entrypoint.sh .
+# Root-owned, so the `app` user the server runs as cannot rewrite its own code.
+# Compiled here because that user cannot write the bytecode at runtime either.
+COPY --chown=root:root backend/app/ app/
+COPY --chown=root:root backend/migrations/ migrations/
+COPY --chown=root:root backend/alembic.ini .
+COPY --chown=root:root entrypoint.sh .
 # Strip any CR so a Windows-checkout (CRLF) shebang doesn't become
 # "#!/bin/sh\r", which the kernel can't exec ("No such file or directory").
-RUN sed -i 's/\r$//' entrypoint.sh && chmod +x entrypoint.sh
+RUN sed -i 's/\r$//' entrypoint.sh && chmod +x entrypoint.sh \
+    && python -m compileall -q app migrations
 
-COPY --from=web /app/dist ./web
+COPY --chown=root:root --from=web /app/dist ./web
 
 # An image whose SPA copy failed boots perfectly: migrations run, /health
 # answers 200 and the healthcheck passes, and the only symptom is a UI that
@@ -93,10 +91,10 @@ EXPOSE 8000
 HEALTHCHECK --interval=15s --timeout=5s --start-period=40s --retries=5 \
     CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health', timeout=5).status==200 else 1)"
 
-# The attachments volume mounts here; the directory must exist before the
-# chown, or Docker creates the named volume root-owned and `app` cannot write.
-RUN mkdir -p /app/data/attachments \
-    && addgroup --system app && adduser --system --ingroup app app && chown -R app:app /app
+# The paths the app writes, created owned by `app`: a named volume mounted on a
+# path the image lacks is created root-owned, and `app` then cannot write it.
+RUN addgroup --system app && adduser --system --ingroup app app \
+    && install -d -o app -g app /app/data /app/data/attachments /app/data/repositories /dumps
 USER app
 
 CMD ["./entrypoint.sh"]

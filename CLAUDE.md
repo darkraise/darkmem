@@ -164,7 +164,8 @@ table or column is dropped only once no released code reads it.
   publish an image. It builds **one** image, `darkraise/darkmem`, from the
   repo-root `Dockerfile`, carrying the API and the built SPA; the app serves
   the UI on `:8000` and nothing binds `:80`. The script also tags the short
-  git sha, so `docker inspect` answers which commit is running. (The image
+  git sha (`<sha>-dirty` when tracked files differ from HEAD), so `docker
+  inspect` answers which commit is running. (The image
   was `darkraise/darkmem-api` and the compose service `darkmem-api` before
   2026-08-18; an old stack needs `docker compose down --remove-orphans`.)
 - **Redeploy this machine after every change that lands** (owner ruling
@@ -224,7 +225,9 @@ table or column is dropped only once no released code reads it.
   `Persistent=true`. It runs `scripts/backup.sh /root/darkmem-backups` **from
   this working tree**, so the checked-out branch is what runs against
   production. The script dumps the live database and prunes to the newest
-  `BACKUP_KEEP` (14). Dumps are local only. **Attachments are a second
+  `BACKUP_KEEP` (14), but only a dump carrying `CREATE TABLE public.memories`
+  and the `alembic_version` data: any other is renamed `.suspect` and fails
+  the run unpruned. Dumps are local only. **Attachments are a second
   artefact family on both producers**: a manifest hash over `(id, sha256)`,
   computed by Postgres, decides whether the set changed; if it did, each
   producer writes one whole-set tarball beside its dump under the same stamp
@@ -1611,5 +1614,6 @@ ids and refuse writes.
   rows; a closure walk fails the build if it reaches `app.main`,
   `app.database` or any service. `scripts/worker/restore-cycle.sh`
   **verifies before it swaps** (replay, migrate and `schema_guard` on a side
-  database) and rejects a snapshot from an older baseline. Procedure:
+  database) and rejects a snapshot from an older baseline (exit 0); any other
+  migrate failure swaps nothing and exits non-zero. Procedure:
   `docs/runbook-backup-worker.md`.

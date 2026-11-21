@@ -120,8 +120,8 @@ services:
       #   APP_UID=$(docker run --rm darkraise/darkmem:latest id -u)
       #   sudo install -d -o "$APP_UID" -g "$APP_UID" -m 0750 /srv/darkmem-dumps
       - ${DARKMEM_DUMP_DIR:-/srv/darkmem-dumps}:/dumps
-    # No network at all beyond its own port: the receiver holds no database
-    # connection, so it has nothing to reach on the stack network.
+    # On the project's default network, not `darkmem`: the receiver holds no
+    # database connection, so it has nothing to reach on the stack network.
     # Healthy means "serving AND the bearer guard is armed", so this asserts a
     # 401 rather than accepting one. Note urlopen RAISES HTTPError on 4xx
     # instead of returning a response -- a check that read `.status` never
