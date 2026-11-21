@@ -70,12 +70,13 @@ async def save_settings(session: AsyncSession, patch: dict) -> dict:
             stored_chat = current[section].get("chat_id")
             if (
                 section == "telegram"
-                and values.get("bot_token") == MASK
+                and values.get("bot_token", MASK) == MASK
                 and stored_chat
                 and values.get("chat_id", stored_chat) != stored_chat
             ):
                 # A session cannot send a stored secret to a new destination
-                # without entering it again.
+                # without entering it again; leaving the token out reuses the
+                # stored one just as echoing the mask does.
                 raise NotificationsInvalid(
                     "enter the bot token again to send alerts to another chat"
                 )

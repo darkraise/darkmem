@@ -54,6 +54,17 @@ async def test_a_stored_token_is_not_moved_to_another_chat(session):
 
 
 @pytest.mark.asyncio
+async def test_an_omitted_token_is_not_moved_to_another_chat(session):
+    from app.services.notifications import NotificationsInvalid
+
+    await save_settings(session, {"telegram": {"bot_token": "123:secret", "chat_id": "42"}})
+    with pytest.raises(NotificationsInvalid):
+        await save_settings(session, {"telegram": {"chat_id": "77"}})
+
+    assert (await get_settings(session))["telegram"]["chat_id"] == "42"
+
+
+@pytest.mark.asyncio
 async def test_the_route_answers_422_for_a_moved_masked_token(client, auth_headers):
     url = "/api/v1/config/notifications"
     first = {"telegram": {"enabled": False, "bot_token": "123:secret", "chat_id": "42"}}
