@@ -161,9 +161,9 @@
 | 154 | F1-20: every theme consumer runs its own MutationObserver | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 54 contracts | done | 04172df |
 | 155 | F1-21: remembered-position maps grow without bound | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 54 contracts | done | 04172df |
 | 156 | F1-23: two layout engines; one engine could serve both canvases (owner call) | - | - | deferred | declined in the spec: the code graph would look different, and the constellation plan shipped it two days ago |
-| 157 | F2-2: the Maintenance re-embed count goes stale (private cache name) | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 58 contracts | doing | - |
+| 157 | F2-2: the Maintenance re-embed count goes stale (private cache name) | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 58 contracts | done | e5be096 |
 | 158 | F2-3: the WebSocket ignores the server's session-expired close and retries forever | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 57 contracts | done | d169f7e |
-| 159 | F2-4: demo mode still calls the API from Settings LLM | docs/dforge/plans/2026-11-20-audit-remaining.md | A43 (Task 58) | doing | - |
+| 159 | F2-4: demo mode still calls the API from Settings LLM | docs/dforge/plans/2026-11-20-audit-remaining.md | A43 (Task 58) | done | e5be096 |
 | 160 | F2-5: Settings has five save models, three ways of showing a load failure, and three confirmation styles | docs/dforge/plans/2026-11-20-audit-remaining.md | A37 (Task 55) | done | fef8eb1 |
 | 161 | F2-6: the LLM tab shows blank models and a fixture judge as if real on load failure | docs/dforge/plans/2026-11-20-audit-remaining.md | A41 (Task 50) | done | ff88573 |
 | 162 | F2-7: Flags dialogs close on Save before the write lands; edits are lost | docs/dforge/plans/2026-11-20-audit-remaining.md | A37 (Task 55) | done | fef8eb1 |
@@ -172,12 +172,12 @@
 | 165 | F2-10: about 18 exported hooks in hooks/api have no production importer, plus WebSocket cache writes nothing reads | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 59 contracts | doing | - |
 | 166 | F2-11: unused auth code: useSession, useLogout, LogoutButton, authAdapter.me, lib/api.ts login() | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 59 contracts | doing | - |
 | 167 | F2-12 remainder: keepDialogOpenOnListEscape (7 call sites) is retirable by its own comment | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 55 contracts | done | fef8eb1 |
-| 168 | F2-13: formatDateTime is defined four times; both formatDuration copies print 1m 60s for 119.6 seconds | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 58 contracts | doing | - |
-| 169 | F2-14: checkSetupStatus ignores the HTTP status, so a server error shows the setup wizard | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 58 contracts | doing | - |
-| 170 | F2-15: the setup wizard keeps vendor API keys in localStorage until setup finishes | docs/dforge/plans/2026-11-20-audit-remaining.md | A43 (Task 58) | doing | - |
-| 171 | F2-16: the Research tab overwrites typed budgets on every reload of its settings | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 58 contracts | doing | - |
+| 168 | F2-13: formatDateTime is defined four times; both formatDuration copies print 1m 60s for 119.6 seconds | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 58 contracts | done | e5be096 |
+| 169 | F2-14: checkSetupStatus ignores the HTTP status, so a server error shows the setup wizard | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 58 contracts | done | e5be096 |
+| 170 | F2-15: the setup wizard keeps vendor API keys in localStorage until setup finishes | docs/dforge/plans/2026-11-20-audit-remaining.md | A43 (Task 58) | done | e5be096 |
+| 171 | F2-16: the Research tab overwrites typed budgets on every reload of its settings | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 58 contracts | done | e5be096 |
 | 172 | F2-17: in development StrictMode leaves a duplicate WebSocket, so every event toasts twice | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 57 contracts | done | d169f7e |
-| 173 | F2-18: queries do not pass cancellation signals; the maintenance tab polls /jobs every 5s for one value; the project switcher says No project holds anything yet when loading fails | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 50/58 contracts | doing | - |
+| 173 | F2-18: queries do not pass cancellation signals; the maintenance tab polls /jobs every 5s for one value; the project switcher says No project holds anything yet when loading fails | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 50/58 contracts | done | e5be096 |
 | 174 | F3-1 (high): sending in a second chat conversation silently aborts the first one's stream, and that answer is lost | docs/dforge/plans/2026-11-20-audit-remaining.md | A2 (Task 60) | doing | - |
 | 175 | F3-2: the documents block editor throws away the typed text on any refused or failed write | docs/dforge/plans/2026-11-20-audit-remaining.md | A39 (Task 61) | doing | - |
 | 176 | F3-3: hygiene queue checkbox selections survive project and page changes; Supersede instead acts only on the visible page, then clears every selection | docs/dforge/plans/2026-11-20-audit-remaining.md | A40 (Task 63) | doing | - |
