@@ -17,6 +17,7 @@ from app.services.fact_lift import run_code_lift
 from app.services.fact_provenance import MEMORY_SOURCE_KIND
 from app.services.ladder_config import LADDER_CONFIG_KEY, LADDER_MEASUREMENTS_KEY
 from app.services.supersession_hold import _SUPERSEDED_SOURCE_SQL
+from app.services import verification_recompute
 from app.services.verification_ladder import DEMOTE_GRACE_CONFIG_KEY
 from app.services.verification_recompute import (
     _COMMIT_SKEW_MARGIN,
@@ -42,12 +43,14 @@ def _statements():
         event.remove(engine, "before_cursor_execute", record)
 
 
-# The idle advance stops at the margin, or just short of another backend's
-# open transaction, whichever is earlier; a clock a minute ahead makes the
-# second one bind whenever anything else in the database is mid-transaction.
+# The open-transaction cap is pinned in test_verification_recompute.py; here it
+# is neutralised so the result does not depend on other connections in the
+# worker's database.
+_NO_OPEN_TRANSACTION = text("SELECT NULL::timestamptz")
 
 
-async def test_idle_drain_advances_the_watermark(session):
+async def test_idle_drain_advances_the_watermark(session, monkeypatch):
+    monkeypatch.setattr(verification_recompute, "_OLDEST_OPEN_TRANSACTION", _NO_OPEN_TRANSACTION)
     fact_id = await _fact(session, subject="darkmem", obj="postgres")
     await _enqueue(session, fact_id)
     enqueued_at = (await session.execute(
@@ -62,10 +65,12 @@ async def test_idle_drain_advances_the_watermark(session):
     await run_recompute(session, batch_size=10_000, now=moment)
 
     state = await _load_state(session)
-    assert enqueued_at < state.watermark_created_at <= moment - _COMMIT_SKEW_MARGIN
+    assert state.watermark_created_at == moment - _COMMIT_SKEW_MARGIN
+    assert enqueued_at < state.watermark_created_at
 
 
-async def test_idle_drain_never_moves_the_watermark_back(session):
+async def test_idle_drain_never_moves_the_watermark_back(session, monkeypatch):
+    monkeypatch.setattr(verification_recompute, "_OLDEST_OPEN_TRANSACTION", _NO_OPEN_TRANSACTION)
     await run_recompute(
         session, batch_size=10_000, now=datetime.now(timezone.utc) + timedelta(minutes=10),
     )
