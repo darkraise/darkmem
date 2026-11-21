@@ -145,7 +145,7 @@
 | 138 | F1-2 (high): the 3D graph data is rebuilt in 2D view, in O(n squared) | docs/dforge/plans/2026-11-20-audit-remaining.md | A4 (Task 53) | doing | - |
 | 139 | F1-4: Blast Radius silently fails on the folded graph; no onError handler | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 49 contracts | done | fd9b5c7 |
 | 140 | F1-5: Code Graph and Wiki show No repositories indexed yet while loading or after an error | docs/dforge/plans/2026-11-20-audit-remaining.md | A41 (Task 50) | done | ff88573 |
-| 141 | F1-6: the code canvas rebuilds Sigma and restarts the layout on every keystroke | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 51 contracts | doing | - |
+| 141 | F1-6: the code canvas rebuilds Sigma and restarts the layout on every keystroke | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 51 contracts | done | 8a4853d |
 | 142 | F1-7: per-frame string-keyed density grid on the memory canvas | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 54 contracts | doing | - |
 | 143 | F1-9: dead or test-only exports in live modules (graph-geometry hull helpers, lightenHex, clusterAnchors, code-graph-theme colour functions, groupMemories, placeIslands, zoomLevel, setGraphReady, inner GraphSkeleton, duplicate stableHash) | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 54 contracts | doing | - |
 | 144 | F1-10: wiki and edit-repository mutation failures are not reported | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 49 contracts | done | fd9b5c7 |
@@ -224,8 +224,8 @@
 | 217 | Section 1 follow-ups 1 and 2 on 192.168.0.199: restore the embedding provider there and requeue its error rows | - | - | deferred | owner's: that instance is outside this host (owner answer 2026-11-20) |
 | 218 | Section 1 follow-up 3: turn on job-failure notifications in Settings | - | - | deferred | owner's: needs a channel the owner chooses (owner answer 2026-11-20) |
 | 219 | constellation-graphs row 5: no test asserts the memory renderer's one-frame deferred runner.start() | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 53 contracts | doing | - |
-| 220 | constellation-graphs row 6: a code-canvas rebuild that changes the drawn node set opens at sigma's default camera and does not re-centre a persisting selection | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 51 contracts | doing | - |
-| 221 | constellation-graphs row 7: the code canvas's ring overlay, its follow-camera during the core run, and memory-renderer position reseeding across a rebuild have no unit test | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 51 contracts | doing | - |
+| 220 | constellation-graphs row 6: a code-canvas rebuild that changes the drawn node set opens at sigma's default camera and does not re-centre a persisting selection | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 51 contracts | done | 8a4853d |
+| 221 | constellation-graphs row 7: the code canvas's ring overlay, its follow-camera during the core run, and memory-renderer position reseeding across a rebuild have no unit test | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 51 contracts | done | 8a4853d |
 | 222 | constellation-real-data row 9: the placeOuter iteration of the 20,000-node timing loop is covered by A14 (for test-simplifier) | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 54 contracts | doing | - |
 | 223 | graph-cluster-quality row 1: switching graph Regions off leaves the region outlines and chips drawn until a repaint | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 53 contracts | doing | - |
 | 224 | graph-cluster-quality row 2: two clusters can receive the same computed name, so the filter panel lists two identical rows | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 52 contracts | doing | - |
