@@ -1686,3 +1686,44 @@ async def test_a36_the_fetch_lane_never_fast_forwards_a_branch_other_than_the_de
     _qa_git(work, "checkout", "-q", "main")
     await mgr.pull_repo(repo)
     assert _qa_git(work, "rev-parse", "main") == up_head
+
+
+# ------------------------------------------------------------------ A20
+
+from tests.test_dream_undo import (  # noqa: E402,F401 - fixtures and helpers
+    committing,
+    memory_row,
+    produce_refine,
+    project,
+    undo_ids,
+)
+
+
+@pytest.mark.asyncio
+async def test_a20_a_new_refine_changes_the_summary_and_never_the_tags(committing, project):
+    from app.services import memory_dream as dream
+    from app.utils.ids import new_id
+
+    verdict = dream.parse_refine(json.dumps({"summary": "a crisp summary", "tags": ["invented", "project/other"]}))
+    assert verdict.summary == "a crisp summary"
+    assert not hasattr(verdict, "tags") or not getattr(verdict, "tags")
+
+    memory, _event = await produce_refine(committing, project, cycle_id=str(new_id()), prior_tags=("t213-original", "project/keep"))
+    row = await memory_row(committing, memory)
+    assert row["summary"] == "a refined summary"
+    assert sorted(row["tag_names"]) == ["project/keep", "t213-original"]
+
+
+@pytest.mark.asyncio
+async def test_a20_undoing_a_refine_journalled_with_tags_still_restores_them(committing, project):
+    from app.utils.ids import new_id
+
+    memory, event_id = await produce_refine(
+        committing, project, cycle_id=str(new_id()), tags=("t213-changed",), prior_tags=("t213-original", "project/keep")
+    )
+    changed = await memory_row(committing, memory)
+    assert sorted(changed["tag_names"]) == ["t213-changed"]
+    await undo_ids(committing, event_id)
+    row = await memory_row(committing, memory)
+    assert row["summary"] == "the old summary"
+    assert sorted(row["tag_names"]) == ["project/keep", "t213-original"]
