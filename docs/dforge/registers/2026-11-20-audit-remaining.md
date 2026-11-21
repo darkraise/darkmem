@@ -146,20 +146,20 @@
 | 139 | F1-4: Blast Radius silently fails on the folded graph; no onError handler | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 49 contracts | done | fd9b5c7 |
 | 140 | F1-5: Code Graph and Wiki show No repositories indexed yet while loading or after an error | docs/dforge/plans/2026-11-20-audit-remaining.md | A41 (Task 50) | done | ff88573 |
 | 141 | F1-6: the code canvas rebuilds Sigma and restarts the layout on every keystroke | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 51 contracts | done | 8a4853d |
-| 142 | F1-7: per-frame string-keyed density grid on the memory canvas | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 54 contracts | doing | - |
-| 143 | F1-9: dead or test-only exports in live modules (graph-geometry hull helpers, lightenHex, clusterAnchors, code-graph-theme colour functions, groupMemories, placeIslands, zoomLevel, setGraphReady, inner GraphSkeleton, duplicate stableHash) | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 54 contracts | doing | - |
+| 142 | F1-7: per-frame string-keyed density grid on the memory canvas | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 54 contracts | done | 04172df |
+| 143 | F1-9: dead or test-only exports in live modules (graph-geometry hull helpers, lightenHex, clusterAnchors, code-graph-theme colour functions, groupMemories, placeIslands, zoomLevel, setGraphReady, inner GraphSkeleton, duplicate stableHash) | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 54 contracts | done | 04172df |
 | 144 | F1-10: wiki and edit-repository mutation failures are not reported | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 49 contracts | done | fd9b5c7 |
 | 145 | F1-11: Copy Mermaid misreports and fails in production (navigator.clipboard undefined on plain HTTP) | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 49 contracts | done | fd9b5c7 |
 | 146 | F1-12: clicking an entity in 3D shows the graph summary | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 53 contracts | done | 6fb823d |
 | 147 | F1-13: colour-mode changes rebuild what is already recoloured in place | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 53 contracts | done | 6fb823d |
 | 148 | F1-14: the detail panel's close button has no accessible name | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 53 contracts | done | 6fb823d |
 | 149 | F1-15: graph and code loading and error states are inconsistent | docs/dforge/plans/2026-11-20-audit-remaining.md | A41 (Task 50) | done | ff88573 |
-| 150 | F1-16: KIND_CHART defined three times; node sizing differs between 2D and 3D | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 54 contracts | doing | - |
-| 151 | F1-17: duplicated runner boilerplate and per-frame allocation during layout; collide() is O(k squared) | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 54 contracts | doing | - |
-| 152 | F1-18: symbolsByFile copies each file's array on every insert | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 54 contracts | doing | - |
+| 150 | F1-16: KIND_CHART defined three times; node sizing differs between 2D and 3D | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 54 contracts | done | 04172df |
+| 151 | F1-17: duplicated runner boilerplate and per-frame allocation during layout; collide() is O(k squared) | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 54 contracts | done | 04172df |
+| 152 | F1-18: symbolsByFile copies each file's array on every insert | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 54 contracts | done | 04172df |
 | 153 | F1-19: the graph payload carries full memory content for up to 50,000 nodes | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 52/53 contracts | done | 6fb823d |
-| 154 | F1-20: every theme consumer runs its own MutationObserver | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 54 contracts | doing | - |
-| 155 | F1-21: remembered-position maps grow without bound | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 54 contracts | doing | - |
+| 154 | F1-20: every theme consumer runs its own MutationObserver | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 54 contracts | done | 04172df |
+| 155 | F1-21: remembered-position maps grow without bound | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 54 contracts | done | 04172df |
 | 156 | F1-23: two layout engines; one engine could serve both canvases (owner call) | - | - | deferred | declined in the spec: the code graph would look different, and the constellation plan shipped it two days ago |
 | 157 | F2-2: the Maintenance re-embed count goes stale (private cache name) | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 58 contracts | doing | - |
 | 158 | F2-3: the WebSocket ignores the server's session-expired close and retries forever | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 57 contracts | doing | - |
@@ -226,7 +226,7 @@
 | 219 | constellation-graphs row 5: no test asserts the memory renderer's one-frame deferred runner.start() | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 53 contracts | done | 6fb823d (test only: graph-interactions.test.tsx pins the one-frame deferred runner.start; passes on the base by design) |
 | 220 | constellation-graphs row 6: a code-canvas rebuild that changes the drawn node set opens at sigma's default camera and does not re-centre a persisting selection | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 51 contracts | done | 8a4853d |
 | 221 | constellation-graphs row 7: the code canvas's ring overlay, its follow-camera during the core run, and memory-renderer position reseeding across a rebuild have no unit test | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 51 contracts | done | 8a4853d |
-| 222 | constellation-real-data row 9: the placeOuter iteration of the 20,000-node timing loop is covered by A14 (for test-simplifier) | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 54 contracts | doing | - |
+| 222 | constellation-real-data row 9: the placeOuter iteration of the 20,000-node timing loop is covered by A14 (for test-simplifier) | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 54 contracts | done | 04172df |
 | 223 | graph-cluster-quality row 1: switching graph Regions off leaves the region outlines and chips drawn until a repaint | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 53 contracts | done | not reproduced: sigma 3.0.3 refresh() renders synchronously and afterRender redraws the hull canvas, so Regions off clears outlines and chips in the same frame; pinned by graph-interactions.test.tsx |
 | 224 | graph-cluster-quality row 2: two clusters can receive the same computed name, so the filter panel lists two identical rows | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 52 contracts | done | c03c42b |
 | 225 | graph-cluster-quality row 3: a chosen term that is part of the prefix is not skipped, so a name can partly repeat its prefix | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 52 contracts | done | c03c42b |
