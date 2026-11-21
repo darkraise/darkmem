@@ -238,3 +238,161 @@
 | 231 | B4 removal 8 follow-up: drop code_files.last_commit_sha in a new revision | - | - | deferred | two-step drop: v1.17.0 still maps the column; ship in the release after the first release without a reader of it |
 | 232 | B3b-4 follow-up: restore the project/ tags a past refine removed, on this host | - | - | deferred | owner's: a production write; the script and its dry run are delivered, the restore waits for the owner's word. Dry run on the 2026-11-21 03:30 backup restored to the dev Postgres: memories: 39 (project/default 20, darkraise-framework 9, fshare-folder 4, form-capture 3, darkcloud 2, darkload 1) |
 | 233 | test_classifier_kind.py::test_resolve_classifier_falls_back_to_llm_when_ml_unavailable is covered by test_local_classifier_availability.py::test_stored_local_row_classifies_with_the_llm | - | - | deferred | final review: for dforge:test-simplifier |
+| 234 | Task 1 parked: preflight-38: CLAUDE.md not in Files | - | - | deferred | Ruling: the limiter sentences state no order; stage CLAUDE.md if it fires |
+| 235 | Task 24 parked: preflight-61: test_dream_jobs.py not in Files | - | - | deferred | Ruling: git add backend/tests stages it |
+| 236 | Task 64 parked: preflight-101: mirror names accepted in either file | - | - | deferred | Ruling: matches CLAUDE.md's recorded contract |
+| 237 | Task 1 minor: backend/app/api/routes/auth.py:57-60 — a refusal caused only by in-flight saturation says "Too many failed login attempts; retry in 1s" | - | - | open | - |
+| 238 | Task 1 minor: backend/tests/test_cors_fallback.py:20 — the test asserts on the environment rather than setting it | - | - | open | - |
+| 239 | Task 1 minor: .dforge/sdd/2026-11-20-audit-remaining/task-1-report.md:43 — the GREEN run reports "9 warnings" and nobody explains them | - | - | open | - |
+| 240 | Task 2 minor: backend/app/services/api_keys.py:162 — the comment says a rolled-back revoke "keeps the key refused in this process until restart", which is false | - | - | open | - |
+| 241 | Task 2 minor: backend/tests/test_api_key_cache.py:0 — module-level `_verified` / `_revoked_ids` are never reset between tests | - | - | open | - |
+| 242 | Task 2 minor: backend/tests/test_api_key_cache.py:289 — the expired-key test asserts on `authenticate(..., now=later)`, not on a 401 at the door as the brief words it | - | - | open | - |
+| 243 | Task 2 parked: cv-warnings: unexplained 24 warnings | - | - | deferred | Ruling: environmental (test JWT secret length, pynvml import); -W error::DeprecationWarning run passes 7/7 |
+| 244 | Task 3 minor: [lens:security] backend/app/services/code_pipeline.py:579 — log lines still write the raw exception | - | - | open | - |
+| 245 | Task 3 minor: [lens:security] backend/app/services/repo_manager.py:408 — `http.extraHeader` is not scoped to the repository host | - | - | open | - |
+| 246 | Task 3 minor: backend/app/api/routes/repos.py:375 — the background-run sanitisation has no test | - | - | open | - |
+| 247 | Task 3 minor: frontend/src/features/graph/lib/__tests__/cluster-layout.test.ts:373 — out of scope: a hard 50 ms wall-clock threshold fails under host memory pressure (earlyoom/swap) and will recur as a false red in gate legs | - | - | open | - |
+| 248 | Task 3 parked: cv-provider-url-normalisation | - | - | deferred | Ruling: _provider_base_url returns the value unchanged, so an unchanged masked save compares equal |
+| 249 | Task 3 discovered: provider dialog sends the mask on a URL edit and now gets a 422 | - | - | open | - |
+| 250 | Task 4 minor: backend/scripts/e2e/e2e_db.py:37 — [lens:security] the loopback set misses the rest of 127.0.0.0/8 and `0.0.0.0` | - | - | open | - |
+| 251 | Task 4 minor: backend/tests/test_ci_workflows.py:105 — unused constant `TRUSTED_HEAD` (from agy) | - | - | open | - |
+| 252 | Task 4 minor: backend/tests/test_ci_workflows.py:184 — the pinning test crashes on a `uses:` value with no `@` | - | - | open | - |
+| 253 | Task 4 parked: cv-e2e-reset-port-scope | - | - | deferred | Ruling: loopback-only 5432 refusal stands; CI resets darkmem_e2e at postgres:5432 and the name check refuses production's darkmem on any host |
+| 254 | Task 7 minor: backend/app/repositories/graph.py:580 — the strip still locks a memory's prior rows in scan order, so concurrent re-extractions can still deadlock | - | - | open | - |
+| 255 | Task 7 minor: backend/tests/test_phase5_concurrency.py:341 — no test covers the relation sort | - | - | open | - |
+| 256 | Task 7 minor: backend/tests/test_phase5_concurrency.py:364 — on the fixed code the test always spends the full 3 s timeout | - | - | open | - |
+| 257 | Task 7 parked: cv-strip-ordering: B1-3 may require ordering the strip | - | - | deferred | Ruling: B1-3's remedy and the brief ask only for sorted upserts and keep the strip first in savepoint B; the strip's own lock order is outside this task (rulings-cannot-verify-7, seat answered inline) |
+| 258 | Task 7 minor: backend/app/repositories/graph.py:577 — delete_by_memory_id's two strip UPDATEs lock shared rows in scan order, so concurrent re-extractions sharing rows can still deadlock in savepoint B (ruling seat grades it Important outside B1-3; fix: SELECT id … ORDER BY id FOR UPDATE before each UPDATE, plus a two-session re-extraction test) | - | - | open | - |
+| 259 | Task 8 minor: backend/app/services/pipeline_failures.py:98 — the memory pipeline no longer produces extract=partial, so derive_memory_failed_step's extraction_partial branch (and the SPA's extraction_partial label) is unreachable for new rows | - | - | open | - |
+| 260 | Task 8 minor: backend/app/services/pipeline.py:1300 — when the same-batch reconciliation fails, the batch's extracted journal rows (written in that session) are lost while the statuses survive | - | - | open | - |
+| 261 | Task 9 minor: backend/app/services/memory.py:328 — with no pipeline, a flush that overruns the deadline keeps running on the request's own session after the request ends | - | - | open | - |
+| 262 | Task 9 minor: backend/tests/test_wait_process.py:398 — the REST deadline test can't tell the pipeline's own session apart from the request session | - | - | open | - |
+| 263 | Task 9 minor: backend/tests/test_wait_process.py:17 — the module docstring still names the removed `buffer_wait_timeout_seconds` flag | - | - | open | - |
+| 264 | Task 9 minor: backend/app/services/wait_process.py:146 — a flush that raises is reported twice | - | - | open | - |
+| 265 | Task 9 minor: backend/tests/test_wait_process.py:479 — the shutdown wiring is pinned by a source-string search | - | - | open | - |
+| 266 | Task 9 minor: CLAUDE.md:372 — the wait_process contract sentence still says a flush running at the deadline "finishes as a tracked background task"; it omits that the flush is released to pending at the 290 s flush deadline and that a capture arriving with 8 flushes in flight is not driven at all (spec rule 3: contract sentences move with the code) | - | - | open | - |
+| 267 | Task 9 minor: backend/app/services/wait_process.py:137 — the cap counts every tracked flush, including ones still inside their own 10 s request window, so it bounds concurrent wait_process drives overall rather than only flushes that outlived their request as the constant's name and comment at line 40 suggest | - | - | open | - |
+| 268 | Task 9 discovered: a flush cut at shutdown refunds its attempt and repays the model spend | - | - | open | - |
+| 269 | Task 10 minor: tests/test_memory_buffer.py emits an SAWarning 'transaction already deassociated from connection' at teardown (present on base 86818c87) | - | - | open | - |
+| 270 | Task 10 discovered: SAWarning at teardown in tests/test_memory_buffer.py (pre-existing | - | - | open | - |
+| 271 | Task 12 minor: the hook tests were written after use-memory-buffer-api.ts, so their only red is the missing module | - | - | open | - |
+| 272 | Task 12 discovered: /health in Task 11 had used request DI and broke a direct-call test; Task 7 GIN test was planner-sensitive | - | - | open | - |
+| 273 | Task 13 minor: a caller who sends importance exactly 0.5 is indistinguishable from one who sent none, so the extractor's value replaces it; the cutover backfill's importance restore is now needed only for default-importance rows | - | - | open | - |
+| 274 | Task 13 discovered: test_cutover_backfill importance proofs went vacuous (reseeded at the default | - | - | open | - |
+| 275 | Task 14 minor: a stream closed early by aclose (GeneratorExit, not a cancellation) still records ok=True with no payload, as before | - | - | open | - |
+| 276 | Task 15 minor: with hybrid_search_enabled off and a failed shared embed, the pure-vector branch embeds again before raising (one extra embed attempt during an outage) | - | - | open | - |
+| 277 | Task 15 discovered: hybrid_search embedder cooldown leaked across tests (autouse reset in conftest); the claim-gate scan had covered three score copies by a name coincidence | - | - | open | - |
+| 278 | Task 16 minor: ChatService._lookup_entities passes ChatContext.selected_entity_id (an unvalidated str) to get_neighbors_by_id, so a malformed id from the chat body still raises a DataError mid-turn | - | - | open | - |
+| 279 | Task 16 minor: get_memory_context slices the 20 smallest neighbour ids before the scope filter drops dead or foreign rows, so dead rows can still take slots | - | - | open | - |
+| 280 | Task 16 discovered: chat selected_entity_id unvalidated; neighbour slice precedes the scope filter | - | - | open | - |
+| 281 | Task 17 minor: frontend use-config-api.ts still types measurable_flags/measured_flags and use-graph-api.ts still calls /vectors/projection until the frontend cleanup (Task 45 names use-graph-api.ts, not use-config-api.ts) | - | - | open | - |
+| 282 | Task 17 discovered: frontend types and the projection hook stay until the frontend cleanup | - | - | open | - |
+| 283 | Task 18 minor: backend/tests/test_fact_lift_interleave.py:361 — the deferral test cannot tell `MemoriesBusy` apart from an unexpected DB error | - | - | open | - |
+| 284 | Task 18 minor: backend/app/services/contradiction_scan.py:696 — the comment listing every `sources_changed` producer is now stale | - | - | open | - |
+| 285 | Task 18 minor: the pipeline rewrites a caller's extraction entity dicts in place (canonical names), and tests/test_pipeline_savepoints.py's savepoint_bed shallow-copies the module-level EXTRACTION, so a test re-running the default extraction under the fake embedder leaks a pgvector→faiss rename into later tests | - | - | open | - |
+| 286 | Task 18 minor: _open_fact_id still takes a blocking FOR UPDATE, so a lift waiting on a fact a re-extraction's reconcile holds can still close a cycle with that pipeline (pre-existing shape through two fact locks) | - | - | open | - |
+| 287 | Task 18 discovered: the pipeline mutates extraction entity dicts in place (test fixture leak); _open_fact_id still blocks on FOR UPDATE (pre-existing cycle shape | - | - | open | - |
+| 288 | Task 20 minor: fact_provenance._ORPHANED_PROVENANCE (reap backstop) still joins CAST(m.id AS text) = fs.source_ref; withdraw_memory_sources (REST memory delete) has no lock bound | - | - | open | - |
+| 289 | Task 20 minor: backend/app/services/verification_recompute.py:807 — The `run_recompute` docstring still says "matching ``run_lift``'s contract" of not committing | - | - | open | - |
+| 290 | Task 20 minor: backend/app/services/verification_recompute.py:537 — The idle watermark advance makes the 5 s commit-skew assumption bind on every idle tick, not only on busy ones | - | - | open | - |
+| 291 | Task 20 minor: backend/tests/test_deriver_lift.py:1455 — The docstring of `test_a_suspected_contradiction_does_not_withhold_the_born_rung` still says "the consult above is a veto consult" | - | - | open | - |
+| 292 | Task 20 parked: cannot-verify:0 facts_for_source / required_origin_count "exists at head" | - | - | deferred | Ruling: grep over every .py file outside .dforge finds neither name (backend/app, backend/tests, scripts: 0); the only hits are dated records (the audit track's B3a-14 text, the T2.03/T2.45 plans, the 2026-08-24 spec, this plan and register), which are history and are not rewritten; the commit body quotes the search and the count_distinct_origins oracle files (git log -1 0bb607fd) |
+| 293 | Task 20 discovered: _ORPHANED_PROVENANCE keeps the text-cast join; REST memory delete withdrawal has no lock bound | - | - | open | - |
+| 294 | Task 21 minor: backend/tests/test_restore_refine_project_tags.py:1544 — the `DATABASE_URL` setenv has no effect on the script | - | - | open | - |
+| 295 | Task 21 minor: backend/scripts/restore_refine_project_tags.py:531 — the `#!/usr/bin/env python` shebang does not resolve on this host | - | - | open | - |
+| 296 | Task 21 minor: backend/app/services/memory_dream.py:0 — `build_refine_messages` still shows the model the memory's current tags | - | - | open | - |
+| 297 | Task 21 discovered: refine prompt still shows current tags as context; benchlib suites sharing the bench DB collide when run in one -n 4 invocation with tests/ | - | - | open | - |
+| 298 | Task 25 minor: test_claim_serving_gates' AGGREGATES_NAMING_THE_RUNG comment still says article_eligibility's consumer "is held shut by G-D" (G-D cleared on the entailment role) | - | - | open | - |
+| 299 | Task 29 minor: backend/tests/test_repo_fetch_safety.py:330 — `import pytest` is unused | - | - | open | - |
+| 300 | Task 29 minor: backend/app/services/repo_manager.py:250 — No test covers `_reclone` releasing its claim when the clone raises or is cancelled | - | - | open | - |
+| 301 | Task 29 discovered: a failed re-clone restores ready with the tree gone (the next index tick fails as before | - | - | open | - |
+| 302 | Task 30 minor: backend/app/services/index_debt.py:5 — stale references to the removed `_delete_file_data` | - | - | open | - |
+| 303 | Task 30 minor: backend/tests/test_code_index_cost.py:1921 — phase 07 reuse of phase 06's resolver is not asserted | - | - | open | - |
+| 304 | Task 30 minor: backend/app/services/job_runners.py:1537 — a deploy that changes `assert_repo_graph` never re-derives repositories whose HEAD has not moved | - | - | open | - |
+| 305 | Task 30 minor: backend/app/services/code_pipeline.py:302 — phase 01's `_list_all_files` moved to `asyncio.to_thread`, which the brief did not request | - | - | open | - |
+| 306 | Task 30 minor: backend/tests/test_repo_lifecycle_journal.py:186 — the fake vector repository still stubs only the old `delete_code_chunks_by_file` | - | - | open | - |
+| 307 | Task 30 parked: cv-revision-on-populated-db: 0004 ran only on an empty lane database | - | - | deferred | Ruling: the revision is two CREATE INDEX IF NOT EXISTS on an existing table and touches no row; Task 71 runs every new revision against a restored backup before the branch ships |
+| 308 | Task 30 discovered: per-file enrichment snapshot query remains, stale cache/state entries for deleted repos, Task 20 reconcile stamp still wakes hourly | - | - | open | - |
+| 309 | Task 31 minor: backend/app/services/code_pipeline.py:57 — the phase-skip digest covers edges only, not the node properties phases 09-10 read | - | - | open | - |
+| 310 | Task 31 minor: backend/tests/test_code_graph_keys.py:933 — the community-stability test never shifts Leiden's community ids | - | - | open | - |
+| 311 | Task 31 minor: backend/tests/test_code_graph_keys.py:1019 — the "decorated framework entry point" case scores no decorated node | - | - | open | - |
+| 312 | Task 31 minor: backend/app/utils/graph_keys.py:18 — a property key is now textually identical to a same-named method key in the same owner | - | - | open | - |
+| 313 | Task 31 minor: a property key name::file::Owner is textually equal to a same-named method key; nodes differ by kind, and key-only joins (the re-verifier, by design) could hit both | - | - | open | - |
+| 314 | Task 31 discovered: property and method keys can be textually equal (kinds differ | - | - | open | - |
+| 315 | Task 33 minor: put_document with embed_inline=False carries no vectors across a re-file (no fingerprint is resolved without an embedder), so a board register edit leaves every block for the sweep | - | - | open | - |
+| 316 | Task 34 minor: backend/tests/test_document_attachment_concurrency.py:582 — the two "write within 2 s" tests assume the cleanup's exclusive request is queued after a fixed `asyncio.sleep(0.2)` | - | - | open | - |
+| 317 | Task 34 minor: backend/app/services/page_attachments.py:253 — `store_upload` has no caller in the app any more; only tests use it | - | - | open | - |
+| 318 | Task 34 minor: backend/app/api/routes/page_attachments.py:98 — a missing or trashed page now answers 404 only after the whole body (up to `attachment_max_bytes`) has been written to disk | - | - | open | - |
+| 319 | Task 34 minor: backend/app/services/page_attachments.py:174 — an upload whose stream stalls for more than an hour can have its `.part` deleted by the cleanup and then fail with a 500 | - | - | open | - |
+| 320 | Task 34 minor: page_attachments.insert_attachment_row's docstring still says an import writes attachment rows, pages and journal in one transaction (agy) | - | - | open | - |
+| 321 | Task 34 minor: page_import._withdraw_attachments' rollback in its except handler is unguarded, so a dead connection there masks the import's original exception (agy) | - | - | open | - |
+| 322 | Task 35 minor: backend/app/services/document_ingest.py:307 — `REVISIONS_PRUNED_EVENT` is a public module constant that is missing from `__all__`, unlike its sibling `DOCUMENT_FILED_EVENT` | - | - | open | - |
+| 323 | Task 35 minor: CLAUDE.md:41 — the edited retention sentence runs well past the paragraph's wrap width ("…(the newest 50 and any younger than 90 days stay). Pasted secrets go through") | - | - | open | - |
+| 324 | Task 35 minor: backend/app/services/document_ingest.py:328 — a block-first document never files another revision, so its pre-conversion history is never pruned and stays until the document is deleted | - | - | open | - |
+| 325 | Task 36 minor: page_door.create_page still runs reproduces_source (a second markdown parse) on the event loop after the off-loop parse | - | - | open | - |
+| 326 | Task 38 minor: backend/pyproject.toml:8 — `fastapi>=0.115.0` admits versions that lack `Depends(..., scope=...)` | - | - | open | - |
+| 327 | Task 38 minor: backend/tests/test_session_scope.py:60 — the streaming-route detection is a source-text match on `"StreamingResponse("` | - | - | open | - |
+| 328 | Task 38 minor: backend/tests/test_session_scope.py:100 — `assert checked > 100` is a magic floor | - | - | open | - |
+| 329 | Task 38 discovered: three docstrings still say request-scoped for the per-request session (dream_undo, buffer_flush, repos | - | - | open | - |
+| 330 | Task 41 minor: frontend/src/hooks/api/use-pipeline-api.ts's health type carries classifier_unavailable but not pipeline_state; nothing in the SPA reads the new key yet | - | - | open | - |
+| 331 | Task 42 minor: automated security review — session_revocations loads once per process, so a revocation written outside the app's auth routes (manual SQL, a restore without an app restart) reaches open sockets only at restart; REST still checks the database per request, the auth routes are the only writers (grep: TokenBlocklist and admin_password_changed_at are written only in routes/auth.py), and the restore cycle stops the app; a once-a-minute process-wide reload would close it at one query per minute — passed to the Task 42 review | - | - | open | - |
+| 332 | Task 42 minor: backend/app/api/websocket.py:244 — revocations written outside the three auth routes reach already-open sockets only after a restart (automated security review, deferred in the ledger) | - | - | open | - |
+| 333 | Task 42 minor: backend/app/api/websocket.py:338 — validating before the send lock opens a window in which a socket revoked while the broadcast waits for the lock still gets the message | - | - | open | - |
+| 334 | Task 42 minor: backend/tests/test_mcp_call_log_flush.py:848 — `assert mcp_call_log._INSERT_SQL is real_insert` asserts nothing, and the test makes the session factory fail rather than the INSERT | - | - | open | - |
+| 335 | Task 42 minor: mcp_call_log row-by-row pass counts a refused row as dropped before a later outage in the same pass requeues the batch, so that row can be counted twice (rereview-1) | - | - | open | - |
+| 336 | Task 42 minor: mcp_call_log classes InterfaceError as an outage, and asyncpg maps some deterministic client-side encode errors to it, so such a batch would retry at 60 s indefinitely now the attempt cap is gone (rereview-1) | - | - | open | - |
+| 337 | Task 42 minor: REST require_auth still runs the blocklist and epoch queries per request; only sockets read session_revocations | - | - | open | - |
+| 338 | Task 42 minor: mcp_call_log.drain stops early when a whole batch is dropped (flush_once returns 0 for it), leaving later entries queued at shutdown (rereview-2) | - | - | open | - |
+| 339 | Task 42 minor: backend/app/services/mcp_call_log.py:261 — flush_once returns `len(rows) - refused`, so a batch whose entries were all dropped (unbuildable or refused) returns 0 with a non-empty buffer and `drain` (:325) stops early, leaving later queued calls unwritten at shutdown/test drain | - | - | open | - |
+| 340 | Task 42 minor: .dforge/sdd/2026-11-20-audit-remaining/task-42-report.md:55 — the round 2 paragraph names the two new tests but shows no run output; the only `Verified` line before it (129 passed) predates the two new tests | - | - | open | - |
+| 341 | Task 43 minor: until Task 45 the SPA Flags tab still renders the context-match and topic-summaries controls, and a save naming w_context_boost or community_injection_enabled now answers 422; frontend fixtures still carry by_context_conflict | - | - | open | - |
+| 342 | Task 43 minor: the declared-context chain (MemorySearchRequest.context, X-Darkmem-Context, the envelope context echo, the SDK declareContext verb) now reaches no ranking at all — an owner decision whether to keep or remove the wire surface | - | - | open | - |
+| 343 | Task 44 minor: until Task 45 the SPA Distribution tab reads policy, watched and refresh from GET /api/v1/distribution and saves through the removed PUT /policy (404); frontend comments in event-taxonomy.ts, use-day-events.ts, day-tab.tsx, demo/types.ts and use-distribution-api.ts still name the deleted inject modules | - | - | open | - |
+| 344 | Task 45 discovered: the Distribution live half has no demo render, proven by component test only | - | - | open | - |
+| 345 | Task 46 minor: facts_channel.SEMANTIC_ARM_OWNER "T2.33" is still served as the fact trace's semantic_deferred_to, naming a task whose writer is now removed (a wire value, left) | - | - | open | - |
+| 346 | Task 46 minor: embedder_registry's module docstring says registration creates "the four child tables" (stale before this task; nine families now) | - | - | open | - |
+| 347 | Task 46 minor: backend/app/services/facts_channel.py:108 — the comment above `SEMANTIC_ARM_OWNER` still says it names "the task that ships the ``triple_embeddings`` writer" | - | - | open | - |
+| 348 | Task 46 minor: backend/app/services/block_embeddings.py:65 — re-flowed docstring lines run past the file's wrap width | - | - | open | - |
+| 349 | Task 46 discovered: SEMANTIC_ARM_OWNER still serves T2.33 on the fact trace, registry docstring says four child tables | - | - | open | - |
+| 350 | Task 47 discovered: the model reflection test needed a declared unmapped column | - | - | open | - |
+| 351 | Task 48 minor: some test file commits a (postgresql, database) entity and leaves it in the worker database; test_repo_entity_merge's rolled-back calibration pair would collide with it the same way when they share a worker | - | - | open | - |
+| 352 | Task 48 minor: docs/two-door-parity.md:0 — the new MCP `unsupported_source` envelope is not recorded on the documents.write row | - | - | open | - |
+| 353 | Task 48 minor: backend/tests/test_document_parsers.py:1227 — the REST assertion ORs the two messages, so neither parametrized case pins which refusal it produced | - | - | open | - |
+| 354 | Task 48 minor: backend/tests/test_document_parsers.py:1204 — a mid-file `from tests.test_document_routes import stub_llm` with `noqa: E402` | - | - | open | - |
+| 355 | Task 48 discovered: memory search arms break no ties (Important, deferred), a committed postgresql entity leaks across test files | - | - | open | - |
+| 356 | Task 49 minor: frontend/src/features/code/components/real-code-graph-view.tsx — the Copy Mermaid trigger stretches to the dialog width (grid item), as the old button did | - | - | open | - |
+| 357 | Task 49 minor: frontend/src/features/settings/components/backups-tab.tsx — the restore command's Copy is now the library's outline trigger (was a ghost button); ClipboardTrigger takes no variant | - | - | open | - |
+| 358 | Task 49 discovered: Copy Mermaid trigger stretches full width, backups Copy is outline not ghost | - | - | open | - |
+| 359 | Task 50 minor: .storybook/preview.tsx — its RouterProvider renders a root route with no index, so every story shows "Not Found" at the top-left unless the story covers it | - | - | open | - |
+| 360 | Task 50 minor: frontend/src/lib/api.ts — a 500 with an error envelope surfaces as "API error: 500" rather than the envelope's message in every failed state's description | - | - | open | - |
+| 361 | Task 50 discovered: Storybook preview prints Not Found above every story, failed descriptions read API error: 500 | - | - | open | - |
+| 362 | Task 54 minor: with hundreds of islands neither collide path fully separates them (400 random-size islands: 24% worst penetration on the pair loop at HEAD, 30% on the grid); the final 50 collision passes do not converge there | - | - | open | - |
+| 363 | Task 54 minor: constellation-runner's mirror still builds two Maps per frame (pos and fitCoreToFarthest) on the code canvas; only the island runner's arrange was made allocation-free | - | - | open | - |
+| 364 | Task 54 discovered: hundreds of islands do not fully separate (pre-existing), the code canvas mirror still allocates per frame | - | - | open | - |
+| 365 | Task 55 minor: lib/portal-overlays.ts's remaining export ignorePortaledOverlayPointerDown has no importer outside its own file (grep over frontend/src) | - | - | open | - |
+| 366 | Task 55 minor: the Backups tab's failed read is still a plain red line with no Retry (its binding exposes no refetch); the other Settings tabs now use the shared failed state | - | - | open | - |
+| 367 | Task 55 discovered: ignorePortaledOverlayPointerDown is unused, the Backups failed read has no Retry | - | - | open | - |
+| 368 | Task 56 minor: backend/scripts/e2e/tests/test_session_rotation.py:72 — the password-restore `finally` does not cover the change-password rotation itself | - | - | open | - |
+| 369 | Task 56 minor: backend/app/api/websocket.py:146 — a rotation now waits behind any in-flight broadcast's sends | - | - | open | - |
+| 370 | Task 56 minor: backend/tests/test_websocket.py:319 — `_shut(renewed_task)` sits inside the `try` body, so a failed assertion above it leaks the renewed socket's endpoint task | - | - | open | - |
+| 371 | Task 56 minor: backend/app/api/routes/auth.py:30 — a cancellation while close_renewed_sockets awaits the send lock leaves the jti marked renewed with no forget_renewed, since the try only wraps the commit | - | - | open | - |
+| 372 | Task 56 discovered: run_e2e.py BLOCKS on the default localhost model URL, a concurrent unit run on the same test database drops the e2e stack schema, a rotation waits behind in-flight broadcast sends | - | - | open | - |
+| 373 | Task 57 discovered: the server has no session-lifetime setting for a running-app renewal proof | - | - | open | - |
+| 374 | Task 58 discovered: search and paginated POST queries still pass no signal | - | - | open | - |
+| 375 | Task 59 minor: five mutation onSuccess calls in hooks/api (use-memory-api x3, use-memory-buffer-api, use-code-api repoStats x4 and codeSymbols) still invalidate keys no query reads; harmless no-ops, and use-memory-buffer-api.test.tsx pins the memories one | - | - | open | - |
+| 376 | Task 61 minor: the documents editor has no unload or navigation guard, so a held (saving or refused) block write and the writes queued behind it are lost when the operator leaves the document | - | - | open | - |
+| 377 | Task 67 minor: scripts/backup.sh:625 — `.suspect` dumps are never pruned | - | - | open | - |
+| 378 | Task 67 minor: [lens:lang-bash] scripts/worker/restore-cycle.sh:722 — the image-hash probe `$COMPOSE run` has no timeout | - | - | open | - |
+| 379 | Task 67 minor: backend/tests/test_backup_script.py:245 — PEP 8 blank-line drift | - | - | open | - |
+| 380 | Task 70 minor: at 1280x800 the Code Graph canvas is a 176 px strip between explorer, source pane and inspector, and one run's node click registered only after a window resize (Sigma follows window, not container, resize); git diff master -- frontend/src/features/code changes no pane width or resize handling, so it predates this branch | - | - | open | - |
+| 381 | Task 70 minor: the Review queue's fact row nests a library Badge (div) inside a <p> (React warning), and axe reports list, target-size, nested-interactive (chat row containing Delete), aria-valid-attr-value and label findings on controls this branch did not change | - | - | open | - |
+| 382 | Task 70 minor: the chat conversation row (role=button) contains its Delete button (axe nested-interactive); chat-sidebar.tsx is unchanged on this branch (last changed in 3f8aa650 on master), so it predates the branch | - | - | open | - |
+| 383 | Task 70 discovered: Code Graph canvas 176 px at 1280x800 and the chat row nested Delete, both predating the branch, deferred | - | - | open | - |
+| 384 | Task 71 minor: docs/dforge/registers/2026-11-20-audit-remaining.md:0 — the Step 3.3 EXPLAIN result is recorded in no tracked file | - | - | open | - |
+| 385 | Task 71 minor: .dforge/sdd/2026-11-20-audit-remaining/task-71-report.md:24 — the Verified list reduces every command to "pass: 1 passed, 0 failed" and omits the EXPLAIN and post-drop checks | - | - | open | - |
+| 386 | Task 71 minor: docs/dforge/registers/2026-11-20-audit-remaining.md:216 — row 216 is `done` with no commit sha in its Note | - | - | open | - |
+| 387 | Task 71 discovered: production holds 0 code_edges rows, dev Postgres volume at 95 percent | - | - | open | - |
+| 388 | UI proof judge (Important): failed-captures Discard stays enabled while a Requeue or Discard for its row runs; a confirm then sends nothing and says nothing (ab64a325 guard), and no test covers it | - | - | open | - |
+| 389 | UI proof judge (minor): opening a block in the document editor puts the caret at the start, so typed text lands before the existing text | - | - | open | - |
+| 390 | UI proof judge (minor): in the dark theme some disabled buttons look enabled (fix-wave fw-* screenshots) | - | - | open | - |
+| 391 | Final review silent-failures, REST half: GET/POST /code/search answers a bare list with no per-arm marker when the keyword arm fails | - | - | deferred | Ruling: needs a response-schema change and SDK regeneration; Task 16's ruling stands (final-fix-report REJECTED-in-part) |
