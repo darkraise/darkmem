@@ -169,8 +169,8 @@
 | 162 | F2-7: Flags dialogs close on Save before the write lands; edits are lost | docs/dforge/plans/2026-11-20-audit-remaining.md | A37 (Task 55) | done | fef8eb1 |
 | 163 | F2-8: number fields in the Flags dialogs commit only on blur while Save is disabled; one field type clamps silently, the other shows an error | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 55 contracts | done | fef8eb1 |
 | 164 | F2-9 and F3-4: the app never calls /auth/refresh, so every session ends hard after 24h and both editors lose in-memory drafts | docs/dforge/plans/2026-11-20-audit-remaining.md | A38 (Task 56/57) | done | d169f7e |
-| 165 | F2-10: about 18 exported hooks in hooks/api have no production importer, plus WebSocket cache writes nothing reads | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 59 contracts | doing | - |
-| 166 | F2-11: unused auth code: useSession, useLogout, LogoutButton, authAdapter.me, lib/api.ts login() | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 59 contracts | doing | - |
+| 165 | F2-10: about 18 exported hooks in hooks/api have no production importer, plus WebSocket cache writes nothing reads | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 59 contracts | done | cec12f6 |
+| 166 | F2-11: unused auth code: useSession, useLogout, LogoutButton, authAdapter.me, lib/api.ts login() | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 59 contracts | done | cec12f6 |
 | 167 | F2-12 remainder: keepDialogOpenOnListEscape (7 call sites) is retirable by its own comment | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 55 contracts | done | fef8eb1 |
 | 168 | F2-13: formatDateTime is defined four times; both formatDuration copies print 1m 60s for 119.6 seconds | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 58 contracts | done | e5be096 |
 | 169 | F2-14: checkSetupStatus ignores the HTTP status, so a server error shows the setup wizard | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 58 contracts | done | e5be096 |
@@ -185,7 +185,7 @@
 | 178 | F3-6: a task filter on an open workstream re-downloads the whole ledger every 5 s | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 64 contracts | doing | - |
 | 179 | F3-7: after a refusal, the documents write queue re-reads the hash and sends the next write anyway | docs/dforge/plans/2026-11-20-audit-remaining.md | A39 (Task 61) | doing | - |
 | 180 | F3-8: a failed page title rename is silent | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 64 contracts | doing | - |
-| 181 | F3-9a: dead code: useBlockMove, and rank_note/consequence computed but never shown | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 59 contracts | doing | - |
+| 181 | F3-9a: dead code: useBlockMove, and rank_note/consequence computed but never shown | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 59 contracts | done | cec12f6 |
 | 182 | F3-9b: the pager is hand-written twice although darkraise-ui ships pagination; the two knowledge queues use different list patterns | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 63 contracts | doing | - |
 | 183 | F3-9c: the two block editors duplicate the hash-precondition plumbing and handle conflicts differently | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 61 contracts | doing | - |
 | 184 | F3-9d: a first chat turn that never completes leaves an Untitled conversation the client never learns about | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 60 contracts | doing | - |
