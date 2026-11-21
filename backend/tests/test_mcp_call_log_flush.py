@@ -121,6 +121,19 @@ async def test_an_entry_that_cannot_become_a_row_is_dropped_alone(committed, mon
 
 
 @pytest.mark.asyncio
+async def test_drain_goes_past_a_batch_dropped_whole(committed):
+    tool = f"flush-probe-{uuid.uuid4().hex[:8]}"
+    _queue(mcp_call_log._FLUSH_BATCH, tool="refused\x00tool")
+    _queue(3, tool=tool)
+
+    await mcp_call_log.drain(committed)
+
+    assert await _count(committed, tool) == 3
+    assert not mcp_call_log._buffer
+    assert mcp_call_log.dropped_calls() == mcp_call_log._FLUSH_BATCH
+
+
+@pytest.mark.asyncio
 async def test_a_statement_error_is_settled_not_retried_for_ever(committed):
     tool = f"flush-probe-{uuid.uuid4().hex[:8]}"
     _queue(2, tool=tool)

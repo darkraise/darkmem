@@ -322,7 +322,10 @@ async def _write_row_by_row(session, rows: list[dict]) -> int:
 async def drain(session_factory=None) -> None:
     """Write everything queued, now. For tests and shutdown."""
     while _buffer:
-        if not await flush_once(session_factory):
+        await flush_once(session_factory)
+        # A batch dropped whole writes nothing and still made progress; only
+        # a failed flush, which sets a backoff, puts its batch back.
+        if _backoff_seconds:
             break
 
 
