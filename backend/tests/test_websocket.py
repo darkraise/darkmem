@@ -71,6 +71,7 @@ class _Socket:
         self.cookies = {COOKIE_NAME: token}
         self.accepted = asyncio.Event()
         self.closed = asyncio.Event()
+        self.close_code = None
         self.close_reason = None
         self.sent: list[str] = []
 
@@ -84,6 +85,9 @@ class _Socket:
         self.sent.append(data)
 
     async def close(self, code=1000, reason=None):
+        if self.closed.is_set():
+            raise RuntimeError("close after close")
+        self.close_code = code
         self.close_reason = reason
         self.closed.set()
 
@@ -208,3 +212,110 @@ async def test_a_socket_revoked_while_the_broadcast_waits_gets_nothing(manager):
         assert socket.close_reason == "Session expired or revoked"
     finally:
         await _shut(task)
+
+
+# ── Rotation closes the presented token's sockets first ──────────────────
+
+RENEWED = "Session renewed"
+
+
+def _presented(auth_headers) -> str:
+    return auth_headers["Authorization"].removeprefix("Bearer ")
+
+
+@contextmanager
+def _held_commit(session):
+    """The request session's commit waits until released, so a test can see
+    what the socket received before the blocklist write committed."""
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    original = session.commit
+
+    async def commit():
+        entered.set()
+        await release.wait()
+        return await original()
+
+    session.commit = commit
+    try:
+        yield entered, release
+    finally:
+        session.commit = original
+
+
+async def test_refresh_closes_the_presented_tokens_socket_with_4001_first(
+    manager, client, auth_headers, session,
+):
+    socket, task = await _open(_presented(auth_headers))
+    try:
+        with _held_commit(session) as (entered, release):
+            answer = asyncio.create_task(
+                client.post("/api/v1/auth/refresh", headers=auth_headers)
+            )
+            await asyncio.wait_for(entered.wait(), 5)
+            assert socket.closed.is_set(), "the socket was not closed before the commit"
+            assert (socket.close_code, socket.close_reason) == (4001, RENEWED)
+            release.set()
+            assert (await answer).status_code == 200
+        await asyncio.sleep(INTERVAL * 4)
+        assert task.done()
+        assert task.exception() is None
+        assert manager.connections == []
+    finally:
+        await _shut(task)
+
+
+async def test_password_change_closes_own_socket_4001_and_others_as_revoked(
+    manager, client, auth_headers,
+):
+    own, own_task = await _open(_presented(auth_headers))
+    other, other_task = await _open(_token(iat_ago=30))
+    try:
+        answer = await client.post(
+            "/api/v1/auth/change-password", headers=auth_headers,
+            json={"current_password": "test-admin-password", "new_password": "a-new-password-9"},
+        )
+        assert answer.status_code == 200, answer.text
+        await asyncio.wait_for(other.closed.wait(), 2)
+        assert (own.close_code, own.close_reason) == (4001, RENEWED)
+        assert other.close_reason == "Session expired or revoked"
+        assert other.close_code != 4001
+    finally:
+        await _shut(own_task, other_task)
+
+
+async def test_read_only_refresh_also_closes_with_4001(
+    manager, client, auth_headers, monkeypatch,
+):
+    monkeypatch.setattr(settings, "read_only", True)
+    socket, task = await _open(_presented(auth_headers))
+    try:
+        answer = await client.post("/api/v1/auth/refresh", headers=auth_headers)
+        assert answer.status_code == 200
+        await asyncio.wait_for(socket.closed.wait(), 2)
+        assert (socket.close_code, socket.close_reason) == (4001, RENEWED)
+    finally:
+        await _shut(task)
+
+
+async def test_a_new_socket_with_the_new_cookie_connects(manager, client, auth_headers):
+    presented = _presented(auth_headers)
+    first, first_task = await _open(presented)
+    try:
+        answer = await client.post("/api/v1/auth/refresh", headers=auth_headers)
+        assert answer.status_code == 200
+        issued = answer.cookies.get(COOKIE_NAME)
+        assert issued
+
+        renewed, renewed_task = await _open(issued)
+        stale = _Socket(presented)
+        await asyncio.wait_for(websocket.websocket_endpoint(stale), 5)
+        assert not stale.accepted.is_set()
+        assert stale.close_reason == "Unauthorized"
+
+        await manager.broadcast("unknown.test", {"n": 1})
+        assert len(renewed.sent) == 1
+        assert not renewed.closed.is_set()
+        await _shut(renewed_task)
+    finally:
+        await _shut(first_task)

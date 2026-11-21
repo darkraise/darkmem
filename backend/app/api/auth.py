@@ -62,6 +62,15 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
     return jwt.encode(to_encode, settings.jwt_secret, algorithm=ALGORITHM)
 
 
+def session_expires_at(exp: int) -> str:
+    return datetime.fromtimestamp(exp, tz=timezone.utc).isoformat()
+
+
+def token_expires_at(token: str) -> str:
+    claims = jwt.decode(token, settings.jwt_secret, algorithms=[ALGORITHM])
+    return session_expires_at(claims["exp"])
+
+
 def set_auth_cookie(response: JSONResponse, token: str) -> JSONResponse:
     response.set_cookie(
         key=COOKIE_NAME,

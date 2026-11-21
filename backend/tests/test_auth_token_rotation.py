@@ -35,3 +35,33 @@ async def test_refresh_revokes_the_presented_token(client, session):
     post = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {old_token}"})
     assert post.status_code == 401
     assert "revoked" in post.json()["detail"].lower()
+
+
+def _iso_utc(exp: int) -> str:
+    from datetime import datetime, timezone
+
+    return datetime.fromtimestamp(exp, tz=timezone.utc).isoformat()
+
+
+@pytest.mark.asyncio
+async def test_me_and_refresh_carry_expires_at(client, auth_headers):
+    import jwt
+
+    from app.api.auth import ALGORITHM, COOKIE_NAME
+    from app.config import settings
+
+    def exp_of(token: str) -> int:
+        return jwt.decode(token, settings.jwt_secret, algorithms=[ALGORITHM])["exp"]
+
+    presented = auth_headers["Authorization"].removeprefix("Bearer ")
+    client.cookies.clear()
+    me = await client.get("/api/v1/auth/me", headers=auth_headers)
+    assert me.status_code == 200
+    assert me.json()["expires_at"] == _iso_utc(exp_of(presented))
+
+    refreshed = await client.post("/api/v1/auth/refresh", headers=auth_headers)
+    assert refreshed.status_code == 200
+    issued = refreshed.cookies.get(COOKIE_NAME)
+    assert issued and issued != presented
+    assert refreshed.json()["expires_at"] == _iso_utc(exp_of(issued))
+    assert refreshed.json()["expires_at"].endswith("+00:00")

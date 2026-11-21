@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 # on TCP backpressure behind the slowest consumer.
 SEND_TIMEOUT_SECONDS = 5.0
 AUTH_CHECK_INTERVAL_SECONDS = 1.0
+REVOKED_CLOSE = (1008, "Session expired or revoked")
+RENEWED_CLOSE = (4001, "Session renewed")
 
 
 class SessionRevocations:
@@ -98,22 +100,56 @@ class EventManager:
     def __init__(self):
         self.connections: list[WebSocket] = []
         self._validators = {}
+        # Open sockets by the session token id (jti) each was opened with.
+        self._by_token: dict[str, set[WebSocket]] = {}
+        self._token_of: dict[WebSocket, str] = {}
         # Serialize the per-connection send fan-out: broadcast() is awaited from
         # many concurrent coroutines (pipeline fan-out, indexing, jobs, reembed)
         # and Starlette's WebSocket.send is not safe for concurrent senders on
         # one socket — interleaved ASGI sends raise and kill the connection.
         self._send_lock = asyncio.Lock()
 
-    async def connect(self, ws: WebSocket, validator=None):
+    async def connect(self, ws: WebSocket, validator=None, token_id: str | None = None):
         await ws.accept()
         self.connections.append(ws)
         if validator is not None:
             self._validators[ws] = validator
+        if token_id is not None:
+            self._token_of[ws] = token_id
+            self._by_token.setdefault(token_id, set()).add(ws)
 
     def disconnect(self, ws: WebSocket):
         self._validators.pop(ws, None)
+        token_id = self._token_of.pop(ws, None)
+        if token_id is not None:
+            sockets = self._by_token.get(token_id)
+            if sockets is not None:
+                sockets.discard(ws)
+                if not sockets:
+                    del self._by_token[token_id]
         if ws in self.connections:
             self.connections.remove(ws)
+
+    async def close(self, ws: WebSocket, code: int, reason: str) -> None:
+        """Close and evict one socket, once: a socket a rotation or a broadcast
+        already closed is not closed again."""
+        async with self._send_lock:
+            if ws not in self.connections:
+                return
+            self.disconnect(ws)
+            try:
+                await ws.close(code=code, reason=reason)
+            except Exception:
+                pass
+
+    async def close_token(self, token_id: str, code: int, reason: str) -> None:
+        async with self._send_lock:
+            for ws in list(self._by_token.get(token_id, ())):
+                self.disconnect(ws)
+                try:
+                    await ws.close(code=code, reason=reason)
+                except Exception:
+                    pass
 
     async def broadcast(self, event_type: str, data: dict):
         schema = EVENT_SCHEMAS.get(event_type)
@@ -152,12 +188,17 @@ class EventManager:
             targets.append(ws)
         async with self._send_lock:
             for ws in refused:
+                if ws not in self.connections:
+                    continue
                 try:
-                    await ws.close(code=1008, reason="Session expired or revoked")
+                    await ws.close(code=REVOKED_CLOSE[0], reason=REVOKED_CLOSE[1])
                 except Exception:
                     pass
                 dead.append(ws)
             for ws in targets:
+                # Closed while this broadcast waited for the lock.
+                if ws not in self.connections:
+                    continue
                 try:
                     # Again under the lock: a revocation can land while this
                     # broadcast waits for another one's sends, and a cached
@@ -167,7 +208,7 @@ class EventManager:
                         try:
                             validator()
                         except HTTPException:
-                            await ws.close(code=1008, reason="Session expired or revoked")
+                            await ws.close(code=REVOKED_CLOSE[0], reason=REVOKED_CLOSE[1])
                             dead.append(ws)
                             continue
                     await asyncio.wait_for(ws.send_text(message), timeout=SEND_TIMEOUT_SECONDS)
@@ -180,6 +221,16 @@ class EventManager:
 event_manager = EventManager()
 
 
+async def close_renewed_sockets(token_id: str) -> None:
+    """Close every socket opened with ``token_id`` as renewed, not revoked.
+
+    Refresh and change-password call this before their blocklist write
+    commits, so the client learns of the rotation from the close code; it
+    reconnects only once it holds the new cookie, so a commit that then fails
+    leaves it signed out rather than on a revoked token."""
+    await event_manager.close_token(token_id, code=RENEWED_CLOSE[0], reason=RENEWED_CLOSE[1])
+
+
 async def websocket_endpoint(ws: WebSocket):
     from app.api.auth import COOKIE_NAME, validate_session_token
     from app.database import async_session_factory
@@ -190,8 +241,11 @@ async def websocket_endpoint(ws: WebSocket):
         return
     try:
         async with async_session_factory() as session:
-            await validate_session_token(token, session)
+            claims = await validate_session_token(token, session)
         await session_revocations.load(async_session_factory)
+        # A rotation that committed while the checks above awaited is already
+        # in this copy, so its token opens no socket.
+        session_revocations.check(token)
     except HTTPException:
         await ws.close(code=1008, reason="Unauthorized")
         return
@@ -199,19 +253,24 @@ async def websocket_endpoint(ws: WebSocket):
     def validate():
         session_revocations.check(token)
 
-    await event_manager.connect(ws, validate)
+    manager = event_manager
+    await manager.connect(ws, validate, token_id=claims.jti)
     receive_task = asyncio.create_task(ws.receive_text())
     try:
         while True:
             done, _pending = await asyncio.wait(
                 {receive_task}, timeout=AUTH_CHECK_INTERVAL_SECONDS,
             )
+            # Closed elsewhere (a rotation, a refused broadcast): nothing to
+            # close again.
+            if ws not in manager.connections:
+                return
             validate()
             if done:
                 receive_task.result()
                 receive_task = asyncio.create_task(ws.receive_text())
     except HTTPException:
-        await ws.close(code=1008, reason="Session expired or revoked")
+        await manager.close(ws, *REVOKED_CLOSE)
     except WebSocketDisconnect:
         pass
     except Exception:
@@ -220,6 +279,6 @@ async def websocket_endpoint(ws: WebSocket):
         # self-heals instead of leaking a dead socket.
         logger.debug("WebSocket receive loop ended abnormally", exc_info=True)
     finally:
-        event_manager.disconnect(ws)
+        manager.disconnect(ws)
         receive_task.cancel()
         await asyncio.gather(receive_task, return_exceptions=True)

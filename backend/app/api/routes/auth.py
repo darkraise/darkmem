@@ -13,11 +13,13 @@ from app.api.auth import (
     create_access_token,
     hash_password,
     require_auth,
+    session_expires_at,
     set_auth_cookie,
+    token_expires_at,
     verify_password,
     validate_password_bytes,
 )
-from app.api.websocket import session_revocations
+from app.api.websocket import close_renewed_sockets, session_revocations
 from app.config import settings
 from app.database import SessionDep, async_session_factory
 from app.models.config import Config
@@ -211,6 +213,9 @@ async def auth_change_password(
         jti=payload.jti,
         expires_at=datetime.fromtimestamp(payload.exp, tz=timezone.utc),
     ))
+    # Before the commit, so the caller's own socket is told it was renewed
+    # rather than revoked; other sessions' sockets close on the epoch.
+    await close_renewed_sockets(payload.jti)
     await session.commit()
     session_revocations.set_epoch(changed_at)
     session_revocations.revoke(payload.jti, float(payload.exp))
@@ -236,6 +241,11 @@ async def auth_refresh(
     # silently at every access-token expiry. Losing the only revocation is a
     # real cost and is reported as `read_only_token_rotation_disabled` on
     # GET /auth/security-posture rather than left to a runbook.
+    #
+    # The presented token's sockets close as renewed before the commit, so a
+    # client never reads a rotation as a revocation; it reconnects once it
+    # holds the new cookie. The read-only posture closes them too.
+    await close_renewed_sockets(payload.jti)
     if not settings.read_only:
         session.add(TokenBlocklist(
             jti=payload.jti,
@@ -245,13 +255,17 @@ async def auth_refresh(
         session_revocations.revoke(payload.jti, float(payload.exp))
 
     token = create_access_token({"sub": payload.sub})
-    response = JSONResponse(content={"ok": True})
+    response = JSONResponse(content={"ok": True, "expires_at": token_expires_at(token)})
     return set_auth_cookie(response, token)
 
 
 @router.get("/me")
 async def auth_me(payload: TokenPayload = Depends(require_auth)):
-    return {"authenticated": True, "sub": payload.sub}
+    return {
+        "authenticated": True,
+        "sub": payload.sub,
+        "expires_at": session_expires_at(payload.exp),
+    }
 
 
 class SecurityPostureResponse(BaseModel):

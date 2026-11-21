@@ -1,6 +1,9 @@
 """The API e2e suite's one documented entry point.
 
-    python scripts/e2e/run_e2e.py
+    python scripts/e2e/run_e2e.py [pytest arguments]
+
+Arguments pass through to pytest, so ``run_e2e.py -k session_rotation`` runs
+one test against the booted stack.
 
 Nothing else needs to be true first: no fresh deployment, no pre-set
 password, no already-running server. This script does the drop, the
@@ -127,6 +130,7 @@ def main() -> int:
                 [
                     sys.executable, "-m", "pytest", "scripts/e2e/tests", "-q", "-rs",
                     f"--junitxml={xml_path}",
+                    *sys.argv[1:],
                 ],
                 cwd=str(BACKEND_DIR),
                 env=env,

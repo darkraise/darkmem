@@ -1069,7 +1069,10 @@ the tool's own body.
   uvicorn's `ProxyHeadersMiddleware` would otherwise rewrite the peer for
   loopback clients. Refresh and change-password rotate (blocklist) the
   presented token; a password change revokes all pre-change tokens via the
-  `iat` check.
+  `iat` check. A rotation closes the presented token's sockets with code
+  4001 `Session renewed` before the blocklist write commits (a read-only
+  refresh closes them too), and `GET /auth/me` and the refresh answer carry
+  the session's `expires_at`.
 - Password creation/change validates at most 72 UTF-8 bytes, without
   truncating existing hashes. Oversized login inputs fail normally and
   participate in failed-attempt handling. REST and WebSocket handshakes
