@@ -42,25 +42,40 @@ def _statements():
         event.remove(engine, "before_cursor_execute", record)
 
 
+# The idle advance stops at the margin, or just short of another backend's
+# open transaction, whichever is earlier; a clock a minute ahead makes the
+# second one bind whenever anything else in the database is mid-transaction.
+
+
 async def test_idle_drain_advances_the_watermark(session):
     fact_id = await _fact(session, subject="darkmem", obj="postgres")
     await _enqueue(session, fact_id)
+    enqueued_at = (await session.execute(
+        text("""
+            SELECT max(created_at) FROM events
+            WHERE event_type = 'sources_changed' AND payload->>'fact_id' = :f
+        """),
+        {"f": fact_id},
+    )).scalar_one()
     moment = datetime.now(timezone.utc) + timedelta(minutes=1)
 
     await run_recompute(session, batch_size=10_000, now=moment)
 
     state = await _load_state(session)
-    assert state.watermark_created_at == moment - _COMMIT_SKEW_MARGIN
+    assert enqueued_at < state.watermark_created_at <= moment - _COMMIT_SKEW_MARGIN
 
 
 async def test_idle_drain_never_moves_the_watermark_back(session):
-    later = datetime.now(timezone.utc) + timedelta(minutes=10)
-    await run_recompute(session, batch_size=10_000, now=later)
+    await run_recompute(
+        session, batch_size=10_000, now=datetime.now(timezone.utc) + timedelta(minutes=10),
+    )
+    first = (await _load_state(session)).watermark_created_at
 
-    await run_recompute(session, batch_size=10_000, now=later - timedelta(minutes=5))
+    await run_recompute(
+        session, batch_size=10_000, now=datetime.now(timezone.utc) - timedelta(minutes=1),
+    )
 
-    state = await _load_state(session)
-    assert state.watermark_created_at == later - _COMMIT_SKEW_MARGIN
+    assert (await _load_state(session)).watermark_created_at == first
 
 
 async def _plan(session, statement, params) -> list[str]:
