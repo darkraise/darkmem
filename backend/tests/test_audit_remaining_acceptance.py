@@ -405,3 +405,238 @@ def test_a52_every_register_row_is_done_or_deferred_with_reason():
             if not ok:
                 bad.append((n, state, note))
     assert not bad, bad
+
+
+# ------------------------------------------------------------------ A7
+
+import asyncio
+import threading
+
+
+class _OneRowSession:
+    def __init__(self, row):
+        self._row = row
+
+    async def execute(self, _stmt):
+        await asyncio.sleep(0.01)
+
+        class _R:
+            def __init__(self, row):
+                self._row = row
+
+            def scalar_one_or_none(self):
+                return self._row
+
+        return _R(self._row)
+
+
+@pytest.mark.asyncio
+async def test_a7_twenty_concurrent_wrong_logins_verify_at_most_five_off_the_loop(monkeypatch):
+    import bcrypt
+    from httpx import ASGITransport, AsyncClient
+
+    from app.api.auth import hash_password
+    from app.database import get_session
+    from app.main import app
+    from app.models.config import Config
+
+    loop_thread = threading.get_ident()
+    seen: list[int] = []
+    real = bcrypt.checkpw
+
+    def counting(pw, hashed):
+        seen.append(threading.get_ident())
+        return real(pw, hashed)
+
+    monkeypatch.setattr(bcrypt, "checkpw", counting)
+    row = Config(key="admin_password_hash", value={"hash": hash_password("the-right-one")})
+
+    async def stub():
+        yield _OneRowSession(row)
+
+    app.dependency_overrides[get_session] = stub
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            rs = await asyncio.gather(
+                *(c.post("/api/v1/auth/login", json={"password": "wrong"}) for _ in range(20))
+            )
+    finally:
+        app.dependency_overrides.clear()
+    codes = [r.status_code for r in rs]
+    assert 1 <= len(seen) <= 5, len(seen)
+    assert all(t != loop_thread for t in seen)
+    assert codes.count(401) == len(seen)
+    assert codes.count(429) == 20 - len(seen)
+
+
+# ------------------------------------------------------------------ A11
+
+from datetime import datetime, timedelta, timezone
+
+from tests.test_mcp_auth import door, mint_key  # noqa: F401,E402 - fixtures
+
+
+async def _tools_list(client, credential):
+    return await client.post(
+        "/",
+        json={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
+        headers={"Authorization": f"Bearer {credential}"},
+    )
+
+
+@pytest.mark.asyncio
+async def test_a11_second_keyed_call_verifies_no_bcrypt_and_a_revoked_key_is_refused(door, mint_key, monkeypatch):
+    import bcrypt
+    from httpx import ASGITransport, AsyncClient
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from app.api.auth import create_access_token
+    from app.database import get_session
+    from app.main import app
+    from tests.conftest import test_engine
+
+    n = {"c": 0}
+    real = bcrypt.checkpw
+
+    def counting(pw, hashed):
+        n["c"] += 1
+        return real(pw, hashed)
+
+    monkeypatch.setattr(bcrypt, "checkpw", counting)
+    row_id, cred = await mint_key(scopes=["read"])
+    assert (await _tools_list(door, cred)).status_code == 200
+    assert n["c"] == 1
+    assert (await _tools_list(door, cred)).status_code == 200
+    assert n["c"] == 1, "second call within 60s must not run bcrypt"
+
+    factory = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+
+    async def real_session():
+        async with factory() as s:
+            yield s
+
+    app.dependency_overrides[get_session] = real_session
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            r = await c.delete(
+                f"/api/v1/api-keys/{row_id}",
+                headers={"Authorization": f"Bearer {create_access_token({'sub': 'admin'})}"},
+            )
+    finally:
+        app.dependency_overrides.clear()
+    assert r.status_code == 204
+    assert (await _tools_list(door, cred)).status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_a11_an_expired_key_is_refused_on_its_next_call(door, mint_key):
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from app.services import api_keys
+    from tests.conftest import test_engine
+
+    _id, cred = await mint_key(scopes=["read"], expires_at=datetime.now(timezone.utc) + timedelta(seconds=30))
+    assert (await _tools_list(door, cred)).status_code == 200
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    async with factory() as s:
+        assert await api_keys.authenticate(s, cred, now=datetime.now(timezone.utc) + timedelta(seconds=45)) is None
+
+
+# ------------------------------------------------------------------ A12
+
+_FAILURE = "00000000-0000-4000-8000-0000000000bb"
+
+
+class _SpyLLM:
+    def __init__(self):
+        self.calls = []
+
+    async def embed(self, *a, **k):
+        self.calls.append("embed")
+        return [[0.0]], "spy|1"
+
+    async def chat_completion(self, *a, **k):
+        self.calls.append("chat")
+        return "{}"
+
+
+@pytest.mark.asyncio
+async def test_a12_read_only_refuses_reprocess_retry_and_three_mcp_tools_before_any_provider_call(
+    client, auth_headers, monkeypatch
+):
+    from types import SimpleNamespace
+
+    from app.api.mcp import server as mcp_server
+    from app.config import settings
+    from app.main import app
+
+    spy = _SpyLLM()
+    monkeypatch.setattr(app.state, "pipeline", SimpleNamespace(llm=spy), raising=False)
+    monkeypatch.setattr(app.state, "llm", spy, raising=False)
+    monkeypatch.setattr(mcp_server, "_pipeline", SimpleNamespace(llm=spy))
+    monkeypatch.setattr(settings, "read_only", True)
+
+    for path in (
+        "/api/v1/analytics/reprocess",
+        "/api/v1/analytics/reprocess/stream",
+        f"/api/v1/pipeline-failures/{_FAILURE}/retry",
+        "/api/v1/pipeline-failures/retry-all",
+    ):
+        r = await client.post(path, headers=auth_headers)
+        assert r.status_code == 403, (path, r.status_code)
+        assert r.json()["error"]["code"] == "read_only", path
+
+    calls = {
+        "memory_reason": {"question": "anything"},
+        "memory_overview": {"project": "default"},
+        "document_search": {"query": "anything", "project": "default"},
+    }
+    for tool, args in calls.items():
+        payload = json.loads(await getattr(mcp_server, tool)(**args))
+        assert payload["status"] == "read_only", (tool, payload)
+    assert spy.calls == []
+
+
+@pytest.mark.asyncio
+async def test_a12_the_same_routes_are_not_refused_outside_read_only(client, auth_headers):
+    r = await client.post("/api/v1/pipeline-failures/retry-all", headers=auth_headers)
+    assert r.status_code != 403 or r.json()["error"]["code"] != "read_only"
+
+
+# ------------------------------------------------------------------ A19
+
+
+@pytest.mark.asyncio
+async def test_a19_saving_local_without_torch_is_422(client, auth_headers, session):
+    from app.models.llm_config import LLMPurposeConfigRow
+    from app.models.llm_provider import LLMProviderRow
+
+    session.add(LLMProviderRow(name="qa-cls", api_kind="openai", base_url="https://api.example.invalid/v1"))
+    await session.flush()
+    session.add(LLMPurposeConfigRow(purpose="classification", model="m", provider_name="qa-cls"))
+    await session.flush()
+    r = await client.post(
+        "/api/v1/config/llm", headers=auth_headers, json={"classification": {"classifier_kind": "local"}}
+    )
+    assert r.status_code == 422, r.text
+    assert "torch" in r.text
+
+
+@pytest.mark.asyncio
+async def test_a19_health_flags_a_stored_local_row_without_torch(client, setup_database):
+    from app.main import app
+    from tests.test_classifier_kind import _clear_classification_row, _factory, _set_classifier_kind
+
+    factory = _factory()
+    previous = getattr(app.state, "llm", None)
+    app.state.llm = None
+    try:
+        await _set_classifier_kind(factory, "local")
+        h = await client.get("/health")
+        assert h.status_code == 200
+        assert h.json()["classifier_unavailable"] is True
+        await _set_classifier_kind(factory, "llm")
+        assert (await client.get("/health")).json()["classifier_unavailable"] is False
+    finally:
+        app.state.llm = previous
+        await _clear_classification_row(factory)
