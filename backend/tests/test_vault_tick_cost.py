@@ -118,15 +118,22 @@ async def test_memory_source_join_uses_the_primary_key(session):
 
 
 async def test_code_reconcile_is_skipped_when_no_repository_moved(session):
-    await run_code_lift(session)
+    def provenance_reads(seen) -> list[str]:
+        return [
+            statement for statement, _ in seen
+            if "fs.source_ref AS repo_ref" in statement
+        ]
+
+    # The first tick has no stamp to compare, so it reconciles: the filter
+    # still names the read it is meant to see skipped.
+    await session.execute(text("DELETE FROM config WHERE key = 'fact_lift_state'"))
+    with _statements() as first:
+        await run_code_lift(session)
+    assert provenance_reads(first)
+
     with _statements() as seen:
         await run_code_lift(session)
-
-    provenance_reads = [
-        statement for statement, _ in seen
-        if "fs.source_ref AS repo_ref" in statement
-    ]
-    assert provenance_reads == []
+    assert provenance_reads(seen) == []
 
 
 async def test_ladder_config_is_resolved_once_per_tick(session):

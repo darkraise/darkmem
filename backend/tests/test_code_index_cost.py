@@ -223,7 +223,7 @@ async def test_full_reindex_deletes_in_batches(session, tmp_path):
     assert result["files_changed"] == 40
     edge_deletes = statements.matching(r"^DELETE FROM code_edges\b")
     sweeps = statements.matching(r"DELETE FROM code_graph_nodes n .*'route', 'tool'")
-    assert len(edge_deletes) <= 6, edge_deletes
+    assert 1 <= len(edge_deletes) <= 6, edge_deletes
     assert len(sweeps) == 1, sweeps
 
 
@@ -302,8 +302,8 @@ async def test_inherited_calls_load_the_heritage_maps_once(session, tmp_path):
     with _Statements() as statements:
         await pipe.phase_06_call_tracing()
 
-    assert len(statements.matching(r"has_method")) <= 1, statements.matching("has_method")
-    assert len(statements.matching(r"'extends'")) <= 1, statements.matching("'extends'")
+    assert len(statements.matching(r"has_method")) == 1, statements.matching("has_method")
+    assert len(statements.matching(r"'extends'")) == 1, statements.matching("'extends'")
     target = compose_key("symbol", "helper", "base.py", owner="Base")
     callers = set((await session.execute(
         text("""

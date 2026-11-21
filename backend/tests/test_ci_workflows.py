@@ -176,14 +176,24 @@ def _literal_labels(runs_on) -> set[str]:
 
 
 def test_fork_pull_request_never_reaches_self_hosted():
+    guarded = set()
     for workflow in ("ci.yml", "release.yml", "cache-cleanup.yml"):
         for key, job in _jobs(workflow).items():
-            if not _literal_labels(job.get("runs-on", "")) & SELF_HOSTED_LABELS:
+            runs_on = job.get("runs-on", "")
+            labels = runs_on if isinstance(runs_on, list) else [runs_on]
+            for label in labels:
+                # A computed runner must come from the picker, whose fork
+                # marker is checked below; anything else is unchecked routing.
+                if isinstance(label, str) and "${{" in label:
+                    assert "needs.pick-runner.outputs" in label, f"{workflow}:{key} runs-on {label}"
+            if not _literal_labels(runs_on) & SELF_HOSTED_LABELS:
                 continue
+            guarded.add(f"{workflow}:{key}")
             condition = job.get("if")
             assert condition, f"{workflow}:{key} runs on a self-hosted label with no fork guard"
             for label, context, expected in _events():
                 assert _evaluate(condition, context) is expected, f"{workflow}:{key}: {label}"
+    assert "ci.yml:e2e" in guarded
 
     jobs = _jobs("ci.yml")
     for key in ("backend", "frontend", "frontend-tests"):

@@ -430,10 +430,6 @@ async def test_deadline_returns_ack_and_flush_finishes(client, auth_headers, ses
 
 
 async def test_background_flush_is_tracked_and_cancelled_at_shutdown(setup_database):
-    import inspect
-
-    import app.main as main_module
-
     buffer_ids = await seed_buffer(1)
     pipeline = RecordingPipeline()
     started = asyncio.Event()
@@ -476,7 +472,48 @@ async def test_background_flush_is_tracked_and_cancelled_at_shutdown(setup_datab
         assert row["status"] == "pending"
         assert row["attempts"] == 0
         assert row["claimed_by"] is None
-        assert "drain_continuing_flushes" in inspect.getsource(main_module.lifespan)
+    finally:
+        if memory_id is not None:
+            async with factory()() as s:
+                await s.execute(
+                    text("DELETE FROM memories WHERE id = CAST(:i AS uuid)"), {"i": str(memory_id)},
+                )
+                await s.commit()
+        await drop_buffer(buffer_ids)
+
+
+async def test_app_shutdown_returns_a_continuing_flush_row_to_pending(
+    setup_database, monkeypatch,
+):
+    from tests.test_boot_reconciliation import booted
+
+    monkeypatch.setattr(wait_process.drain_continuing_flushes, "__defaults__", (0.1,))
+    buffer_ids = await seed_buffer(1)
+    pipeline = RecordingPipeline()
+    started = asyncio.Event()
+
+    async def _hangs(entries):
+        pipeline.batches.append(list(entries))
+        started.set()
+        await asyncio.Event().wait()
+
+    pipeline.process_batch = _hangs
+    memory_id = None
+    try:
+        async with booted(monkeypatch, llm_fails=False):
+            await wait_process.drive(
+                factory(), pipeline, buffer_ids=buffer_ids,
+                timeout_seconds=0.2, max_attempts=5, poll_interval_seconds=0.02,
+            )
+            await asyncio.wait_for(started.wait(), 5)
+            row = (await buffer_rows(buffer_ids))[buffer_ids[0]]
+            assert row["status"] == "claimed"
+            memory_id = uuid.UUID(row["metadata"]["memory_id"])
+
+        assert wait_process.continuing_flushes() == frozenset()
+        row = (await buffer_rows(buffer_ids))[buffer_ids[0]]
+        assert row["status"] == "pending"
+        assert row["attempts"] == 0
     finally:
         if memory_id is not None:
             async with factory()() as s:

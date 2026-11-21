@@ -155,16 +155,20 @@ async def test_community_keys_are_stable_across_runs(session, tmp_path):
         await _run(session, repo, full=True)
 
     assert [row.key for row in await _rows(session, community_sql, repo)] == first
-    assert statements.matching(
+    member_writes = (
         r"INSERT INTO code_edges.*'member_of'|DELETE FROM code_edges.*edge_type = 'member_of'"
-    ) == []
+    )
+    assert statements.matching(member_writes) == []
 
     # A new cluster whose members sort first renumbers Leiden's communities;
     # the existing communities keep their keys.
     _write(tmp_path, {"a0.py": CLUSTERED["y.py"].replace("b", "c")})
     _git(tmp_path, "add", "a0.py")
     _git(tmp_path, "commit", "-qm", "third cluster")
-    await _run(session, repo)
+    with _Statements() as statements:
+        await _run(session, repo)
+    # The pattern above still names the membership writes a real change makes.
+    assert statements.matching(member_writes)
     after = [row.key for row in await _rows(session, community_sql, repo)]
     assert len(after) == len(first) + 1
     assert set(first) <= set(after)
