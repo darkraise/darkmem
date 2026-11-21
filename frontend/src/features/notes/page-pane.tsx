@@ -60,7 +60,10 @@ export function PagePane({
 
   const commitTitle = () => {
     const next = title.trim()
-    if (next === (page.title ?? "")) return
+    if (next === (page.title ?? "")) {
+      setTitleRefused(false)
+      return
+    }
     // The field keeps the typed title on a refusal, so leaving it again
     // retries the rename.
     rename.mutate(

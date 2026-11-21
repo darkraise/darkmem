@@ -118,6 +118,19 @@ describe("PagePane", () => {
     expect(screen.queryByText("Saved")).not.toBeInTheDocument()
   })
 
+  it("typing the saved title back clears the not-saved line", async () => {
+    vi.mocked(apiFetch).mockRejectedValueOnce(new Error("Internal Server Error"))
+    render(<PagePane page={PAGE} autoFocusTitle={false} />, { wrapper })
+    const field = screen.getByLabelText("Page title")
+    fireEvent.change(field, { target: { value: "Renamed" } })
+    fireEvent.blur(field)
+    expect(await screen.findByText("Title not saved")).toBeInTheDocument()
+
+    fireEvent.change(field, { target: { value: "Notes" } })
+    fireEvent.blur(field)
+    expect(screen.queryByText("Title not saved")).not.toBeInTheDocument()
+  })
+
   it("focuses the title when asked", () => {
     render(<PagePane page={PAGE} autoFocusTitle />, { wrapper })
     expect(screen.getByLabelText("Page title")).toHaveFocus()
