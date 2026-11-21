@@ -61,7 +61,7 @@ export const GIT_ACCOUNTS_KEY = ["gitAccounts"] as const
 export function useGitAccounts() {
   return useQuery<GitAccountsResponse>({
     queryKey: GIT_ACCOUNTS_KEY,
-    queryFn: () => apiFetch<GitAccountsResponse>("/git-accounts"),
+    queryFn: ({ signal }) => apiFetch<GitAccountsResponse>("/git-accounts", { signal }),
     // Demo mode runs with no backend; without this gate the query 401s and
     // the auth interceptor redirects the whole demo to /login. The fixture
     // reaches the UI through the demo store, not through this hook.

@@ -42,7 +42,7 @@ export function useDocumentRevisions(documentId: string, enabled: boolean) {
 export function useDocumentRevision(documentId: string, revisionId: string | null) {
   return useQuery<DocumentRevision>({
     queryKey: ["documentRevision", documentId, revisionId],
-    queryFn: () => apiFetch<DocumentRevision>(`/documents/${documentId}/revisions/${revisionId}`),
+    queryFn: ({ signal }) => apiFetch<DocumentRevision>(`/documents/${documentId}/revisions/${revisionId}`, { signal }),
     enabled: !DEMO && revisionId !== null,
     staleTime: Infinity,
   })

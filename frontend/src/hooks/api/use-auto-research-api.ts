@@ -26,7 +26,7 @@ export interface AutoResearchUpdate {
 export function useAutoResearch() {
   return useQuery<AutoResearchConfig>({
     queryKey: ["autoResearch"],
-    queryFn: () => apiFetch<AutoResearchConfig>("/config/auto-research"),
+    queryFn: ({ signal }) => apiFetch<AutoResearchConfig>("/config/auto-research", { signal }),
     enabled: !DEMO,
   })
 }
@@ -81,7 +81,7 @@ export interface ResearchRerunResult {
 export function useResearchRuns() {
   return useQuery<ResearchRunList>({
     queryKey: ["autoResearch", "runs"],
-    queryFn: () => apiFetch<ResearchRunList>("/config/auto-research/runs"),
+    queryFn: ({ signal }) => apiFetch<ResearchRunList>("/config/auto-research/runs", { signal }),
     enabled: !DEMO,
   })
 }

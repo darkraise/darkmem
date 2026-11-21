@@ -30,13 +30,7 @@ import { MemoryEditorDialog } from "./memory-editor-dialog"
 import { MemoryEventTimeline } from "./memory-event-timeline"
 import { MemoryExcerptLink } from "./memory-excerpt-link"
 import { shortId } from "@/lib/short-id"
-
-function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  })
-}
+import { formatDateTime } from "@/lib/format"
 
 function LineageLink({ id, content }: { id: string; content: string }) {
   return (

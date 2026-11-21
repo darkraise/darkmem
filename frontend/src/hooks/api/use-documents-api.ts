@@ -97,7 +97,7 @@ export function useDocuments(project?: string) {
   const qs = project ? `?project=${encodeURIComponent(project)}` : ""
   return useQuery<DocumentListResponse>({
     queryKey: ["documents", project ?? null],
-    queryFn: () => apiFetch<DocumentListResponse>(`/documents${qs}`),
+    queryFn: ({ signal }) => apiFetch<DocumentListResponse>(`/documents${qs}`, { signal }),
     enabled: !DEMO,
   })
 }
@@ -169,10 +169,9 @@ export function useDocumentConnections(documentId: string | null) {
   return useQuery<DocumentConnectionsResponse>({
     queryKey: ["documentConnections", documentId],
     enabled: !DEMO && Boolean(documentId),
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       apiFetch<DocumentConnectionsResponse>(
-        `/documents/${documentId}/connections`,
-      ),
+        `/documents/${documentId}/connections`, { signal }),
   })
 }
 
@@ -327,7 +326,7 @@ export function useRelatedMemories(documentId: string | null) {
   return useQuery<RelatedMemoriesResponse>({
     queryKey: ["documentRelatedMemories", documentId],
     enabled: !DEMO && Boolean(documentId),
-    queryFn: () => apiFetch(`/documents/${documentId}/related-memories`),
+    queryFn: ({ signal }) => apiFetch(`/documents/${documentId}/related-memories`, { signal }),
   })
 }
 
@@ -335,7 +334,7 @@ export function useDocumentOutline(documentId: string | null) {
   return useQuery<{ document_id: string; items: OutlineNode[] }>({
     queryKey: ["documentOutline", documentId],
     enabled: !DEMO && Boolean(documentId),
-    queryFn: () => apiFetch(`/documents/${documentId}/outline`),
+    queryFn: ({ signal }) => apiFetch(`/documents/${documentId}/outline`, { signal }),
   })
 }
 

@@ -13,13 +13,7 @@ import { Skeleton } from "darkraise-ui/components/skeleton"
 import { useMemory } from "@/hooks/api"
 import { LifecycleBadge } from "./lifecycle-badge"
 import { shortId } from "@/lib/short-id"
-
-function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  })
-}
+import { formatDateTime } from "@/lib/format"
 
 /**
  * One memory, read without leaving the page that pointed at it.

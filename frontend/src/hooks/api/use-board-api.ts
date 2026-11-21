@@ -157,10 +157,9 @@ const DEMO_REFUSAL = "The demo is read-only: its board cannot be changed."
 export function useBoardRecords(project: string) {
   return useQuery<BoardRecords>({
     queryKey: ["boardRecords", project],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       apiFetch<BoardRecords>(
-        `/board/records?${new URLSearchParams({ project })}`,
-      ),
+        `/board/records?${new URLSearchParams({ project })}`, { signal }),
     enabled: !DEMO,
     refetchInterval: DEMO ? false : BOARD_REFRESH_MS,
     initialData: DEMO ? demoBoardRecords(project) : undefined,
@@ -170,8 +169,8 @@ export function useBoardRecords(project: string) {
 export function useBoardViews(project: string) {
   return useQuery<BoardView[]>({
     queryKey: ["boardViews", project],
-    queryFn: () =>
-      apiFetch<BoardView[]>(`/board/views?${new URLSearchParams({ project })}`),
+    queryFn: ({ signal }) =>
+      apiFetch<BoardView[]>(`/board/views?${new URLSearchParams({ project })}`, { signal }),
     enabled: !DEMO,
     initialData: DEMO
       ? DEMO_BOARD_VIEWS.map((view) => ({ ...view, project }))

@@ -28,6 +28,7 @@ import { LifecycleBadge } from "@/features/memories/components/lifecycle-badge"
 import { MemoryEditorDialog } from "@/features/memories/components/memory-editor-dialog"
 import { MemoryExcerptLink } from "@/features/memories/components/memory-excerpt-link"
 import { RealMemoryDetailView } from "@/features/memories/components/real-memory-detail-view"
+import { formatDateTime } from "@/lib/format"
 
 // DEMO is fixed for the process lifetime (import.meta.env, not runtime
 // state), so branching at the component level never violates the rules of
@@ -42,13 +43,6 @@ export const Route = createFileRoute("/_authenticated/memories_/$memoryId")({
 function RealMemoryDetailRoute() {
   const { memoryId } = Route.useParams()
   return <RealMemoryDetailView memoryId={memoryId} />
-}
-
-function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  })
 }
 
 function SectionCard({

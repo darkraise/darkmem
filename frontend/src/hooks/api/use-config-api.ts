@@ -49,7 +49,7 @@ export interface LlmConfigResponse {
 export function useLlmConfig(enabled: boolean = true) {
   return useQuery<LlmConfigResponse>({
     queryKey: ["llmConfig"],
-    queryFn: () => apiFetch<LlmConfigResponse>("/config/llm"),
+    queryFn: ({ signal }) => apiFetch<LlmConfigResponse>("/config/llm", { signal }),
     enabled,
   })
 }
@@ -154,7 +154,7 @@ export interface FeatureFlags {
 export function useFeatureFlags(enabled: boolean = true) {
   return useQuery<FeatureFlags>({
     queryKey: ["featureFlags"],
-    queryFn: () => apiFetch<FeatureFlags>("/config/feature-flags"),
+    queryFn: ({ signal }) => apiFetch<FeatureFlags>("/config/feature-flags", { signal }),
     staleTime: 30_000,
     enabled,
   })
@@ -187,7 +187,7 @@ export interface RepoAllowlist {
 export function useRepoAllowlist(enabled: boolean = true) {
   return useQuery<RepoAllowlist>({
     queryKey: ["repoAllowlist"],
-    queryFn: () => apiFetch<RepoAllowlist>("/config/repo-allowlist"),
+    queryFn: ({ signal }) => apiFetch<RepoAllowlist>("/config/repo-allowlist", { signal }),
     staleTime: 30_000,
     enabled,
   })
@@ -230,7 +230,7 @@ export interface VerificationLadder {
 export function useVerificationLadder(enabled: boolean = true) {
   return useQuery<VerificationLadder>({
     queryKey: ["verificationLadder"],
-    queryFn: () => apiFetch<VerificationLadder>("/config/verification-ladder"),
+    queryFn: ({ signal }) => apiFetch<VerificationLadder>("/config/verification-ladder", { signal }),
     staleTime: 30_000,
     enabled,
   })
@@ -273,8 +273,8 @@ export interface ClassificationAreaInfo {
 export function useClassificationAreas() {
   return useQuery<ClassificationAreaInfo[]>({
     queryKey: ["classificationAreas"],
-    queryFn: () =>
-      apiFetch<ClassificationAreaInfo[]>("/config/classification-areas"),
+    queryFn: ({ signal }) =>
+      apiFetch<ClassificationAreaInfo[]>("/config/classification-areas", { signal }),
     staleTime: 300_000,
     enabled: !DEMO,
   })
@@ -291,8 +291,8 @@ export interface SystemPromptsResponse {
 export function useSystemPrompts(options?: { enabled?: boolean }) {
   return useQuery<SystemPromptsResponse>({
     queryKey: ["systemPrompts"],
-    queryFn: () => apiFetch<SystemPromptsResponse>("/config/system-prompts"),
-    enabled: options?.enabled ?? true,
+    queryFn: ({ signal }) => apiFetch<SystemPromptsResponse>("/config/system-prompts", { signal }),
+    enabled: !DEMO && (options?.enabled ?? true),
   })
 }
 
@@ -304,7 +304,9 @@ export function useUpdateSystemPrompts() {
     { overrides: Record<string, string> }
   >({
     mutationFn: (body) =>
-      apiFetch<SystemPromptsResponse>("/config/system-prompts", {
+      DEMO
+        ? Promise.reject(new Error("System prompts are read-only in the demo"))
+        : apiFetch<SystemPromptsResponse>("/config/system-prompts", {
         method: "PUT",
         body: JSON.stringify(body),
       }),
@@ -326,7 +328,7 @@ export interface NotificationSettings {
 export function useNotifications(options?: { enabled?: boolean }) {
   return useQuery<NotificationSettings>({
     queryKey: ["notifications"],
-    queryFn: () => apiFetch<NotificationSettings>("/config/notifications"),
+    queryFn: ({ signal }) => apiFetch<NotificationSettings>("/config/notifications", { signal }),
     enabled: options?.enabled ?? true,
   })
 }

@@ -1,5 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { apiFetch } from "@/lib/api"
+import { DEMO } from "@/lib/demo-flag"
+import { useDemoStore } from "@/demo/store"
 import type { ApiKind } from "@/features/settings/types"
 
 export interface LlmProvider {
@@ -57,10 +59,42 @@ export interface ProbeDraftInput {
   api_key?: string | null
 }
 
+/** The demo's provider rows, read off the purposes that name them. */
+function demoProviders(): LlmProvidersResponse {
+  const rows = new Map<string, LlmProvider>()
+  for (const purpose of useDemoStore.getState().llm.purposes) {
+    const row = rows.get(purpose.provider_name) ?? {
+      name: purpose.provider_name,
+      api_kind: purpose.api_kind,
+      base_url: purpose.base_url,
+      api_key: purpose.api_key ? MASKED_PROVIDER_KEY : null,
+      used_by: [],
+      serves_verification: false,
+    }
+    row.used_by.push(purpose.purpose)
+    rows.set(purpose.provider_name, row)
+  }
+  return { providers: [...rows.values()] }
+}
+
+const demoRefusal = () =>
+  Promise.reject(new Error("Provider connections are read-only in the demo"))
+
+function demoProbe(name: string | null): ProbeModelsResult {
+  const models = useDemoStore
+    .getState()
+    .llm.purposes.filter((p) => name === null || p.provider_name === name)
+    .map((p) => p.model)
+  return { models: [...new Set(models)], fetched_via: "demo", error: null }
+}
+
 export function useLlmProviders() {
   return useQuery<LlmProvidersResponse>({
     queryKey: ["llmProviders"],
-    queryFn: () => apiFetch<LlmProvidersResponse>("/config/llm-providers"),
+    queryFn: ({ signal }) =>
+      DEMO
+        ? Promise.resolve(demoProviders())
+        : apiFetch<LlmProvidersResponse>("/config/llm-providers", { signal }),
   })
 }
 
@@ -68,7 +102,9 @@ export function useCreateLlmProvider() {
   const qc = useQueryClient()
   return useMutation<LlmProvider, Error, CreateLlmProviderInput>({
     mutationFn: (data) =>
-      apiFetch<LlmProvider>("/config/llm-providers", {
+      DEMO
+        ? demoRefusal()
+        : apiFetch<LlmProvider>("/config/llm-providers", {
         method: "POST",
         body: JSON.stringify(data),
       }),
@@ -88,7 +124,9 @@ export function useUpdateLlmProvider() {
     { name: string; data: UpdateLlmProviderInput }
   >({
     mutationFn: ({ name, data }) =>
-      apiFetch<UpdateLlmProviderResponse>(
+      DEMO
+        ? demoRefusal()
+        : apiFetch<UpdateLlmProviderResponse>(
         `/config/llm-providers/${encodeURIComponent(name)}`,
         { method: "PUT", body: JSON.stringify(data) },
       ),
@@ -103,7 +141,9 @@ export function useDeleteLlmProvider() {
   const qc = useQueryClient()
   return useMutation<void, Error, string>({
     mutationFn: (name) =>
-      apiFetch<void>(`/config/llm-providers/${encodeURIComponent(name)}`, {
+      DEMO
+        ? demoRefusal()
+        : apiFetch<void>(`/config/llm-providers/${encodeURIComponent(name)}`, {
         method: "DELETE",
       }),
     onSuccess: () => {
@@ -123,7 +163,9 @@ export function useProbeProviderModels() {
     { name: string } | { draft: ProbeDraftInput }
   >({
     mutationFn: (input) =>
-      "name" in input
+      DEMO
+        ? Promise.resolve(demoProbe("name" in input ? input.name : null))
+        : "name" in input
         ? apiFetch<ProbeModelsResult>(
             `/config/llm-providers/${encodeURIComponent(input.name)}/probe-models`,
             { method: "POST" },

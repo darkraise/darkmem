@@ -19,7 +19,7 @@ const DEFAULT_MAX_ROWS = 5000
  * `job_runs` is an ordinary table, and this is the sweep that bounds it.
  */
 export function JobHistoryRetention() {
-  const jobs = useJobs()
+  const jobs = useJobs(true, { poll: false })
   const trigger = useTriggerJob()
   const updateConfig = useUpdateJobConfig()
 

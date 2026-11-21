@@ -206,14 +206,14 @@ export interface BlastRadiusResult {
 export function useRepoStats() {
   return useQuery<RepoStats>({
     queryKey: ["repoStats"],
-    queryFn: () => apiFetch("/repos/stats"),
+    queryFn: ({ signal }) => apiFetch("/repos/stats", { signal }),
   })
 }
 
 export function useRepos() {
   return useQuery<Repo[]>({
     queryKey: ["repos"],
-    queryFn: () => apiFetch("/repos"),
+    queryFn: ({ signal }) => apiFetch("/repos", { signal }),
   })
 }
 
@@ -228,7 +228,7 @@ export interface RepoTask {
 export function useRepoTasks(repoId: string | null) {
   return useQuery<RepoTask[]>({
     queryKey: ["repoTasks", repoId],
-    queryFn: () => apiFetch(`/repos/${repoId}/tasks`),
+    queryFn: ({ signal }) => apiFetch(`/repos/${repoId}/tasks`, { signal }),
     enabled: !!repoId,
   })
 }
@@ -343,7 +343,7 @@ export interface CodeFile {
 export function useCodeFiles(repoId: string | null) {
   return useQuery<CodeFile[]>({
     queryKey: ["codeFiles", repoId],
-    queryFn: () => apiFetch(`/code/files/${repoId}`),
+    queryFn: ({ signal }) => apiFetch(`/code/files/${repoId}`, { signal }),
     enabled: !!repoId,
   })
 }

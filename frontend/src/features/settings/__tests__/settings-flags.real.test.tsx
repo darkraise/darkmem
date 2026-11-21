@@ -154,7 +154,7 @@ describe("useFlagsTabBinding (DEMO off — real /config/feature-flags)", () => {
     const { result } = renderHook(() => useFlagsTabBinding(), { wrapper })
     await waitFor(() => expect(result.current.isLoading).toBe(false))
 
-    expect(apiFetch).toHaveBeenCalledWith("/config/feature-flags")
+    expect(apiFetch).toHaveBeenCalledWith("/config/feature-flags", expect.objectContaining({ signal: expect.any(AbortSignal) }))
 
     const importance = result.current.fusionArms.find(
       (a) => a.key === "w_importance",
@@ -320,7 +320,7 @@ describe("useFlagsTabBinding (DEMO off — real /config/feature-flags)", () => {
     const { result } = renderHook(() => useFlagsTabBinding(), { wrapper })
     await waitFor(() => expect(result.current.availableAreas.length).toBe(2))
 
-    expect(apiFetch).toHaveBeenCalledWith("/config/classification-areas")
+    expect(apiFetch).toHaveBeenCalledWith("/config/classification-areas", expect.objectContaining({ signal: expect.any(AbortSignal) }))
     expect(result.current.availableAreas.map((a) => a.key)).toEqual([
       "general",
       "technical",

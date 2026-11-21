@@ -106,8 +106,8 @@ export function pageQuery(pageId: string) {
 export function usePages(project: string) {
   return useQuery<PageListItem[]>({
     queryKey: ["pages", project],
-    queryFn: () =>
-      apiFetch<PageListItem[]>(`/pages?project=${encodeURIComponent(project)}`),
+    queryFn: ({ signal }) =>
+      apiFetch<PageListItem[]>(`/pages?project=${encodeURIComponent(project)}`, { signal }),
     enabled: !DEMO,
   })
 }
@@ -124,8 +124,8 @@ export function usePage(pageId: string | null) {
 export function usePagesTrash(project: string, open: boolean) {
   return useQuery<PageTrashItem[]>({
     queryKey: ["pagesTrash", project],
-    queryFn: () =>
-      apiFetch<PageTrashItem[]>(`/pages/trash?project=${encodeURIComponent(project)}`),
+    queryFn: ({ signal }) =>
+      apiFetch<PageTrashItem[]>(`/pages/trash?project=${encodeURIComponent(project)}`, { signal }),
     enabled: !DEMO && open,
   })
 }

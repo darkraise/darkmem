@@ -43,14 +43,14 @@ export interface ChatConversationDetail {
 export function useConversations(archived = false) {
   return useQuery<{ conversations: ChatConversation[] }>({
     queryKey: ["conversations", archived],
-    queryFn: () => apiFetch(`/chat/conversations?archived=${archived}`),
+    queryFn: ({ signal }) => apiFetch(`/chat/conversations?archived=${archived}`, { signal }),
   })
 }
 
 export function useConversation(id: string | null) {
   return useQuery<ChatConversationDetail>({
     queryKey: ["conversation", id],
-    queryFn: () => apiFetch(`/chat/conversations/${id}`),
+    queryFn: ({ signal }) => apiFetch(`/chat/conversations/${id}`, { signal }),
     enabled: !!id,
   })
 }

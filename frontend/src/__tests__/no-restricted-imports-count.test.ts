@@ -128,7 +128,9 @@ describe("no-restricted-imports: src/demo/*", () => {
     // Re-measured when the board panel's test landed: 114 — it reads the
     // built-in views fixture. Re-measured when the code graph moved to the
     // WebGL canvas: 113 — the SVG canvas's `@/demo/explore` layout import went
-    // with it.
-    expect(countByRule(results, "no-restricted-imports")).toBe(113)
+    // with it. Re-measured when the LLM provider hooks took demo twins: 114 —
+    // `use-llm-providers-api.ts` reads the demo purposes for its provider
+    // rows and model probe in demo mode.
+    expect(countByRule(results, "no-restricted-imports")).toBe(114)
   })
 })

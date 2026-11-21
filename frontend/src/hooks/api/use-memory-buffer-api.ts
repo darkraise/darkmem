@@ -47,10 +47,9 @@ const EMPTY: BufferList = {
 export function useMemoryBufferItems() {
   const query = useQuery<BufferList>({
     queryKey: ["memoryBuffer", "poison"],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       apiFetch<BufferList>(
-        `/memory-buffer?state=poison&limit=${FAILED_CAPTURES_LIMIT}`,
-      ),
+        `/memory-buffer?state=poison&limit=${FAILED_CAPTURES_LIMIT}`, { signal }),
     enabled: !DEMO,
   })
   const data = query.data ?? EMPTY

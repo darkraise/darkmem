@@ -121,7 +121,7 @@ export function useMcpCalls(params: McpCallListParams) {
   const query = mcpCallsQueryString(params)
   return useQuery<McpCallList>({
     queryKey: ["mcp-calls", "list", params],
-    queryFn: () => apiFetch(`/mcp-calls${query ? `?${query}` : ""}`),
+    queryFn: ({ signal }) => apiFetch(`/mcp-calls${query ? `?${query}` : ""}`, { signal }),
     enabled: LIVE,
     initialData: LIVE ? undefined : DEMO_MCP_CALLS,
     refetchInterval: LIVE ? POLL_MS : undefined,
@@ -132,10 +132,9 @@ export function useMcpCalls(params: McpCallListParams) {
 export function useMcpCallSummary(window: McpCallWindow) {
   return useQuery<McpCallSummary>({
     queryKey: ["mcp-calls", "summary", window],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       apiFetch(
-        `/mcp-calls/summary?since=${encodeURIComponent(mcpWindowSince(window))}`,
-      ),
+        `/mcp-calls/summary?since=${encodeURIComponent(mcpWindowSince(window))}`, { signal }),
     enabled: LIVE,
     initialData: LIVE ? undefined : DEMO_MCP_CALL_SUMMARY,
     refetchInterval: LIVE ? POLL_MS * 3 : undefined,

@@ -66,7 +66,7 @@ export interface BackupDestinationsResponse {
 export function useBackupDestinations() {
   return useQuery<BackupDestinationsResponse>({
     queryKey: ["backupDestinations"],
-    queryFn: () => apiFetch<BackupDestinationsResponse>("/config/backup-destinations"),
+    queryFn: ({ signal }) => apiFetch<BackupDestinationsResponse>("/config/backup-destinations", { signal }),
     // Demo mode runs with no backend; without this gate the query 401s and
     // the auth interceptor redirects the whole demo to /login.
     enabled: !DEMO,
@@ -124,7 +124,7 @@ export interface InventoryResponse {
 export function useBackupInventory() {
   return useQuery<InventoryResponse>({
     queryKey: ["backupInventory"],
-    queryFn: () => apiFetch<InventoryResponse>("/backups/inventory"),
+    queryFn: ({ signal }) => apiFetch<InventoryResponse>("/backups/inventory", { signal }),
     enabled: !DEMO,
   })
 }

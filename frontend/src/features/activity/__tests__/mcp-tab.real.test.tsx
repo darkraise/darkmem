@@ -70,8 +70,9 @@ describe("McpTab (DEMO off — real /mcp-calls)", () => {
     ).toBeInTheDocument()
     expect(apiFetch).toHaveBeenCalledWith(
       expect.stringMatching(/^\/mcp-calls\/summary\?since=/),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     )
-    expect(apiFetch).toHaveBeenCalledWith("/mcp-calls?limit=50")
+    expect(apiFetch).toHaveBeenCalledWith("/mcp-calls?limit=50", expect.objectContaining({ signal: expect.any(AbortSignal) }))
   })
 
   it("says once that there are no calls, not in two stacked cards", async () => {
@@ -96,6 +97,7 @@ describe("McpTab (DEMO off — real /mcp-calls)", () => {
     await waitFor(() =>
       expect(apiFetch).toHaveBeenCalledWith(
         "/mcp-calls?object_id=doc-0007&limit=50",
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
       ),
     )
   })

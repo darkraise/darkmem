@@ -2,10 +2,7 @@ import { Badge } from "darkraise-ui/components/badge"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 
 import { useApiKeys, useEvents, type ApiKeySummary } from "@/hooks/api"
-
-function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString()
-}
+import { formatDateTime } from "@/lib/format"
 
 /** What a row says about who made the call.
  *

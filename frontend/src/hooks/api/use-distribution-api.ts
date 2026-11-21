@@ -25,7 +25,7 @@ export interface DistributionState {
 export function useDistribution(options: { enabled?: boolean } = {}) {
   return useQuery<DistributionState>({
     queryKey: ["distribution"],
-    queryFn: () => apiFetch<DistributionState>("/distribution"),
+    queryFn: ({ signal }) => apiFetch<DistributionState>("/distribution", { signal }),
     enabled: options.enabled ?? true,
   })
 }

@@ -58,10 +58,9 @@ export interface PinSuggestionsResponse {
 export function useTopicsQuery(project: string, options?: { enabled?: boolean }) {
   return useQuery<TopicListResponse>({
     queryKey: ["knowledge", "topics", project],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       apiFetch<TopicListResponse>(
-        `/knowledge/topics?project=${encodeURIComponent(project)}`,
-      ),
+        `/knowledge/topics?project=${encodeURIComponent(project)}`, { signal }),
     enabled: options?.enabled ?? true,
   })
 }
@@ -72,10 +71,9 @@ export function usePinSuggestionsQuery(
 ) {
   return useQuery<PinSuggestionsResponse>({
     queryKey: ["knowledge", "topics", "pin-suggestions", project],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       apiFetch<PinSuggestionsResponse>(
-        `/knowledge/topics/pin-suggestions?project=${encodeURIComponent(project)}`,
-      ),
+        `/knowledge/topics/pin-suggestions?project=${encodeURIComponent(project)}`, { signal }),
     enabled: options?.enabled ?? true,
   })
 }

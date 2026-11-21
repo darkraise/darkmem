@@ -55,7 +55,7 @@ describe("SystemPromptDialog", () => {
     vi.mocked(apiFetch).mockResolvedValue(payload())
     await openAndWait()
 
-    expect(apiFetch).toHaveBeenCalledWith("/config/system-prompts")
+    expect(apiFetch).toHaveBeenCalledWith("/config/system-prompts", expect.objectContaining({ signal: expect.any(AbortSignal) }))
     expect(screen.getByText("default")).toBeInTheDocument()
     expect(screen.getByText(/Return JSON\./)).toBeInTheDocument()
   })

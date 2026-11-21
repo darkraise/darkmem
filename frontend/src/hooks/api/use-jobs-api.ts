@@ -45,11 +45,13 @@ export interface JobTriggerResponse {
   last_run_at: string | null
 }
 
-export function useJobs(enabled: boolean = true) {
+/** `poll: false` reads the shared list without keeping it live: a surface
+ *  showing one job's settings has nothing to watch every five seconds. */
+export function useJobs(enabled: boolean = true, { poll = true }: { poll?: boolean } = {}) {
   return useQuery<JobsResponse>({
     queryKey: ["jobs"],
-    queryFn: () => apiFetch<JobsResponse>("/jobs"),
-    refetchInterval: 5000,
+    queryFn: ({ signal }) => apiFetch<JobsResponse>("/jobs", { signal }),
+    refetchInterval: poll ? 5000 : false,
     refetchIntervalInBackground: false,
     enabled: !DEMO && enabled,
   })

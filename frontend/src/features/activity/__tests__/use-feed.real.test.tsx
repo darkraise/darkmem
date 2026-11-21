@@ -41,7 +41,7 @@ describe("useFeed (DEMO off — real /events)", () => {
     expect(result.current.isLoading).toBe(true)
 
     await waitFor(() => expect(result.current.isLoading).toBe(false))
-    expect(apiFetch).toHaveBeenCalledWith(expect.stringContaining("/events"))
+    expect(apiFetch).toHaveBeenCalledWith(expect.stringContaining("/events"), expect.objectContaining({ signal: expect.any(AbortSignal) }))
     expect(result.current.isError).toBe(false)
     expect(result.current.events).toHaveLength(1)
     expect(result.current.events[0]!.type).toBe("superseded")

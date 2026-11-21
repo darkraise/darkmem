@@ -34,7 +34,7 @@ export interface ApiKeyCreateParams {
 export function useApiKeys(options?: { enabled?: boolean }) {
   return useQuery<ApiKeySummary[]>({
     queryKey: ["api-keys"],
-    queryFn: () => apiFetch<ApiKeySummary[]>("/api-keys"),
+    queryFn: ({ signal }) => apiFetch<ApiKeySummary[]>("/api-keys", { signal }),
     enabled: !DEMO && (options?.enabled ?? true),
   })
 }

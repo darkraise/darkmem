@@ -60,7 +60,7 @@ export interface PipelineFailureListResponse {
 export function useStats(options?: { enabled?: boolean }) {
   return useQuery<Stats>({
     queryKey: ["stats"],
-    queryFn: () => apiFetch("/analytics/stats"),
+    queryFn: ({ signal }) => apiFetch("/analytics/stats", { signal }),
     enabled: options?.enabled ?? true,
   })
 }
@@ -210,7 +210,7 @@ export interface OverviewData {
 export function useOverview(days: number = 7) {
   return useQuery<OverviewData>({
     queryKey: ["overview", days],
-    queryFn: () => apiFetch(`/analytics/overview?days=${days}`),
+    queryFn: ({ signal }) => apiFetch(`/analytics/overview?days=${days}`, { signal }),
   })
 }
 
@@ -224,7 +224,7 @@ export function usePipelineFailures(
   const url = `/pipeline-failures${qs.toString() ? `?${qs}` : ""}`
   return useQuery<PipelineFailureListResponse>({
     queryKey: ["pipelineFailures", filters ?? {}],
-    queryFn: () => apiFetch<PipelineFailureListResponse>(url),
+    queryFn: ({ signal }) => apiFetch<PipelineFailureListResponse>(url, { signal }),
     enabled,
   })
 }
@@ -232,8 +232,9 @@ export function usePipelineFailures(
 export function usePipelineFailureCounts() {
   return useQuery<Record<string, number>>({
     queryKey: ["pipelineFailureCounts"],
-    queryFn: () =>
-      apiFetch<Record<string, number>>("/pipeline-failures/counts"),
+    queryFn: ({ signal }) =>
+      apiFetch<Record<string, number>>("/pipeline-failures/counts", { signal }),
+    enabled: !DEMO,
   })
 }
 
@@ -330,9 +331,10 @@ export interface ObsoleteCounts {
 export function useObsoleteCounts() {
   return useQuery<ObsoleteCounts>({
     queryKey: ["obsoleteCounts"],
-    queryFn: () => apiFetch<ObsoleteCounts>("/reembed/obsolete-counts"),
+    queryFn: ({ signal }) => apiFetch<ObsoleteCounts>("/reembed/obsolete-counts", { signal }),
     refetchInterval: 30_000,
     refetchIntervalInBackground: false,
+    enabled: !DEMO,
   })
 }
 

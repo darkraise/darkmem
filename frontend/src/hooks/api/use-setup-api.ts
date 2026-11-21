@@ -186,7 +186,7 @@ export function useFinalizeSetup() {
 export function useReposPath() {
   return useQuery<{ path: string | null }>({
     queryKey: ["reposPath"],
-    queryFn: () => apiFetch<{ path: string | null }>("/config/repos-path"),
+    queryFn: ({ signal }) => apiFetch<{ path: string | null }>("/config/repos-path", { signal }),
   })
 }
 

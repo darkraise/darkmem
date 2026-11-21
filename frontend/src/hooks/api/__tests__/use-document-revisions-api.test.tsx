@@ -47,7 +47,7 @@ describe("document revision reads", () => {
     expect(none.result.current.fetchStatus).toBe("idle")
     const one = renderHook(() => useDocumentRevision("d1", "r1"), { wrapper })
     await waitFor(() => expect(one.result.current.isSuccess).toBe(true))
-    expect(vi.mocked(apiFetch)).toHaveBeenCalledWith("/documents/d1/revisions/r1")
+    expect(vi.mocked(apiFetch)).toHaveBeenCalledWith("/documents/d1/revisions/r1", expect.objectContaining({ signal: expect.any(AbortSignal) }))
     expect(one.result.current.data?.content).toBe("a\n")
   })
 })

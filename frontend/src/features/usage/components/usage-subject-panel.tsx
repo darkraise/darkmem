@@ -15,7 +15,8 @@ import {
 } from "darkraise-ui/components/table"
 
 import type { UsageSubject } from "@/hooks/api"
-import { formatDuration, formatTokens, formatUsd } from "../format"
+import { formatDuration } from "@/lib/format"
+import { formatTokens, formatUsd } from "../format"
 import { subjectLabel, subjectTypeTitle } from "../subject-label"
 
 export function UsageSubjectPanel({ data }: { data: UsageSubject }) {
@@ -63,7 +64,7 @@ export function UsageSubjectPanel({ data }: { data: UsageSubject }) {
           </span>
           {slowest > 0 ? (
             <span className="text-muted-foreground font-mono text-xs">
-              slowest {formatDuration(slowest)}
+              slowest {formatDuration(slowest / 1000)}
             </span>
           ) : null}
           {data.batched_embedding ? (
@@ -148,7 +149,7 @@ export function UsageSubjectPanel({ data }: { data: UsageSubject }) {
                           : formatUsd(call.cost_micros)}
                     </TableCell>
                     <TableCell className="text-right font-mono text-xs tabular-nums">
-                      {formatDuration(call.duration_ms)}
+                      {formatDuration(call.duration_ms / 1000)}
                     </TableCell>
                   </TableRow>
                 ))}

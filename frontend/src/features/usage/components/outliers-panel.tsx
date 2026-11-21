@@ -16,7 +16,8 @@ import { cn } from "darkraise-ui/lib"
 
 import { EmptyState } from "@/components/darkmem"
 import type { UsageTopRow } from "@/hooks/api"
-import { formatDuration, formatTokens, formatUsd } from "../format"
+import { formatDuration } from "@/lib/format"
+import { formatTokens, formatUsd } from "../format"
 import { subjectLabel, subjectTypeTitle } from "../subject-label"
 
 export type OutlierAxis = "cost" | "calls" | "duration"
@@ -42,7 +43,7 @@ function axisValue(row: UsageTopRow, axis: OutlierAxis): number {
 
 function axisText(row: UsageTopRow, axis: OutlierAxis): string {
   if (axis === "calls") return String(row.calls)
-  if (axis === "duration") return formatDuration(row.duration_ms)
+  if (axis === "duration") return formatDuration(row.duration_ms / 1000)
   return formatUsd(row.cost_micros)
 }
 
@@ -142,7 +143,7 @@ function OutlierRow({
 
           <div className="text-muted-foreground mt-1.5 flex flex-wrap gap-x-3 font-mono text-xs tabular-nums">
             <span>{row.calls} calls</span>
-            <span>{formatDuration(row.duration_ms)}</span>
+            <span>{formatDuration(row.duration_ms / 1000)}</span>
             {axis !== "cost" ? <span>{formatUsd(row.cost_micros)}</span> : null}
             {row.calls > 0 ? <span>{formatUsd(perCall)}/call</span> : null}
           </div>

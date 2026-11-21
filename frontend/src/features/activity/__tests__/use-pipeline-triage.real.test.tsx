@@ -41,6 +41,7 @@ describe("usePipelineTriage (DEMO off — real /pipeline-failures)", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false))
     expect(apiFetch).toHaveBeenCalledWith(
       expect.stringContaining("/pipeline-failures"),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     )
     const [failure] = result.current.failures
     expect(failure!.failed_step).toBe("graph_write")

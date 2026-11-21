@@ -44,3 +44,22 @@ export function formatList(items: readonly string[]): string {
 export function formatWhen(iso: string): string {
   return Number.isNaN(new Date(iso).getTime()) ? iso : relativeTime(iso)
 }
+
+export function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  })
+}
+
+/** Milliseconds below a second, tenths below ten, then whole seconds. Each
+ *  unit is rounded before it is split, so 59.6 s reads "1m 0s", never "60s". */
+export function formatDuration(seconds: number): string {
+  const ms = Math.round(seconds * 1000)
+  if (ms < 1000) return `${ms}ms`
+  const tenths = Math.round(seconds * 10) / 10
+  if (tenths < 10) return `${tenths.toFixed(1)}s`
+  const total = Math.round(seconds)
+  if (total < 60) return `${total}s`
+  return `${Math.floor(total / 60)}m ${total % 60}s`
+}

@@ -35,7 +35,7 @@ describe("useDashboardActivity (DEMO off — real /events)", () => {
     const { result } = renderHook(() => useDashboardActivity(), { wrapper })
 
     await waitFor(() => expect(result.current.isLoading).toBe(false))
-    expect(apiFetch).toHaveBeenCalledWith(expect.stringContaining("/events"))
+    expect(apiFetch).toHaveBeenCalledWith(expect.stringContaining("/events"), expect.objectContaining({ signal: expect.any(AbortSignal) }))
     expect(result.current.events).toEqual([])
   })
 

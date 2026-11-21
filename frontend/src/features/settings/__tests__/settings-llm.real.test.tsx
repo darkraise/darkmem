@@ -46,7 +46,7 @@ describe("useLLMTabBinding (DEMO off — real /config/llm)", () => {
     const { result } = renderHook(() => useLLMTabBinding(), { wrapper })
     await waitFor(() => expect(result.current.isLoading).toBe(false))
 
-    expect(apiFetch).toHaveBeenCalledWith("/config/llm")
+    expect(apiFetch).toHaveBeenCalledWith("/config/llm", expect.objectContaining({ signal: expect.any(AbortSignal) }))
     const embedding = result.current.purposes.find(
       (p) => p.purpose === "embedding",
     )

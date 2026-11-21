@@ -30,7 +30,7 @@ export interface ProjectSummary {
 export function useProjects() {
   return useQuery<ProjectSummary[]>({
     queryKey: ["projects"],
-    queryFn: () => apiFetch<ProjectSummary[]>("/projects"),
+    queryFn: ({ signal }) => apiFetch<ProjectSummary[]>("/projects", { signal }),
     // Demo mode runs with no backend at all. This hook mounts in the app
     // chrome, so on every route it was the one request the demo still made —
     // and `handleUnauthorized` turns its 401 into a hard redirect to /login,

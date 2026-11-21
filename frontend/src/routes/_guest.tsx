@@ -16,8 +16,10 @@ export const Route = createFileRoute("/_guest")({
       return
     }
     const { checkSetupStatus } = await import("@/lib/api")
-    const { initialized } = await checkSetupStatus()
-    if (!initialized) {
+    // An unreadable status leaves the sign-in page where it is; only the
+    // setup page itself reports the failure.
+    const status = await checkSetupStatus().catch(() => null)
+    if (status && !status.initialized) {
       throw redirect({ to: "/setup" })
     }
   },

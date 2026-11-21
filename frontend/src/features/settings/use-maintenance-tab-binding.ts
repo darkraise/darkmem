@@ -1,11 +1,11 @@
 import { useState } from "react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { DEMO } from "@/lib/demo-flag"
 import { useDemoMaintenance } from "@/demo/hooks"
 import { useDemoStore } from "@/demo/store"
 import type { MaintenanceOpKey } from "@/features/settings/types"
 import { apiFetch, ApiError } from "@/lib/api"
-import { useTriggerJob } from "@/hooks/api"
+import { useObsoleteCounts, usePipelineFailureCounts, useTriggerJob } from "@/hooks/api"
 import { toast } from "darkraise-ui/components/sonner"
 
 export interface MaintenanceTabBinding {
@@ -25,16 +25,6 @@ export interface MaintenanceTabBinding {
   run: (op: MaintenanceOpKey) => void
 }
 
-interface ObsoleteCounts {
-  memories: number
-  entities: number
-}
-
-interface FailureCounts {
-  memory_ingest?: number
-  code_index?: number
-}
-
 function busyNote(op: string): string {
   return `${op} is already running — try again once it finishes.`
 }
@@ -50,19 +40,11 @@ export function useMaintenanceTabBinding(): MaintenanceTabBinding {
   const setRealLastOpNote = (text: string, failed = false) =>
     setRealLastOp({ text, failed })
 
-  const countsQuery = useQuery<ObsoleteCounts>({
-    queryKey: ["reembedObsoleteCounts"],
-    queryFn: () => apiFetch<ObsoleteCounts>("/reembed/obsolete-counts"),
-    enabled: !DEMO,
-  })
-  const failuresQuery = useQuery<FailureCounts>({
-    queryKey: ["pipelineFailureCounts"],
-    queryFn: () => apiFetch<FailureCounts>("/pipeline-failures/counts"),
-    enabled: !DEMO,
-  })
+  const countsQuery = useObsoleteCounts()
+  const failuresQuery = usePipelineFailureCounts()
 
   const invalidate = () => {
-    void qc.invalidateQueries({ queryKey: ["reembedObsoleteCounts"] })
+    void qc.invalidateQueries({ queryKey: ["obsoleteCounts"] })
     void qc.invalidateQueries({ queryKey: ["pipelineFailureCounts"] })
   }
 

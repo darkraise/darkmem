@@ -111,7 +111,7 @@ export function useMemories() {
 export function useMemory(id: string, options?: { enabled?: boolean }) {
   return useQuery<Memory>({
     queryKey: ["memory", id],
-    queryFn: () => apiFetch(`/memories/${id}`),
+    queryFn: ({ signal }) => apiFetch(`/memories/${id}`, { signal }),
     enabled: !!id && (options?.enabled ?? true),
   })
 }
@@ -240,7 +240,7 @@ export function useSearchMemories() {
 export function useTags() {
   return useQuery<Tag[]>({
     queryKey: ["tags"],
-    queryFn: () => apiFetch("/tags"),
+    queryFn: ({ signal }) => apiFetch("/tags", { signal }),
   })
 }
 

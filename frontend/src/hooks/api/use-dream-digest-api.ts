@@ -158,10 +158,9 @@ export function useDreamCycleDigest(
 ) {
   return useQuery<DreamCycleDigest>({
     queryKey: ["dreamDigest", "cycle", cycleId],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       apiFetch<DreamCycleDigest>(
-        `/dream-digest/cycles/${encodeURIComponent(cycleId ?? "")}`,
-      ),
+        `/dream-digest/cycles/${encodeURIComponent(cycleId ?? "")}`, { signal }),
     enabled: (options?.enabled ?? true) && cycleId !== null,
   })
 }

@@ -33,6 +33,7 @@ describe("useContributionCalendar (DEMO off — real /events/calendar)", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false))
     expect(apiFetch).toHaveBeenCalledWith(
       expect.stringContaining("/events/calendar"),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     )
     expect(result.current.isError).toBe(false)
     expect(result.current.days[result.current.days.length - 1]!.count).toBe(4)

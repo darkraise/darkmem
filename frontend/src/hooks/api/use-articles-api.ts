@@ -94,8 +94,8 @@ export function useArticles(
   const query = articlesQueryString(params)
   return useQuery<ArticleListResponse>({
     queryKey: ["articles", "list", query],
-    queryFn: () =>
-      apiFetch<ArticleListResponse>(`/knowledge/articles${query ? `?${query}` : ""}`),
+    queryFn: ({ signal }) =>
+      apiFetch<ArticleListResponse>(`/knowledge/articles${query ? `?${query}` : ""}`, { signal }),
     enabled: options?.enabled ?? true,
     placeholderData: keepPreviousData,
   })
@@ -107,7 +107,7 @@ export function useArticles(
 export function useArticle(articleId: string, options?: { enabled?: boolean }) {
   return useQuery<ArticleDetail>({
     queryKey: ["articles", "detail", articleId],
-    queryFn: () => apiFetch<ArticleDetail>(`/knowledge/articles/${articleId}`),
+    queryFn: ({ signal }) => apiFetch<ArticleDetail>(`/knowledge/articles/${articleId}`, { signal }),
     enabled: (options?.enabled ?? true) && Boolean(articleId),
   })
 }

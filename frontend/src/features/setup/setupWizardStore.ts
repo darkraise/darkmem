@@ -193,11 +193,16 @@ export const useSetupWizardStore = create<SetupWizardState>()(
       // `migrate` supplied, zustand discards a stored v1 blob rather than
       // hydrating it into a shape that no longer matches.
       version: 2,
+      // Vendor API keys stay in memory only, like the password: a reload
+      // keeps the providers and asks for their keys again.
       partialize: (s) => ({
         step: s.step,
         maxStep: s.maxStep,
         password: { value: "", confirm: "" },
-        llm: s.llm,
+        llm: {
+          ...s.llm,
+          providers: s.llm.providers.map((p) => ({ ...p, api_key: "" })),
+        },
         repos: s.repos,
       }),
     },

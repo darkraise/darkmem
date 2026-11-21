@@ -98,10 +98,9 @@ export function useHygieneDuplicates(
   const query = hygieneQueryString(params)
   return useQuery<HygieneDuplicateListResponse>({
     queryKey: ["hygieneQueue", "duplicates", query],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       apiFetch<HygieneDuplicateListResponse>(
-        `/hygiene-queue/duplicates${query ? `?${query}` : ""}`,
-      ),
+        `/hygiene-queue/duplicates${query ? `?${query}` : ""}`, { signal }),
     enabled: options?.enabled ?? true,
     placeholderData: keepPreviousData,
   })
@@ -114,10 +113,9 @@ export function useHygieneLowConfidence(
   const query = hygieneQueryString(params)
   return useQuery<HygieneMemoryListResponse>({
     queryKey: ["hygieneQueue", "lowConfidence", query],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       apiFetch<HygieneMemoryListResponse>(
-        `/hygiene-queue/low-confidence${query ? `?${query}` : ""}`,
-      ),
+        `/hygiene-queue/low-confidence${query ? `?${query}` : ""}`, { signal }),
     enabled: options?.enabled ?? true,
     placeholderData: keepPreviousData,
   })
@@ -130,10 +128,9 @@ export function useHygieneExpiringSoon(
   const query = hygieneQueryString(params)
   return useQuery<HygieneMemoryListResponse>({
     queryKey: ["hygieneQueue", "expiringSoon", query],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       apiFetch<HygieneMemoryListResponse>(
-        `/hygiene-queue/expiring-soon${query ? `?${query}` : ""}`,
-      ),
+        `/hygiene-queue/expiring-soon${query ? `?${query}` : ""}`, { signal }),
     enabled: options?.enabled ?? true,
     placeholderData: keepPreviousData,
   })
@@ -146,10 +143,9 @@ export function useHygieneSuperseded(
   const query = hygieneQueryString(params)
   return useQuery<HygieneMemoryListResponse>({
     queryKey: ["hygieneQueue", "superseded", query],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       apiFetch<HygieneMemoryListResponse>(
-        `/hygiene-queue/superseded${query ? `?${query}` : ""}`,
-      ),
+        `/hygiene-queue/superseded${query ? `?${query}` : ""}`, { signal }),
     enabled: options?.enabled ?? true,
     placeholderData: keepPreviousData,
   })
@@ -162,10 +158,9 @@ export function useHygieneCounts(
   const query = hygieneQueryString(params)
   return useQuery<HygieneCountsResponse>({
     queryKey: ["hygieneQueue", "counts", query],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       apiFetch<HygieneCountsResponse>(
-        `/hygiene-queue/counts${query ? `?${query}` : ""}`,
-      ),
+        `/hygiene-queue/counts${query ? `?${query}` : ""}`, { signal }),
     enabled: options?.enabled ?? true,
   })
 }

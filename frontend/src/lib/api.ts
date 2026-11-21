@@ -217,10 +217,15 @@ export function apiUpload<T>(
   })
 }
 
+/** Throws on any answer but a 2xx: an error body carries no `initialized`,
+ *  which read as false and put an initialized instance into the wizard. */
 export async function checkSetupStatus(): Promise<{ initialized: boolean }> {
   const response = await fetch(`${API_BASE}/setup/status`, {
     credentials: "include",
   })
+  if (!response.ok) {
+    throw new ApiError(`Setup status answered ${response.status}`, response.status)
+  }
   return response.json()
 }
 

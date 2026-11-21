@@ -189,10 +189,9 @@ export function useReviewQueueFacts(
   const query = reviewQueueQueryString(params)
   return useQuery<ReviewQueueFactListResponse>({
     queryKey: ["reviewQueue", "facts", query],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       apiFetch<ReviewQueueFactListResponse>(
-        `/review-queue/facts${query ? `?${query}` : ""}`,
-      ),
+        `/review-queue/facts${query ? `?${query}` : ""}`, { signal }),
     enabled: options?.enabled ?? true,
     placeholderData: keepPreviousData,
   })
@@ -205,10 +204,9 @@ export function useReviewQueueArticles(
   const query = reviewQueueQueryString(params)
   return useQuery<ReviewQueueArticleListResponse>({
     queryKey: ["reviewQueue", "articles", query],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       apiFetch<ReviewQueueArticleListResponse>(
-        `/review-queue/articles${query ? `?${query}` : ""}`,
-      ),
+        `/review-queue/articles${query ? `?${query}` : ""}`, { signal }),
     enabled: options?.enabled ?? true,
     placeholderData: keepPreviousData,
   })
@@ -221,10 +219,9 @@ export function useReviewQueueCounts(
   const query = reviewQueueQueryString(params)
   return useQuery<ReviewQueueCountsResponse>({
     queryKey: ["reviewQueue", "counts", query],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       apiFetch<ReviewQueueCountsResponse>(
-        `/review-queue/counts${query ? `?${query}` : ""}`,
-      ),
+        `/review-queue/counts${query ? `?${query}` : ""}`, { signal }),
     enabled: options?.enabled ?? true,
   })
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
 import { Label } from "darkraise-ui/components/label"
@@ -49,13 +49,18 @@ export function ResearchTab() {
   // cannot parse, and that is refused below rather than written.
   const [findings, setFindings] = useState<number>(NaN)
   const [chars, setChars] = useState<number>(NaN)
-
-  useEffect(() => {
-    if (config.data) {
-      setFindings(config.data.max_findings_per_run)
-      setChars(config.data.max_content_chars)
-    }
-  }, [config.data])
+  // Seeded from the first read and from a save's answer only: the row is
+  // re-read whenever the research arm moves, and a re-seed then would replace
+  // what is being typed.
+  const [seeded, setSeeded] = useState(false)
+  const seed = (budgets: { max_findings_per_run: number; max_content_chars: number }) => {
+    setFindings(budgets.max_findings_per_run)
+    setChars(budgets.max_content_chars)
+  }
+  if (!seeded && config.data) {
+    setSeeded(true)
+    seed(config.data)
+  }
 
   // `config.data?.enabled ?? false` would render "disarmed" before the read
   // returns — a surface asserting a posture it has not read yet. The loop
@@ -167,10 +172,12 @@ export function ResearchTab() {
                 max_content_chars: chars,
               },
               {
-                onSuccess: (saved) =>
+                onSuccess: (saved) => {
+                  seed(saved)
                   toast.success(
                     `Budgets saved: ${saved.max_findings_per_run.toLocaleString()} findings, ${saved.max_content_chars.toLocaleString()} characters`,
-                  ),
+                  )
+                },
               },
             )
           }

@@ -149,7 +149,7 @@ export function useUsageOverview(window: UsageWindow = "30d", project?: string) 
   if (project) qs.set("project", project)
   return useQuery<UsageOverview>({
     queryKey: ["usage", "overview", window, project ?? null],
-    queryFn: () => apiFetch(`/usage/overview?${qs.toString()}`),
+    queryFn: ({ signal }) => apiFetch(`/usage/overview?${qs.toString()}`, { signal }),
     enabled: LIVE,
     initialData: LIVE ? undefined : DEMO_USAGE_OVERVIEW,
   })
@@ -161,7 +161,7 @@ export function useUsageSeries(
 ) {
   return useQuery<UsageSeries>({
     queryKey: ["usage", "series", window, bucket],
-    queryFn: () => apiFetch(`/usage/series?window=${window}&bucket=${bucket}`),
+    queryFn: ({ signal }) => apiFetch(`/usage/series?window=${window}&bucket=${bucket}`, { signal }),
     enabled: LIVE,
     initialData: LIVE ? undefined : DEMO_USAGE_SERIES,
   })
@@ -174,7 +174,7 @@ export function useUsageTop(
 ) {
   return useQuery<UsageTop>({
     queryKey: ["usage", "top", window, by, limit],
-    queryFn: () => apiFetch(`/usage/top?window=${window}&by=${by}&limit=${limit}`),
+    queryFn: ({ signal }) => apiFetch(`/usage/top?window=${window}&by=${by}&limit=${limit}`, { signal }),
     enabled: LIVE,
   })
 }
@@ -185,8 +185,8 @@ export function useUsageSubject(
 ) {
   return useQuery<UsageSubject>({
     queryKey: ["usage", "subject", subjectType, subjectId],
-    queryFn: () =>
-      apiFetch(`/usage/by-subject/${subjectType}/${encodeURIComponent(subjectId!)}`),
+    queryFn: ({ signal }) =>
+      apiFetch(`/usage/by-subject/${subjectType}/${encodeURIComponent(subjectId!)}`, { signal }),
     enabled: LIVE && Boolean(subjectId),
   })
 }
@@ -224,7 +224,7 @@ export function useSubjectTotals(subjectType: string, subjectIds: string[]) {
 export function useUsageByJob(window: UsageWindow = "30d") {
   return useQuery<{ jobs: JobUsageRow[] }>({
     queryKey: ["usage", "byJob", window],
-    queryFn: () => apiFetch(`/usage/by-job?window=${window}`),
+    queryFn: ({ signal }) => apiFetch(`/usage/by-job?window=${window}`, { signal }),
     enabled: LIVE,
   })
 }
@@ -232,7 +232,7 @@ export function useUsageByJob(window: UsageWindow = "30d") {
 export function useModelPrices() {
   return useQuery<ModelPrices>({
     queryKey: ["usage", "prices"],
-    queryFn: () => apiFetch("/usage/prices"),
+    queryFn: ({ signal }) => apiFetch("/usage/prices", { signal }),
     enabled: LIVE,
   })
 }

@@ -62,7 +62,7 @@ describe("useLlmProviders (DEMO off — real /config/llm-providers)", () => {
     const { result } = renderHook(() => useLlmProviders(), { wrapper })
     await waitFor(() => expect(result.current.isLoading).toBe(false))
 
-    expect(apiFetch).toHaveBeenCalledWith("/config/llm-providers")
+    expect(apiFetch).toHaveBeenCalledWith("/config/llm-providers", expect.objectContaining({ signal: expect.any(AbortSignal) }))
     const local = result.current.data!.providers.find(
       (p) => p.name === "ollama-local",
     )!

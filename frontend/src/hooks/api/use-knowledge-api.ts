@@ -121,7 +121,7 @@ export function useFactCount(
   const query = factsQueryString({ ...params, limit: 1 })
   return useQuery<FactListResponse>({
     queryKey: ["knowledge", "facts", "count", query],
-    queryFn: () => apiFetch<FactListResponse>(`/knowledge/facts?${query}`),
+    queryFn: ({ signal }) => apiFetch<FactListResponse>(`/knowledge/facts?${query}`, { signal }),
     enabled: options?.enabled ?? true,
   })
 }
@@ -262,7 +262,7 @@ export function useFactDetailQuery(
 ) {
   return useQuery<FactDetailItem>({
     queryKey: ["knowledge", "facts", "detail", factId],
-    queryFn: () => apiFetch<FactDetailItem>(`/knowledge/facts/${factId}`),
+    queryFn: ({ signal }) => apiFetch<FactDetailItem>(`/knowledge/facts/${factId}`, { signal }),
     enabled: options?.enabled ?? true,
     retry: false,
   })

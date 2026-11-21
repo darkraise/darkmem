@@ -54,7 +54,7 @@ export function useEvents(
   const query = eventsQueryString(params)
   return useQuery<EventListResponse>({
     queryKey: ["events", params],
-    queryFn: () => apiFetch(`/events${query ? `?${query}` : ""}`),
+    queryFn: ({ signal }) => apiFetch(`/events${query ? `?${query}` : ""}`, { signal }),
     enabled: options?.enabled ?? true,
     refetchInterval: options?.refetchInterval,
   })
@@ -103,7 +103,7 @@ export function useEventsCalendar(
       params.event_type ?? null,
       params.object_type ?? null,
     ],
-    queryFn: () => apiFetch(`/events/calendar${query ? `?${query}` : ""}`),
+    queryFn: ({ signal }) => apiFetch(`/events/calendar${query ? `?${query}` : ""}`, { signal }),
     enabled: options?.enabled ?? true,
   })
 }

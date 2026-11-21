@@ -126,8 +126,8 @@ export function useUnifiedGraph(
 export function useMemoryContext(memoryId: string | null) {
   return useQuery<MemoryContextData>({
     queryKey: ["memoryContext", memoryId],
-    queryFn: () =>
-      apiFetch<MemoryContextData>(`/graph/memory-context/${memoryId}`),
+    queryFn: ({ signal }) =>
+      apiFetch<MemoryContextData>(`/graph/memory-context/${memoryId}`, { signal }),
     enabled: !!memoryId,
   })
 }
@@ -135,16 +135,16 @@ export function useMemoryContext(memoryId: string | null) {
 export function useFullGraph() {
   return useQuery({
     queryKey: ["fullGraph"],
-    queryFn: () =>
-      apiFetch<{ entities: unknown[]; relations: unknown[] }>("/graph/full"),
+    queryFn: ({ signal }) =>
+      apiFetch<{ entities: unknown[]; relations: unknown[] }>("/graph/full", { signal }),
   })
 }
 
 export function useGraphEntities(type?: string) {
   return useQuery({
     queryKey: ["graphEntities", type],
-    queryFn: () =>
-      apiFetch(`/graph/entities${type ? `?entity_type=${type}` : ""}`),
+    queryFn: ({ signal }) =>
+      apiFetch(`/graph/entities${type ? `?entity_type=${type}` : ""}`, { signal }),
   })
 }
 

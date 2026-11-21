@@ -80,10 +80,12 @@ describe("per-memory timeline — who did what, with which key", () => {
     await waitFor(() =>
       expect(apiFetch).toHaveBeenCalledWith(
         expect.stringContaining(`object_id=${MEMORY_ID}`),
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
       ),
     )
     expect(apiFetch).toHaveBeenCalledWith(
       expect.stringContaining("object_type=memory"),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     )
   })
 

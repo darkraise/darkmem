@@ -11,15 +11,8 @@ import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import { EmptyState } from "@/components/darkmem"
-import { relativeTime } from "@/lib/format"
+import { formatDuration, relativeTime } from "@/lib/format"
 import { HISTORY_PAGE_SIZE, useJobHistory, type JobRun } from "../use-job-history"
-
-/** Sub-second runs are the common case for a queue drainer, so ms below 1s. */
-function formatDuration(seconds: number): string {
-  if (seconds < 1) return `${Math.round(seconds * 1000)}ms`
-  if (seconds < 60) return `${seconds.toFixed(2)}s`
-  return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`
-}
 
 function RunRow({ run }: { run: JobRun }) {
   const ok = run.outcome === "ok"

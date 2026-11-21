@@ -61,7 +61,7 @@ describe("usePages", () => {
     vi.mocked(apiFetch).mockResolvedValue([])
     const { result } = renderHook(() => usePages("my project"), { wrapper })
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    expect(vi.mocked(apiFetch)).toHaveBeenCalledWith("/pages?project=my%20project")
+    expect(vi.mocked(apiFetch)).toHaveBeenCalledWith("/pages?project=my%20project", expect.objectContaining({ signal: expect.any(AbortSignal) }))
   })
 })
 
@@ -125,6 +125,6 @@ describe("usePagesTrash", () => {
     vi.mocked(apiFetch).mockResolvedValue([])
     const { result } = renderHook(() => usePagesTrash("personal", true), { wrapper })
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    expect(vi.mocked(apiFetch)).toHaveBeenCalledWith("/pages/trash?project=personal")
+    expect(vi.mocked(apiFetch)).toHaveBeenCalledWith("/pages/trash?project=personal", expect.objectContaining({ signal: expect.any(AbortSignal) }))
   })
 })

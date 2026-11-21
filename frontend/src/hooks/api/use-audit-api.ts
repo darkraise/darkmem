@@ -24,6 +24,6 @@ export function useAuditLog(
   if (action) qs.set("action", action)
   return useQuery<AuditLogPage>({
     queryKey: ["auditLog", limit, offset, action ?? null],
-    queryFn: () => apiFetch(`/auth/audit?${qs.toString()}`),
+    queryFn: ({ signal }) => apiFetch(`/auth/audit?${qs.toString()}`, { signal }),
   })
 }
