@@ -76,7 +76,7 @@ export function RealMemoryGraphPage() {
   const setAllNodes = useGraphPrefs((s) => s.setAllNodes)
   const debouncedNodeLimit = useDebouncedValue(nodeLimit, 500)
 
-  const { data, isLoading, isFetching, isError } = useUnifiedGraph(
+  const { data, isLoading, isFetching, isError, refetch } = useUnifiedGraph(
     debouncedSimilarity,
     debouncedMinSize,
     entityLayerEnabled,
@@ -236,12 +236,15 @@ export function RealMemoryGraphPage() {
       <h1 className="sr-only">Memory Graph</h1>
       <div className="flex min-w-0 flex-1 flex-col">
         {isLoading && <GraphSkeleton />}
-        {isError && (
+        {!isLoading && isError && memoryCount === 0 && (
           // Not the empty state: "no graph yet" tells the operator their
           // ingest produced nothing, on a read that merely failed.
-          <p className="text-destructive-text p-3 text-sm">
-            The graph could not be loaded.
-          </p>
+          <EmptyState
+            kind="failed"
+            scope="page"
+            title="The graph could not be loaded"
+            action={<Button onClick={() => refetch()}>Retry</Button>}
+          />
         )}
         {!isLoading && !isError && memoryCount === 0 && (
           <EmptyState

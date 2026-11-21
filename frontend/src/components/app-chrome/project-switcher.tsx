@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { Globe, Globe2, Check } from "lucide-react"
+import { Button } from "darkraise-ui/components/button"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import {
   Popover,
@@ -13,6 +14,7 @@ import {
   TooltipTrigger,
 } from "darkraise-ui/components/tooltip"
 import { cn } from "darkraise-ui/lib"
+import { EmptyState } from "@/components/darkmem"
 import { useProjects, type ProjectSummary } from "@/hooks/api"
 import {
   ALL_PROJECTS,
@@ -100,7 +102,7 @@ export function ProjectSwitcher({
   const activeProject = useProjectStore((s) => s.activeProject)
   const setProject = useProjectStore((s) => s.setProject)
   const missingProject = useProjectStore((s) => s.missingProject)
-  const { data: projects, isLoading } = useProjects()
+  const projectsQuery = useProjects()
   const [open, setOpen] = useState(false)
 
   const switchTo = (project: ProjectScope) => {
@@ -108,7 +110,7 @@ export function ProjectSwitcher({
     setOpen(false)
   }
 
-  const rows = (projects ?? []).filter((p) => p.kind !== "personal")
+  const rows = (projectsQuery.data ?? []).filter((p) => p.kind !== "personal")
   const isAll = activeProject === ALL_PROJECTS
 
   if (disabledReason) {
@@ -175,14 +177,27 @@ export function ProjectSwitcher({
               onSelect={() => switchTo(ALL_PROJECTS)}
             />
 
-            {isLoading && (
+            {projectsQuery.isPending ? (
               <div className="space-y-1 py-1">
                 <Skeleton className="h-8 w-full rounded-md" />
                 <Skeleton className="h-8 w-full rounded-md" />
               </div>
-            )}
-
-            {!isLoading &&
+            ) : projectsQuery.isError ? (
+              <EmptyState
+                kind="failed"
+                className="py-4"
+                title="Projects could not be loaded"
+                action={
+                  <Button size="sm" onClick={() => projectsQuery.refetch()}>
+                    Retry
+                  </Button>
+                }
+              />
+            ) : rows.length === 0 ? (
+              <p className="text-muted-foreground px-2 py-3 text-center text-xs">
+                No project holds anything yet.
+              </p>
+            ) : (
               rows.map((row) => (
                 <ScopeRow
                   key={row.name}
@@ -191,12 +206,7 @@ export function ProjectSwitcher({
                   active={activeProject === row.name}
                   onSelect={() => switchTo(row.name)}
                 />
-              ))}
-
-            {!isLoading && rows.length === 0 && (
-              <p className="text-muted-foreground px-2 py-3 text-center text-xs">
-                No project holds anything yet.
-              </p>
+              ))
             )}
           </div>
         </PopoverContent>

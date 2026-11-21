@@ -16,6 +16,7 @@ import {
 } from "darkraise-ui/components/clipboard"
 import { toast } from "darkraise-ui/components/sonner"
 import { Input } from "darkraise-ui/components/input"
+import { Skeleton } from "darkraise-ui/components/skeleton"
 import {
   Dialog,
   DialogContent,
@@ -61,6 +62,24 @@ import { deriveCodeGraph, fileOfGraphKey } from "../lib/graph-derive"
 
 const LEGEND_LIMIT = 12
 
+/** The view's own shape while it loads: the repository toolbar, the
+ *  explorer rail and the canvas. */
+function CodeGraphSkeleton({ withToolbar = true }: { withToolbar?: boolean }) {
+  return (
+    <div
+      className="flex min-h-0 flex-1 flex-col gap-3 p-3"
+      role="status"
+      aria-label="Loading code graph"
+    >
+      {withToolbar && <Skeleton className="h-9 w-56" />}
+      <div className="flex min-h-[24rem] flex-1 gap-3">
+        <Skeleton className="hidden w-60 shrink-0 md:block" />
+        <Skeleton className="flex-1" />
+      </div>
+    </div>
+  )
+}
+
 function SectionTitle({
   icon,
   children,
@@ -90,7 +109,8 @@ export function RealCodeGraphView({
   onRepoChange: (id: string) => void
   onOpenRepositories: () => void
 }) {
-  const { data: repos } = useRepos()
+  const reposQuery = useRepos()
+  const repos = reposQuery.data
   const repo =
     repos?.find((r) => r.id === repoId) ??
     repos?.find((r) => r.status === "ready") ??
@@ -109,9 +129,10 @@ export function RealCodeGraphView({
   // repository still gets its whole symbol graph.
   const {
     data: raw,
-    isLoading: graphLoading,
+    isPending: graphLoading,
     isError: graphError,
     isPlaceholderData: graphRefreshing,
+    refetch: refetchGraph,
   } = useCodeGraph(repo?.id ?? null, { level: "auto", scope })
   const { data: files } = useCodeFiles(repo?.id ?? null)
 
@@ -206,11 +227,24 @@ export function RealCodeGraphView({
     return counts
   }, [graph])
 
+  if (reposQuery.isPending) return <CodeGraphSkeleton />
+
+  if (reposQuery.isError) {
+    return (
+      <EmptyState
+        kind="failed"
+        title="Repositories could not be loaded"
+        description={reposQuery.error.message}
+        action={<Button onClick={() => reposQuery.refetch()}>Retry</Button>}
+      />
+    )
+  }
+
   if (!repo) {
     return (
       <EmptyState
         kind="empty"
-          icon={FolderGit2}
+        icon={FolderGit2}
         title="No repositories indexed yet"
         description="Add a repository from Repositories to build a code graph."
         action={
@@ -303,12 +337,27 @@ export function RealCodeGraphView({
     return (
       <div className="flex min-h-0 flex-1 flex-col">
         {toolbar}
-        <p className="text-muted-foreground p-8 text-sm">Loading graph…</p>
+        <CodeGraphSkeleton withToolbar={false} />
       </div>
     )
   }
 
-  if ((!graph || graph.nodes.length === 0) && scope !== null && !graphError) {
+  if (graphError && !graph) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        {toolbar}
+        {/* Not the empty state: that says the repository was never indexed
+            and sends the operator to reindex a graph that may well exist. */}
+        <EmptyState
+          kind="failed"
+          title="The code graph could not be loaded"
+          action={<Button onClick={() => refetchGraph()}>Retry</Button>}
+        />
+      </div>
+    )
+  }
+
+  if ((!graph || graph.nodes.length === 0) && scope !== null) {
     return (
       <div className="flex min-h-0 flex-1 flex-col">
         {toolbar}
@@ -331,13 +380,6 @@ export function RealCodeGraphView({
     return (
       <div className="flex min-h-0 flex-1 flex-col">
         {toolbar}
-        {graphError ? (
-          // Not the empty state: it tells the operator this repo was never
-          // indexed and sends them to reindex a graph that may well exist.
-          <p className="text-destructive-text p-3 text-sm">
-            The code graph could not be loaded.
-          </p>
-        ) : (
         <EmptyState
           kind="empty"
           icon={FolderGit2}
@@ -349,7 +391,6 @@ export function RealCodeGraphView({
             </Button>
           }
         />
-        )}
       </div>
     )
   }

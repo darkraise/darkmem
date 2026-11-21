@@ -6,6 +6,7 @@ import { FolderGit2,
 import { Button } from "darkraise-ui/components/button"
 import { toast } from "darkraise-ui/components/sonner"
 import { Badge } from "darkraise-ui/components/badge"
+import { Skeleton } from "darkraise-ui/components/skeleton"
 import {
   Card,
   CardContent,
@@ -59,6 +60,18 @@ function useWiki(repoId: string | null) {
   })
 }
 
+/** The overview card and the module list, in the wiki's own shape. */
+function WikiSkeleton() {
+  return (
+    <div className="space-y-2">
+      <Skeleton className="h-24 w-full rounded-md" />
+      {Array.from({ length: 4 }, (_, i) => (
+        <Skeleton key={i} className="h-14 w-full rounded-md" />
+      ))}
+    </div>
+  )
+}
+
 // The real-backend counterpart of the demo Code section's WikiTab. Ported
 // from features/repos/components/code-wiki-panel.tsx's useWiki hook shape
 // (T1.59) — this view issues no mutation of its own; the only way a wiki
@@ -71,16 +84,31 @@ export function RealWikiView({
   repoId: string | undefined
   onRepoChange: (id: string) => void
 }) {
-  const { data: repos, isLoading: reposLoading } = useRepos()
+  const reposQuery = useRepos()
+  const repos = reposQuery.data
   const repo = repos?.find((r) => r.id === repoId) ?? repos?.find(() => true)
-  const { data: wiki, isLoading, isError, refetch } = useWiki(repo?.id ?? null)
+  const { data: wiki, isPending, isError, refetch } = useWiki(repo?.id ?? null)
   const [expandedModule, setExpandedModule] = useState<string | null>(null)
   const [reindexOpen, setReindexOpen] = useState(false)
   const reindexRepo = useReindexRepo()
 
-  if (reposLoading) {
+  if (reposQuery.isPending) {
     return (
-      <p className="text-muted-foreground p-3 text-sm">Loading repositories…</p>
+      <div className="space-y-4" role="status" aria-label="Loading wiki">
+        <Skeleton className="h-9 w-56" />
+        <WikiSkeleton />
+      </div>
+    )
+  }
+
+  if (reposQuery.isError) {
+    return (
+      <EmptyState
+        kind="failed"
+        title="Repositories could not be loaded"
+        description={reposQuery.error.message}
+        action={<Button onClick={() => reposQuery.refetch()}>Retry</Button>}
+      />
     )
   }
 
@@ -88,7 +116,7 @@ export function RealWikiView({
     return (
       <EmptyState
         kind="empty"
-          icon={FolderGit2}
+        icon={FolderGit2}
         title="No repositories indexed yet"
         description="Add a repository to get started."
       />
@@ -117,11 +145,13 @@ export function RealWikiView({
         </Select>
       </div>
 
-      {isLoading && (
-        <p className="text-muted-foreground text-sm">Loading wiki…</p>
+      {isPending && (
+        <div role="status" aria-label="Loading wiki">
+          <WikiSkeleton />
+        </div>
       )}
 
-      {isError && (
+      {!isPending && isError && (
         <EmptyState
           kind="failed"
           title="Failed to load wiki"
@@ -234,7 +264,7 @@ export function RealWikiView({
         </>
       )}
 
-      {!isLoading && !isError && !wiki && (
+      {!isPending && !isError && !wiki && (
         <EmptyState
           kind="empty"
           icon={BookOpen}

@@ -124,6 +124,10 @@ export interface LLMTabBinding {
   setClassifierKind: (kind: "llm" | "local") => void
   saveCodeBucket: ((key: DemoCodeBucket["key"], model: string) => void) | null
   isLoading: boolean
+  /** The configuration read failed: `purposes` and `tierCPurposes` are then
+   *  empty, never placeholders that would read as the stored values. */
+  error: Error | null
+  retry: () => void
 }
 
 /** Binds the LLM tab to `/config/llm` outside demo mode; in demo mode it
@@ -178,26 +182,29 @@ export function useLLMTabBinding(): LLMTabBinding {
       },
       saveCodeBucket: saveDemoBucket,
       isLoading: false,
+      error: null,
+      retry: () => {},
     }
   }
 
-  const purposes = LIVE_PURPOSES.map((p) => toDemoPurpose(p, query.data?.[p]))
+  const config = query.data
+  const purposes = config
+    ? LIVE_PURPOSES.map((p) => toDemoPurpose(p, config[p]))
+    : []
   const classifierKind =
     (query.data?.classification?.classifier_kind as "llm" | "local" | null) ??
     "llm"
-  // Real config once loaded; the demo-fixture connection values as a
-  // placeholder while the query is still in flight, so the card never
-  // renders blank fields during the initial load.
-  const tierCPurposes: TierCPurposeView[] = TIER_C_LLM_PURPOSES.map((p) => {
-    const cfg = query.data?.[p.purpose]
-    const fallback = DEMO_TIER_C_CONNECTION[p.purpose]
-    return {
-      ...p,
-      model: cfg?.model ?? fallback.model,
-      api_kind: cfg?.api_kind ?? fallback.api_kind,
-      provider_name: cfg?.provider_name ?? fallback.provider_name,
-    }
-  })
+  const tierCPurposes: TierCPurposeView[] = config
+    ? TIER_C_LLM_PURPOSES.map((p) => {
+        const cfg = config[p.purpose]
+        return {
+          ...p,
+          model: cfg?.model ?? "",
+          api_kind: cfg?.api_kind ?? "",
+          provider_name: cfg?.provider_name ?? "",
+        }
+      })
+    : []
 
   return {
     purposes,
@@ -224,6 +231,9 @@ export function useLLMTabBinding(): LLMTabBinding {
       )
     },
     saveCodeBucket: null,
-    isLoading: query.isLoading,
+    isLoading: query.isPending,
+    // A failed refetch keeps the last good config on screen.
+    error: config ? null : query.error,
+    retry: () => void query.refetch(),
   }
 }

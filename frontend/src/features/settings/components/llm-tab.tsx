@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { Alert, AlertDescription } from "darkraise-ui/components/alert"
+import { Button } from "darkraise-ui/components/button"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import {
   Tabs,
@@ -8,7 +9,7 @@ import {
   TabsTrigger,
 } from "darkraise-ui/components/tabs"
 import { cn } from "darkraise-ui/lib"
-import { IconSegmented } from "@/components/darkmem"
+import { EmptyState, IconSegmented } from "@/components/darkmem"
 import type { DemoLLMPurpose } from "@/features/settings/types"
 import {
   LLM_LAYOUT_OPTIONS,
@@ -48,6 +49,13 @@ function PurposesPanel() {
             <Skeleton key={i} className="h-28 w-full rounded-md" />
           ))}
         </div>
+      ) : binding.error ? (
+        <EmptyState
+          kind="failed"
+          title="LLM configuration could not be loaded"
+          description={binding.error.message}
+          action={<Button onClick={binding.retry}>Retry</Button>}
+        />
       ) : (
         <div
           className={cn(
