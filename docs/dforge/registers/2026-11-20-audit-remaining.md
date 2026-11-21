@@ -135,11 +135,11 @@
 | 128 | B6-19 and B6-D3: system-prompts, repo-allowlist and notifications read-modify-write their config rows without the row lock; about 12 config endpoints repeat the pattern three ways | docs/dforge/plans/2026-11-20-audit-remaining.md | A29 (Task 39) | done | 3754ed1 |
 | 129 | B6-20: events partition maintenance rides on pipeline_failure_cleanup, which the UI can disable | docs/dforge/plans/2026-11-20-audit-remaining.md | A32 (Task 41) | done | bc01c8c |
 | 130 | B6-21: each open WebSocket runs 2 database queries per second for revalidation, serially inside the send lock | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 42 contracts | done | 4b30a14, c398c66, 58e067e |
-| 131 | B6-22: stale statements: 48 tools, dream jobs called placeholders, the curb row's reader, and LLM_* env vars in CLAUDE.md | docs/dforge/plans/2026-11-20-audit-remaining.md | A51 (Task 69) | doing | - |
+| 131 | B6-22: stale statements: 48 tools, dream jobs called placeholders, the curb row's reader, and LLM_* env vars in CLAUDE.md | docs/dforge/plans/2026-11-20-audit-remaining.md | A51 (Task 69) | done | 132f803 |
 | 132 | B6-D1: the lifespan carries boot steps for states that no longer occur | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 41 contracts | done | bc01c8c; legacy enrichment copy kept, production has no enrichment_config row |
 | 133 | B6-D2: about 830 lines of MCP code tools run raw SQL in the transport instead of CodeQueryService | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 27 contracts | done | cf10951 |
 | 134 | B6-D4: job last_* state is rewritten into config on every tick | docs/dforge/plans/2026-11-20-audit-remaining.md | A30 (Task 40) | done | f976565 |
-| 135 | B6-D5: inject_* and client_connect live under app/services but are reached at runtime only by a CLI script | docs/dforge/plans/2026-11-20-audit-remaining.md | A51 (Task 69) | doing | - |
+| 135 | B6-D5: inject_* and client_connect live under app/services but are reached at runtime only by a CLI script | docs/dforge/plans/2026-11-20-audit-remaining.md | A51 (Task 69) | done | 132f803 |
 | 136 | B6-D6: per-socket, per-second revalidation is a heavy polling contract; close sockets directly and drop the polling | - | - | deferred | declined in the spec: CLAUDE.md records the one-second revalidation as contract; B6-21 removes its cost |
 | 137 | F1-1 (high): the Edit Repository dialog cannot save URL-cloned repositories | docs/dforge/plans/2026-11-20-audit-remaining.md | A3 (Task 49) | done | fd9b5c7 |
 | 138 | F1-2 (high): the 3D graph data is rebuilt in 2D view, in O(n squared) | docs/dforge/plans/2026-11-20-audit-remaining.md | A4 (Task 53) | done | 6fb823d |
@@ -199,7 +199,7 @@
 | 192 | P1-3: a cancelled tag job still lets github-release create the tag on master's tip | docs/dforge/plans/2026-11-20-audit-remaining.md | A49 (Task 66) | done | 1583bda |
 | 193 | P1-4: numpy is imported but not declared | docs/dforge/plans/2026-11-20-audit-remaining.md | A50 (Task 66) | done | 1583bda |
 | 194 | P1-5: third-party actions are pinned to movable tags, not commit SHAs; the trivy job writes the cache publish reads | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 4 contracts | done | f0b79c0 |
-| 195 | P1-6: CONTRIBUTING.md describes the old release model | docs/dforge/plans/2026-11-20-audit-remaining.md | A51 (Task 69) | doing | - |
+| 195 | P1-6: CONTRIBUTING.md describes the old release model | docs/dforge/plans/2026-11-20-audit-remaining.md | A51 (Task 69) | done | 132f803 |
 | 196 | P1-7: release.sh cannot finish on this host (it runs gate.sh --full) | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 66 contracts | done | 1583bda |
 | 197 | P1-8: the e2e database reset bypasses the destructive-SQL guard on a false premise | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 4 contracts | done | f0b79c0 |
 | 198 | P1-9: the worker's restore loop treats every migrate failure as an old-baseline snapshot and exits 0 | docs/dforge/plans/2026-11-20-audit-remaining.md | A49 (Task 67) | done | 97a4026 |
