@@ -1,3 +1,4 @@
+import { useState } from "react"
 import { RefreshCw, Trash2 } from "lucide-react"
 import {
   AlertDialog,
@@ -41,17 +42,24 @@ function FailedCaptureRow({
   onDiscard: (id: string) => Promise<unknown>
 }) {
   const memory = item.memory_exists && item.memory_id ? item.memory_id : null
+  const [busy, setBusy] = useState(false)
 
   const requeue = () => {
-    onRequeue(item.id).then(
-      () => toast.success("Capture requeued"),
-      (error) =>
-        toast.error("Couldn't requeue the capture", {
-          description: errorText(error),
-        }),
-    )
+    if (busy) return
+    setBusy(true)
+    onRequeue(item.id)
+      .then(
+        () => toast.success("Capture requeued"),
+        (error) =>
+          toast.error("Couldn't requeue the capture", {
+            description: errorText(error),
+          }),
+      )
+      .finally(() => setBusy(false))
   }
   const discard = () => {
+    if (busy) return
+    setBusy(true)
     onDiscard(item.id).then(
       () =>
         toast.success(
@@ -61,7 +69,7 @@ function FailedCaptureRow({
         toast.error("Couldn't discard the capture", {
           description: errorText(error),
         }),
-    )
+    ).finally(() => setBusy(false))
   }
 
   return (
@@ -91,7 +99,7 @@ function FailedCaptureRow({
         </div>
       )}
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="outline" onClick={requeue}>
+        <Button variant="outline" disabled={busy} onClick={requeue}>
           <RefreshCw className="mr-1.5 size-3.5" />
           Requeue
         </Button>

@@ -486,6 +486,22 @@ describe("Edit Repository", () => {
     )
   })
 
+  it("a save in flight cannot be sent twice", async () => {
+    let finish: () => void = () => {}
+    mockEdit(
+      () => new Promise((resolve) => { finish = () => resolve({ ...CLONED, default_branch: "develop" }) }),
+    )
+    const dialog = await openAndChangeBranch()
+    const save = within(dialog).getByRole("button", { name: "Save" })
+
+    await vi.waitFor(() => expect(save).toBeDisabled())
+    await userEvent.click(save)
+    expect(
+      vi.mocked(apiFetch).mock.calls.filter(([, init]) => init?.method === "PUT"),
+    ).toHaveLength(1)
+    finish()
+  })
+
   it("reports a failed save", async () => {
     mockEdit(() => Promise.reject(new Error("upstream refused the branch")))
     const dialog = await openAndChangeBranch()

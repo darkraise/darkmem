@@ -17,9 +17,10 @@ vi.mock("@tanstack/react-router", async (importOriginal) => ({
 const prune = vi.fn()
 const supersede = vi.fn()
 const confirmDedup = vi.fn()
+let prunePending = false
 vi.mock("@/hooks/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/api")>()),
-  useBulkPrune: () => ({ mutate: prune }),
+  useBulkPrune: () => ({ mutate: prune, isPending: prunePending }),
   useBulkSupersede: () => ({ mutate: supersede }),
   useBulkConfirmDedup: () => ({ mutate: confirmDedup }),
   useUndoDreamCycle: () => ({ mutate: vi.fn() }),
@@ -96,6 +97,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   lowTotal = 25
   dupTotal = 0
+  prunePending = false
 })
 
 describe("hygiene queue selection", () => {
@@ -141,6 +143,17 @@ describe("hygiene queue selection", () => {
     await userEvent.click(within(lowShell()).getByRole("button", { name: /^prune$/i }))
     expect(await confirm()).toBe("Prune 5 rows?")
     expect(prune.mock.calls[0]![0]).toEqual(["m-p-0", "m-p-1", "m-p-2", "m-p-3", "m-p-4"])
+  })
+
+  it("a prune in flight cannot be sent again", async () => {
+    const { rerender } = render(<HygieneQueue project="p" />)
+    for (const n of [0, 1]) await pick(new RegExp(`memory p ${n}$`))
+    const button = within(lowShell()).getByRole("button", { name: /^prune$/i })
+    expect(button).toBeEnabled()
+
+    prunePending = true
+    rerender(<HygieneQueue project="p" />)
+    expect(within(lowShell()).getByRole("button", { name: /^prune$/i })).toBeDisabled()
   })
 
   it("a partial failure names the counts and keeps failed rows selected", async () => {

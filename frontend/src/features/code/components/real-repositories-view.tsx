@@ -423,7 +423,9 @@ function EditRepoDialog({
                 Cancel
               </Button>
             </DialogClose>
-            <Button type="submit">Save</Button>
+            <Button type="submit" disabled={updateRepo.isPending}>
+              Save
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

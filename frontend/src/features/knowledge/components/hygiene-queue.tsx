@@ -440,6 +440,9 @@ export function HygieneQueue({ project }: { project?: string }) {
   const confirmDedup = useBulkConfirmDedup()
   const bulkSupersede = useBulkSupersede()
   const bulkPrune = useBulkPrune()
+  // A second batch sent while one runs would re-send the same selection, and
+  // the observer runs callbacks only for its latest mutate.
+  const duplicateBusy = confirmDedup.isPending || bulkSupersede.isPending
   const undoCycle = useUndoDreamCycle()
   const demoResolve = useDemoStore((s) => s.resolveHygiene)
 
@@ -643,7 +646,7 @@ export function HygieneQueue({ project }: { project?: string }) {
             />
             <Button
               variant="outline"
-              disabled={dupSel.onScreen(duplicates.rows).length === 0}
+              disabled={dupSel.onScreen(duplicates.rows).length === 0 || duplicateBusy}
               onClick={() =>
                 setPending({
                   kind: "supersede-dup",
@@ -660,7 +663,7 @@ export function HygieneQueue({ project }: { project?: string }) {
               Supersede instead
             </Button>
             <Button
-              disabled={dupSel.onScreen(duplicates.rows).length === 0}
+              disabled={dupSel.onScreen(duplicates.rows).length === 0 || duplicateBusy}
               onClick={() =>
                 setPending({
                   kind: "confirm-dedup",
@@ -725,7 +728,7 @@ export function HygieneQueue({ project }: { project?: string }) {
             <Button
               variant="outline"
               className="border-destructive-edge/55 text-destructive-text"
-              disabled={lowSel.onScreen(lowConfidence.rows).length === 0}
+              disabled={lowSel.onScreen(lowConfidence.rows).length === 0 || bulkPrune.isPending}
               onClick={() =>
                 setPending({
                   kind: "prune-low",
@@ -796,7 +799,7 @@ export function HygieneQueue({ project }: { project?: string }) {
             <Button
               variant="outline"
               className="border-destructive-edge/55 text-destructive-text"
-              disabled={expSel.onScreen(expiring.rows).length === 0}
+              disabled={expSel.onScreen(expiring.rows).length === 0 || bulkPrune.isPending}
               onClick={() =>
                 setPending({
                   kind: "prune-expiring",

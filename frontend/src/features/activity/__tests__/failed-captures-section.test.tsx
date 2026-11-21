@@ -78,6 +78,22 @@ beforeEach(() => {
 })
 
 describe("FailedCapturesSection", () => {
+  it("a requeue in flight cannot be sent twice", async () => {
+    let finish: () => void = () => {}
+    const onRequeue = vi.fn(() => new Promise<void>((resolve) => { finish = resolve }))
+    renderSection({ onRequeue })
+    const first = rowOf("the payments worker kept restarting")
+    const requeue = within(first).getByRole("button", { name: "Requeue" })
+
+    await userEvent.click(requeue)
+    expect(requeue).toBeDisabled()
+    await userEvent.click(requeue)
+    expect(onRequeue).toHaveBeenCalledTimes(1)
+
+    finish()
+    await waitFor(() => expect(requeue).toBeEnabled())
+  })
+
   it("lists failed captures with their error", () => {
     renderSection()
     expect(screen.getByText("Failed captures")).toBeInTheDocument()
