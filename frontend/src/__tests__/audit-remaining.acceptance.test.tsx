@@ -281,3 +281,79 @@ describe("A55: discarding a failed capture whose memory exists", () => {
     await vi.waitFor(() => expect(onDiscard).toHaveBeenCalledWith(ROW.id))
   })
 })
+
+import { toast } from "darkraise-ui/components/sonner"
+import { LLMTab } from "@/features/settings/components/llm-tab"
+
+vi.mock("darkraise-ui/components/sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+}))
+
+describe("A37: Settings save dialog", () => {
+  const WIRE = {
+    extraction: {
+      base_url: "http://localhost:11434/v1",
+      provider_name: "local",
+      model: "qwen2.5:3b",
+      api_key: null,
+      dimensions: null,
+      reasoning: false,
+      api_kind: "ollama",
+      params: {},
+    },
+  }
+
+  function mockServer(post: () => Promise<unknown>) {
+    vi.mocked(apiFetch).mockImplementation((path: string, init?: RequestInit) => {
+      if (path === "/config/llm" && init?.method === "POST") return post()
+      if (path === "/config/llm") return Promise.resolve(WIRE)
+      if (path === "/config/llm-providers")
+        return Promise.resolve({
+          providers: [
+            { name: "local", api_kind: "ollama", base_url: "http://localhost:11434/v1", api_key: null },
+          ],
+        })
+      return Promise.resolve({})
+    })
+  }
+
+  async function openAndEdit() {
+    const user = userEvent.setup()
+    render(<LLMTab />, { wrapper: qcWrapper })
+    await user.click(await screen.findByLabelText("Edit extraction"))
+    const dialog = await screen.findByRole("dialog")
+    const model = within(dialog).getByLabelText("extraction model")
+    await user.clear(model)
+    await user.type(model, "edited-model")
+    await user.click(within(dialog).getByRole("button", { name: "Save" }))
+    return { dialog, user }
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it("A37: a refused save keeps the dialog open, keeps the edits and shows the server's reason", async () => {
+    mockServer(() => Promise.reject(new Error("the reason the server gave")))
+    const { dialog } = await openAndEdit()
+    await vi.waitFor(() =>
+      expect(dialog.textContent).toContain("the reason the server gave"),
+    )
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+    expect(
+      (within(dialog).getByLabelText("extraction model") as HTMLInputElement).value,
+    ).toBe("edited-model")
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it("A37: a successful save closes the dialog and toasts Saved", async () => {
+    mockServer(() => Promise.resolve({}))
+    await openAndEdit()
+    await vi.waitFor(() => expect(toast.success).toHaveBeenCalled())
+    expect(String(vi.mocked(toast.success).mock.calls[0]![0])).toMatch(/saved/i)
+    await vi.waitFor(() => {
+      const d = screen.queryByRole("dialog")
+      expect(d === null || d.getAttribute("data-state") === "closed").toBe(true)
+    })
+  })
+})
