@@ -137,8 +137,9 @@ async def test_a_memory_locked_past_the_wait_defers_its_candidate(
         try:
             await _hold_memory_row(reextracting, busy)
 
-            await run_lift(lifting)
+            outcome = await run_lift(lifting)
             await lifting.commit()
+            assert outcome.deferred == 1
             assert await facts(observer, busy_project) == []
             assert len(await facts(observer, free_project)) == 1
             lift_records = [r for r in caplog.records if r.name == fact_lift.logger.name]

@@ -230,9 +230,11 @@ def _make_lift_runner(registry: JobRegistry, key: str) -> JobRunner:
             await session.commit()
         logger.info(
             "Fact lifting scanned %d candidate(s): %d fact(s) created, "
-            "%d source(s) added, %d sources_changed event(s) emitted",
+            "%d source(s) added, %d sources_changed event(s) emitted, "
+            "%d deferred, %d failed",
             outcome.candidates, outcome.facts_created,
             outcome.sources_added, outcome.events_emitted,
+            outcome.deferred, outcome.failed,
         )
         logger.info(
             "Code fact lifting scanned %d candidate(s): %d fact(s) born "

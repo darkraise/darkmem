@@ -423,6 +423,10 @@ class LiftOutcome:
     facts_created: int = 0
     sources_added: int = 0
     events_emitted: int = 0
+    # Candidates left for the next tick: an asserting memory was being
+    # re-extracted, or the candidate's own savepoint failed.
+    deferred: int = 0
+    failed: int = 0
 
 
 def fact_sentence(subject_name: str, rel_type: str, object_name: str) -> str:
@@ -665,7 +669,7 @@ async def run_lift(
         batch_size=batch_size,
         min_asserting_memories=min_asserting_memories,
     )
-    created = added = 0
+    created = added = deferred = failed = 0
     for index, candidate in enumerate(candidates):
         if index % LIFT_COMMIT_BATCH == 0:
             if index:
@@ -679,6 +683,7 @@ async def run_lift(
             async with session.begin_nested():
                 lifted = await _lift_one(session, candidate, lock_deadline)
         except MemoriesBusy:
+            deferred += 1
             logger.info(
                 "fact lifting deferred for %s in project %s: an asserting memory "
                 "is being re-extracted",
@@ -687,6 +692,7 @@ async def run_lift(
             )
             continue
         except Exception:
+            failed += 1
             logger.exception(
                 "fact lifting failed for %s (%s %s %s) in project %s",
                 candidate.triple_key,
@@ -717,6 +723,8 @@ async def run_lift(
         facts_created=created,
         sources_added=added,
         events_emitted=added,
+        deferred=deferred,
+        failed=failed,
     )
 
 
