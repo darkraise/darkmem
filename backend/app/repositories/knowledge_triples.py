@@ -220,7 +220,7 @@ _COLUMNS = """
     valid_at, invalid_at, expired_at, reference_time, fact, project,
     triple_key, verification_status, confidence, applies_when,
     learned_in, review_state, source_file, demotion_pending_since,
-    demotion_pending_cycles, created_at, stated_expiry,
+    demotion_pending_cycles, created_at,
     contradiction_suspected_at, contradiction_counterpart_id
 """
 
@@ -289,15 +289,8 @@ class KnowledgeTripleRepository:
         learned_in: list[str] | None = None,
         review_state: str | None = None,
         source_file: str | None = None,
-        stated_expiry: datetime | None = None,
     ) -> dict:
         """Insert an open-ended belief: ``invalid_at`` and ``expired_at`` NULL.
-
-        ``stated_expiry`` is recorded, never spent here (T2.85). The window
-        stays open until the recompute arm sees the date pass; writing it into
-        ``invalid_at`` at insert time would drop the fact out of the
-        open-belief predicate on the day it was written rather than the day it
-        expires.
 
         ``triple_key`` is supplied by the caller — the identity function is
         ``app.services.triple_key.compute_triple_key`` and its first producer
@@ -325,7 +318,6 @@ class KnowledgeTripleRepository:
             "learned_in": learned_in,
             "review_state": review_state,
             "source_file": source_file,
-            "stated_expiry": stated_expiry,
         }
         # verification_status is absent from the column list on purpose: the
         # database default seeds it as 'candidate' and this module never writes
@@ -336,7 +328,7 @@ class KnowledgeTripleRepository:
                     id, subject_id, object_id, subject_name, object_name,
                     rel_type, valid_at, reference_time, fact, project,
                     triple_key, confidence, applies_when, learned_in,
-                    review_state, source_file, stated_expiry
+                    review_state, source_file
                 )
                 VALUES (
                     CAST(:id AS uuid),
@@ -354,8 +346,7 @@ class KnowledgeTripleRepository:
                     CAST(:applies_when AS jsonb),
                     CAST(:learned_in AS text[]),
                     CAST(:review_state AS text),
-                    CAST(:source_file AS text),
-                    CAST(:stated_expiry AS timestamptz)
+                    CAST(:source_file AS text)
                 )
                 RETURNING {_COLUMNS}
             """),

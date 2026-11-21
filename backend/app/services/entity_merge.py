@@ -852,10 +852,8 @@ async def _fold_open_facts(session: AsyncSession, renamed: Any, partner: Any) ->
     # The belief window is the union of two open-ended ones, so it starts at the
     # earlier of the two: both rows asserted the claim, and the keeper's own
     # start would disown a stretch the vault did believe it. A NULL `valid_at`
-    # is unbounded, so it dominates rather than losing to `LEAST`. `LEAST` is
-    # the whole rule for `stated_expiry` — it ignores NULLs, which lands on the
-    # earlier stated expiry, the under-claiming direction this layer is required
-    # to err in. `learned_in` has no writer in the tree today and is left alone.
+    # is unbounded, so it dominates rather than losing to `LEAST`. `learned_in`
+    # has no writer in the tree today and is left alone.
     await session.execute(
         text("""
             UPDATE knowledge_triples k
@@ -863,8 +861,7 @@ async def _fold_open_facts(session: AsyncSession, renamed: Any, partner: Any) ->
                 valid_at = CASE
                     WHEN k.valid_at IS NULL OR d.valid_at IS NULL THEN NULL
                     ELSE LEAST(k.valid_at, d.valid_at)
-                END,
-                stated_expiry = LEAST(k.stated_expiry, d.stated_expiry)
+                END
             FROM knowledge_triples d
             WHERE k.id = CAST(:keeper AS uuid)
               AND d.id = CAST(:retired AS uuid)

@@ -116,12 +116,4 @@ class KnowledgeTriple(Base):
     # flag at exactly the moment it mattered.
     contradiction_suspected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     contradiction_counterpart_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
-    # T2.85: the expiry the fact's own text states, recorded at lift time and
-    # spent by the recompute arm, which writes `invalid_at := stated_expiry`
-    # once the date passes. Not written to `invalid_at` at lift time (that
-    # column is only-ever-past by contract, and a future value drops the fact
-    # out of the open-belief predicate the day it is written), and not to
-    # `expired_at` (which `as_of` ignores, so the historical question would
-    # answer wrongly for every instant past the stated date).
-    stated_expiry: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

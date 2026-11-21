@@ -805,8 +805,8 @@ per job rather than once per tick; every run still gets its `job_runs` row.
   keeps the id (`confirmed` > `disputed` > `corroborated` > `candidate`,
   then older `created_at`, then smaller id), no verification column is
   written, `fact_sources` rows are **moved** (never copied), serving heat is
-  summed, the belief window takes the earlier `reference_time` / `valid_at`
-  / `stated_expiry`, and the duplicate is **expired, never deleted**
+  summed, the belief window takes the earlier `reference_time` / `valid_at`,
+  and the duplicate is **expired, never deleted**
   (`expired_at`, not `invalid_at`). A fact whose endpoint id is NULL or
   dangling keeps its name. The scan rotates over repo-asserted entities on a
   `(created_at, id)` keyset cursor in `config` row `repo_entity_merge_state`;

@@ -13,6 +13,11 @@ from sqlalchemy import inspect
 
 from app.models.graph import KnowledgeTriple
 
+# Kept in the table with no reader or writer, and deliberately unmapped: a
+# released model that maps a column is a reader, so a drop has to wait until
+# a build without the mapping has shipped.
+UNMAPPED_COLUMNS = {"stated_expiry"}
+
 
 async def test_model_columns_match_reflected_table(session):
     connection = await session.connection()
@@ -23,7 +28,8 @@ async def test_model_columns_match_reflected_table(session):
 
     model_columns = {col.name: col for col in KnowledgeTriple.__table__.columns}
 
-    assert set(reflected_by_name) == set(model_columns)
+    assert set(reflected_by_name) - UNMAPPED_COLUMNS == set(model_columns)
+    assert UNMAPPED_COLUMNS <= set(reflected_by_name)
 
     for name, model_col in model_columns.items():
         reflected_col = reflected_by_name[name]
