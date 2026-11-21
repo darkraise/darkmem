@@ -3,8 +3,6 @@ import { Link } from "@tanstack/react-router"
 import {
   AlertTriangle,
   ArrowUpRight,
-  ChevronLeft,
-  ChevronRight,
   EyeOff,
   UserCheck,
   XCircle,
@@ -35,7 +33,7 @@ import { DEMO } from "@/lib/demo-flag"
 import { useDemoStore } from "@/demo/store"
 import { useDismissSuspicion, useRatifyFact, useRejectFact } from "@/hooks/api"
 import { SuppressedBadge, UnderSourcedBadge } from "./fact-parts"
-import { ListSurface } from "./list-surface"
+import { ListSurface, QueuePager } from "./list-surface"
 import {
   useReviewArticleRows,
   useReviewFactRows,
@@ -44,46 +42,6 @@ import {
 } from "../use-review-queue"
 
 const PAGE = 10
-
-function PageControls({
-  offset,
-  limit,
-  total,
-  onPrev,
-  onNext,
-}: {
-  offset: number
-  limit: number
-  total: number
-  onPrev: () => void
-  onNext: () => void
-}) {
-  if (total <= limit) return null
-  return (
-    <div className="flex items-center justify-end gap-2 pt-1">
-      <span className="text-muted-foreground font-mono text-sm">
-        {Math.min(offset + 1, total)}–{Math.min(offset + limit, total)} of{" "}
-        {total}
-      </span>
-      <Button
-        variant="outline"
-        disabled={offset === 0}
-        onClick={onPrev}
-        aria-label="Previous page"
-      >
-        <ChevronLeft className="size-3.5" />
-      </Button>
-      <Button
-        variant="outline"
-        disabled={offset + limit >= total}
-        onClick={onNext}
-        aria-label="Next page"
-      >
-        <ChevronRight className="size-3.5" />
-      </Button>
-    </div>
-  )
-}
 
 function EvidenceBlock({ fact }: { fact: ReviewFactRowData }) {
   if (fact.verification_status !== "disputed") return null
@@ -489,7 +447,7 @@ export function ReviewQueue({ project }: { project?: string }) {
                 onDismissSuspicion={setDismissTarget}
               />
             ))}
-            <PageControls
+            <QueuePager
               offset={factsOffset}
               limit={PAGE}
               total={facts.total}
@@ -548,7 +506,7 @@ export function ReviewQueue({ project }: { project?: string }) {
             {articles.rows.map((article) => (
               <ArticleRow key={article.queue_id} article={article} />
             ))}
-            <PageControls
+            <QueuePager
               offset={articlesOffset}
               limit={PAGE}
               total={articles.total}

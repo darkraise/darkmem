@@ -2,8 +2,6 @@ import { useEffect, useState, type ReactNode } from "react"
 import { Link } from "@tanstack/react-router"
 import {
   Check,
-  ChevronLeft,
-  ChevronRight,
   Clock,
   Copy,
   GitBranch,
@@ -52,6 +50,7 @@ import {
   type HygieneMemoryRowData,
 } from "../use-hygiene-queue"
 import { shortId } from "@/lib/short-id"
+import { QueuePager } from "./list-surface"
 
 const PAGE = 10
 
@@ -84,17 +83,25 @@ function refusalReasonLabel(reason: string | null): string {
   return REFUSAL_REASON_LABELS[reason] ?? reason
 }
 
-function useSelection() {
-  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
+const NONE: ReadonlySet<string> = new Set()
+
+/** A selection belongs to the project and page it was made on: changing
+ *  either drops it, so a bulk action never reaches a row the operator cannot
+ *  see. */
+function useSelection(scope: string) {
+  const [state, setState] = useState({ scope, ids: NONE })
+  const selected = state.scope === scope ? state.ids : NONE
   const toggle = (id: string) =>
-    setSelected((prev) => {
-      const next = new Set(prev)
+    setState((prev) => {
+      const next = new Set(prev.scope === scope ? prev.ids : NONE)
       if (next.has(id)) next.delete(id)
       else next.add(id)
-      return next
+      return { scope, ids: next }
     })
-  const clear = () => setSelected(new Set())
-  return { selected, toggle, clear }
+  const keep = (ids: Iterable<string>) => setState({ scope, ids: new Set(ids) })
+  const onScreen = <T extends { id: string }>(rows: T[]) =>
+    rows.filter((row) => selected.has(row.id))
+  return { selected, toggle, keep, onScreen }
 }
 
 function SelectionCount({ n, unit }: { n: number; unit: string }) {
@@ -103,46 +110,6 @@ function SelectionCount({ n, unit }: { n: number; unit: string }) {
       {n} {unit}
       {n === 1 ? "" : "s"} selected
     </span>
-  )
-}
-
-function PageControls({
-  offset,
-  limit,
-  total,
-  onPrev,
-  onNext,
-}: {
-  offset: number
-  limit: number
-  total: number
-  onPrev: () => void
-  onNext: () => void
-}) {
-  if (total <= limit) return null
-  return (
-    <div className="flex items-center justify-end gap-2 pt-1">
-      <span className="text-muted-foreground font-mono text-sm">
-        {Math.min(offset + 1, total)}–{Math.min(offset + limit, total)} of{" "}
-        {total}
-      </span>
-      <Button
-        variant="outline"
-        disabled={offset === 0}
-        onClick={onPrev}
-        aria-label="Previous page"
-      >
-        <ChevronLeft className="size-3.5" />
-      </Button>
-      <Button
-        variant="outline"
-        disabled={offset + limit >= total}
-        onClick={onNext}
-        aria-label="Next page"
-      >
-        <ChevronRight className="size-3.5" />
-      </Button>
-    </div>
   )
 }
 
@@ -235,7 +202,10 @@ function CategoryShell({
   children: ReactNode
 }) {
   return (
-    <div className="border-border bg-card overflow-hidden rounded-lg border">
+    <section
+      aria-label={title}
+      className="border-border bg-card overflow-hidden rounded-lg border"
+    >
       <div className="border-border bg-muted/30 flex flex-wrap items-center gap-2.5 border-b px-4 py-2.5">
         <span className="text-muted-foreground [&>svg]:h-4 [&>svg]:w-4">
           {icon}
@@ -285,7 +255,7 @@ function CategoryShell({
           children
         )}
       </div>
-    </div>
+    </section>
   )
 }
 
@@ -442,9 +412,9 @@ export function HygieneQueue({ project }: { project?: string }) {
     setSupOffset(0)
   }, [project])
 
-  const dupSel = useSelection()
-  const lowSel = useSelection()
-  const expSel = useSelection()
+  const dupSel = useSelection(`${project ?? ""}|${dupOffset}`)
+  const lowSel = useSelection(`${project ?? ""}|${lowOffset}`)
+  const expSel = useSelection(`${project ?? ""}|${expOffset}`)
 
   const duplicates = useHygieneDuplicateRows({
     project,
@@ -515,6 +485,26 @@ export function HygieneQueue({ project }: { project?: string }) {
     })
   }
 
+  /** Reports a batch whose items settled one by one, and keeps exactly the
+   *  rows that failed selected for another try. */
+  const settle = (
+    arm: string,
+    result: HygieneBulkActionResponse,
+    selection: ReturnType<typeof useSelection>,
+    rowIdOf: (itemId: string) => string = (itemId) => itemId,
+  ) => {
+    const failed = result.results
+      .filter((item) => !item.applied)
+      .map((item) => rowIdOf(item.id))
+    if (failed.length > 0) {
+      toast.error(
+        `${arm}: ${result.results.length - failed.length} succeeded, ${failed.length} failed`,
+        { description: "The rows that failed stay selected." },
+      )
+    }
+    selection.keep(failed)
+  }
+
   const applyPending = () => {
     if (!pending) return
     if (DEMO) {
@@ -537,7 +527,7 @@ export function HygieneQueue({ project }: { project?: string }) {
         onSuccess: (result) => {
           setNotices((prev) => ({ ...prev, duplicates: result }))
           setUndone((prev) => ({ ...prev, duplicates: false }))
-          dupSel.clear()
+          settle("Confirm dedup", result, dupSel)
         },
         onError: onBulkActionError("Confirm dedup"),
       })
@@ -546,11 +536,14 @@ export function HygieneQueue({ project }: { project?: string }) {
         memory_id: item.olderId,
         superseded_by: item.newerId,
       }))
+      const pairOf = new Map(
+        pending.items.map((item) => [item.olderId, item.relationId]),
+      )
       bulkSupersede.mutate(items, {
         onSuccess: (result) => {
           setNotices((prev) => ({ ...prev, duplicates: result }))
           setUndone((prev) => ({ ...prev, duplicates: false }))
-          dupSel.clear()
+          settle("Supersede", result, dupSel, (id) => pairOf.get(id) ?? id)
         },
         onError: onBulkActionError("Supersede"),
       })
@@ -559,7 +552,7 @@ export function HygieneQueue({ project }: { project?: string }) {
         onSuccess: (result) => {
           setNotices((prev) => ({ ...prev, lowConfidence: result }))
           setUndone((prev) => ({ ...prev, lowConfidence: false }))
-          lowSel.clear()
+          settle("Prune (low-confidence)", result, lowSel)
         },
         onError: onBulkActionError("Prune (low-confidence)"),
       })
@@ -568,7 +561,7 @@ export function HygieneQueue({ project }: { project?: string }) {
         onSuccess: (result) => {
           setNotices((prev) => ({ ...prev, expiring: result }))
           setUndone((prev) => ({ ...prev, expiring: false }))
-          expSel.clear()
+          settle("Prune (expiring soon)", result, expSel)
         },
         onError: onBulkActionError("Prune (expiring soon)"),
       })
@@ -644,15 +637,18 @@ export function HygieneQueue({ project }: { project?: string }) {
         errorLine="Could not load candidate duplicates."
         toolbar={
           <>
-            <SelectionCount n={dupSel.selected.size} unit="pair" />
+            <SelectionCount
+              n={dupSel.onScreen(duplicates.rows).length}
+              unit="pair"
+            />
             <Button
               variant="outline"
-              disabled={dupSel.selected.size === 0}
+              disabled={dupSel.onScreen(duplicates.rows).length === 0}
               onClick={() =>
                 setPending({
                   kind: "supersede-dup",
-                  items: duplicates.rows
-                    .filter((row) => dupSel.selected.has(row.id))
+                  items: dupSel
+                    .onScreen(duplicates.rows)
                     .map((row) => ({
                       relationId: row.id,
                       ...duplicateDirection(row),
@@ -664,9 +660,12 @@ export function HygieneQueue({ project }: { project?: string }) {
               Supersede instead
             </Button>
             <Button
-              disabled={dupSel.selected.size === 0}
+              disabled={dupSel.onScreen(duplicates.rows).length === 0}
               onClick={() =>
-                setPending({ kind: "confirm-dedup", ids: [...dupSel.selected] })
+                setPending({
+                  kind: "confirm-dedup",
+                  ids: dupSel.onScreen(duplicates.rows).map((row) => row.id),
+                })
               }
             >
               <Copy className="mr-1.5 size-3.5" />
@@ -691,7 +690,7 @@ export function HygieneQueue({ project }: { project?: string }) {
             onToggle={() => dupSel.toggle(row.id)}
           />
         ))}
-        <PageControls
+        <QueuePager
           offset={dupOffset}
           limit={PAGE}
           total={duplicates.total}
@@ -719,13 +718,19 @@ export function HygieneQueue({ project }: { project?: string }) {
         errorLine="Could not load low-confidence memories."
         toolbar={
           <>
-            <SelectionCount n={lowSel.selected.size} unit="row" />
+            <SelectionCount
+              n={lowSel.onScreen(lowConfidence.rows).length}
+              unit="row"
+            />
             <Button
               variant="outline"
               className="border-destructive-edge/55 text-destructive-text"
-              disabled={lowSel.selected.size === 0}
+              disabled={lowSel.onScreen(lowConfidence.rows).length === 0}
               onClick={() =>
-                setPending({ kind: "prune-low", ids: [...lowSel.selected] })
+                setPending({
+                  kind: "prune-low",
+                  ids: lowSel.onScreen(lowConfidence.rows).map((row) => row.id),
+                })
               }
             >
               <Trash2 className="mr-1.5 size-3.5" />
@@ -756,7 +761,7 @@ export function HygieneQueue({ project }: { project?: string }) {
             }
           />
         ))}
-        <PageControls
+        <QueuePager
           offset={lowOffset}
           limit={PAGE}
           total={lowConfidence.total}
@@ -784,15 +789,18 @@ export function HygieneQueue({ project }: { project?: string }) {
         errorLine="Could not load expiring memories."
         toolbar={
           <>
-            <SelectionCount n={expSel.selected.size} unit="row" />
+            <SelectionCount
+              n={expSel.onScreen(expiring.rows).length}
+              unit="row"
+            />
             <Button
               variant="outline"
               className="border-destructive-edge/55 text-destructive-text"
-              disabled={expSel.selected.size === 0}
+              disabled={expSel.onScreen(expiring.rows).length === 0}
               onClick={() =>
                 setPending({
                   kind: "prune-expiring",
-                  ids: [...expSel.selected],
+                  ids: expSel.onScreen(expiring.rows).map((row) => row.id),
                 })
               }
             >
@@ -824,7 +832,7 @@ export function HygieneQueue({ project }: { project?: string }) {
             }
           />
         ))}
-        <PageControls
+        <QueuePager
           offset={expOffset}
           limit={PAGE}
           total={expiring.total}
@@ -854,7 +862,7 @@ export function HygieneQueue({ project }: { project?: string }) {
         {superseded.rows.map((row) => (
           <MemoryRow key={row.id} row={row} />
         ))}
-        <PageControls
+        <QueuePager
           offset={supOffset}
           limit={PAGE}
           total={superseded.total}

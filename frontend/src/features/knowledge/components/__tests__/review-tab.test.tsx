@@ -307,7 +307,7 @@ describe("ReviewTab: a stranded page shows a way back, never a false caught-up m
     render(withQuery(<ReviewTab />))
     await screen.findAllByText("darkmem uses postgres")
 
-    fireEvent.click(screen.getByLabelText("Next page"))
+    fireEvent.click(screen.getByRole("link", { name: /next page/i }))
 
     expect(await screen.findByText("This page emptied out")).toBeInTheDocument()
     expect(

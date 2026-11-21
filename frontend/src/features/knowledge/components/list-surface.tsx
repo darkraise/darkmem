@@ -1,4 +1,11 @@
-import type { ReactNode } from "react"
+import type { MouseEvent, ReactNode } from "react"
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationNext,
+  PaginationPrevious,
+} from "darkraise-ui/components/pagination"
 import { cn } from "darkraise-ui/lib"
 
 export function ListSurface({
@@ -41,6 +48,52 @@ export function ListSurface({
       <div className={cn("flex flex-col gap-2.5 p-4", bodyClassName)}>
         {children}
       </div>
+    </div>
+  )
+}
+
+/** The knowledge queues' pager: the library pagination with a previous and a
+ *  next step and the range it shows. Hidden while one page holds everything. */
+export function QueuePager({
+  offset,
+  limit,
+  total,
+  onPrev,
+  onNext,
+}: {
+  offset: number
+  limit: number
+  total: number
+  onPrev: () => void
+  onNext: () => void
+}) {
+  if (total <= limit) return null
+  const step = (enabled: boolean, go: () => void) => ({
+    href: "#",
+    "aria-disabled": enabled ? undefined : true,
+    tabIndex: enabled ? undefined : -1,
+    className: enabled ? undefined : "pointer-events-none opacity-50",
+    onClick: (event: MouseEvent<HTMLAnchorElement>) => {
+      event.preventDefault()
+      if (enabled) go()
+    },
+  })
+  return (
+    <div className="flex items-center justify-end gap-2 pt-1">
+      <span className="text-muted-foreground font-mono text-sm">
+        {Math.min(offset + 1, total)}–{Math.min(offset + limit, total)} of{" "}
+        {total}
+      </span>
+      <Pagination className="mx-0 w-auto">
+        <PaginationContent>
+          <PaginationItem>
+            <PaginationPrevious {...step(offset > 0, onPrev)} />
+          </PaginationItem>
+          <PaginationItem>
+            <PaginationNext {...step(offset + limit < total, onNext)} />
+          </PaginationItem>
+        </PaginationContent>
+      </Pagination>
     </div>
   )
 }

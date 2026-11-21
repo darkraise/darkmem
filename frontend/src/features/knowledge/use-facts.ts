@@ -191,9 +191,11 @@ export interface FactsResult {
   fetchMore: () => void
   projects: string[]
   relations: string[]
+  statuses: string[]
   /** False when the option lists were derived from loaded rows with more
    *  still unfetched — the select is then a sample, and saying so is the
-   *  difference between a filter and a claim about the vault. */
+   *  difference between a filter and a claim about the vault. The server's
+   *  facets cover every fact in scope, so with them the lists are whole. */
   optionsComplete: boolean
 }
 
@@ -243,22 +245,31 @@ export function useFactRows(query: FactsQuery): FactsResult {
     void fetchNextPage()
   }, [fetchNextPage, api.hasNextPage, api.isFetchingNextPage])
 
+  const facets = pages[pages.length - 1]?.facets
+
   const projects = useMemo(() => {
     if (DEMO) return distinctFactProjects(demoFacts)
-    const seen = new Set(scoped.map((row) => row.project))
+    const seen = new Set(facets?.project ?? scoped.map((row) => row.project))
     // The active scope is always offered, even when this page holds no row
     // from it: a select that drops its own current value cannot be widened
     // back out of the scope it is stuck in.
     if (query.project !== ALL_PROJECTS) seen.add(query.project)
     return [...seen].sort()
-  }, [demoFacts, scoped, query.project])
+  }, [demoFacts, facets, scoped, query.project])
 
   const relations = useMemo(() => {
     if (DEMO) return distinctFactRelations(demoFacts)
-    const seen = new Set(scoped.map((row) => row.rel_type))
+    const seen = new Set(facets?.rel_type ?? scoped.map((row) => row.rel_type))
     if (query.relation !== ANY) seen.add(query.relation)
     return [...seen].sort()
-  }, [demoFacts, scoped, query.relation])
+  }, [demoFacts, facets, scoped, query.relation])
+
+  const statuses = useMemo(() => {
+    if (DEMO || !facets) return [...KNOWN_STATUSES]
+    const seen = new Set(facets.verification_status)
+    if (query.status !== ANY) seen.add(query.status)
+    return [...KNOWN_STATUSES].filter((status) => seen.has(status))
+  }, [facets, query.status])
 
   return {
     rows,
@@ -271,7 +282,8 @@ export function useFactRows(query: FactsQuery): FactsResult {
     fetchMore,
     projects,
     relations,
-    optionsComplete: !hasMore,
+    statuses,
+    optionsComplete: DEMO || facets !== undefined || !hasMore,
   }
 }
 

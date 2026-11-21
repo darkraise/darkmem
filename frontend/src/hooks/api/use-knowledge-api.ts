@@ -64,11 +64,20 @@ export interface FactListItem {
   created_at: string
 }
 
+/** Every value each list filter can take in the request's project scope,
+ *  whatever the page and the other filters. */
+export interface FactFacets {
+  project: string[]
+  rel_type: string[]
+  verification_status: string[]
+}
+
 export interface FactListResponse {
   items: FactListItem[]
   total: number
   limit: number
   offset: number
+  facets?: FactFacets
 }
 
 export interface FactListParams {

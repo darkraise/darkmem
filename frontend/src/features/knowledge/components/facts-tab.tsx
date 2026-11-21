@@ -34,7 +34,6 @@ import {
   UnderSourcedBadge,
 } from "./fact-parts"
 
-const STATUS_OPTIONS = ["candidate", "corroborated", "confirmed", "disputed"]
 const SORTS = { newest: "newest first", rung: "verification rung" } as const
 type SortKey = keyof typeof SORTS
 
@@ -175,6 +174,7 @@ export function FactsTab() {
     fetchingMore,
     fetchMore,
     relations,
+    statuses,
     optionsComplete,
   } = useFactRows({ project, relation, status, subject })
 
@@ -333,7 +333,7 @@ export function FactsTab() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={ANY}>any</SelectItem>
-            {STATUS_OPTIONS.map((s) => (
+            {statuses.map((s) => (
               <SelectItem key={s} value={s}>
                 {s}
               </SelectItem>
