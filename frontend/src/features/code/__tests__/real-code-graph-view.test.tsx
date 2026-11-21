@@ -427,7 +427,7 @@ describe("RealCodeGraphView", () => {
     })
   })
 
-  it("the filter box narrows the drawn graph and its counter, not only the explorer", async () => {
+  it("the filter box narrows the counter and keeps every node drawn", async () => {
     mockApi()
     const user = userEvent.setup()
     render(
@@ -442,8 +442,9 @@ describe("RealCodeGraphView", () => {
       "rrf",
     )
     expect(screen.getByText("1 of 3 nodes · 0 of 2 edges")).toBeInTheDocument()
+    // Unmatched nodes stay on the canvas, dimmed, so typing never rebuilds it.
     expect(screen.getByRole("button", { name: "rrf_fuse (function)" })).toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: "process_batch (function)" })).toBeNull()
+    expect(screen.getByRole("button", { name: "process_batch (function)" })).toBeInTheDocument()
 
     await user.clear(screen.getByRole("textbox", { name: /Filter the graph and explorer/ }))
     await user.type(

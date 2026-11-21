@@ -245,7 +245,7 @@ export function CodeGlowCanvas({
   // elsewhere (explorer, deep link) moves the camera to it.
   const clickedRef = useRef<string | null>(null)
   // Settled positions and the camera survive a rebuild (recolour, theme,
-  // hidden kinds, a narrowed search), so nodes still drawn stay put.
+  // hidden kinds), so nodes still drawn stay put.
   const positionsRef = useRef(new Map<string, { x: number; y: number }>())
   const cameraStateRef = useRef<{ nodes: string; state: CameraState } | null>(null)
   const settledRef = useRef(false)
@@ -488,6 +488,13 @@ export function CodeGlowCanvas({
     } else {
       settledRef.current = false
       runner.start()
+      // A new node set opens at sigma's default camera; a selection that
+      // survived the rebuild is what the reader was looking at.
+      const selected = emphasisRef.current.selectedId
+      if (selected && g.hasNode(selected)) {
+        centreOn(sigma, selected)
+        followRef.current = runner.isRunning()
+      }
     }
 
     return () => {

@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render } from "@testing-library/react"
+import { render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type Graph from "graphology"
-import type { ComponentProps } from "react"
+import type { ComponentProps, ReactNode } from "react"
 
 const h = vi.hoisted(() => {
   const GL = { FLOAT: 0x1406, UNSIGNED_BYTE: 0x1401, TRIANGLES: 0x0004, ONE: 1, ONE_MINUS_SRC_ALPHA: 0x0303 }
@@ -101,7 +103,8 @@ vi.mock("sigma", () => {
       return p
     }
     framedGraphToViewport(p: { x: number; y: number }) {
-      return p
+      const c = this.camera
+      return { x: 400 + ((p.x - c.x) * 800) / c.ratio, y: 300 + ((p.y - c.y) * 600) / c.ratio }
     }
     viewportToFramedGraph(p: { x: number; y: number }) {
       return { x: this.camera.x + (p.x - 400) / 800, y: this.camera.y + (p.y - 300) / 600 }
@@ -140,7 +143,15 @@ vi.mock("graphology-layout-forceatlas2/worker", () => ({
   },
 }))
 
+vi.mock("@/lib/demo-flag", () => ({ DEMO: false }))
+vi.mock("@/lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api")>()),
+  apiFetch: vi.fn(),
+}))
+
+import { apiFetch } from "@/lib/api"
 import { CodeGlowCanvas } from "../components/code-glow-canvas"
+import { RealCodeGraphView } from "../components/real-code-graph-view"
 
 const GRAPH = {
   repo_id: "r1",
@@ -272,5 +283,156 @@ describe("CodeGlowCanvas reducers", () => {
     const edge = sigma.graph.edge("a", "c")!
     const res = edgeReducer(edge, { ...sigma.graph.getEdgeAttributes(edge) })
     expect(res.color).toMatch(/^rgba\(.*0\.08\)$/)
+  })
+})
+
+describe("CodeGlowCanvas search", () => {
+  const REPO = {
+    id: "r1",
+    name: "darkmem-backend",
+    url: null,
+    local_path: "/repo",
+    provider: "local",
+    default_branch: "main",
+    last_indexed_commit: "abc1234",
+    last_indexed_at: "2026-07-27T00:00:00Z",
+    status: "ready",
+    status_message: null,
+    file_count: 1,
+    symbol_count: 2,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-07-27T00:00:00Z",
+  }
+  const RAW = {
+    nodes: [
+      { id: "main.py", label: "main.py", kind: "file", file_path: "main.py" },
+      { id: "load::main.py", label: "load", kind: "function", file_path: "main.py" },
+      { id: "save::main.py", label: "save", kind: "function", file_path: "main.py" },
+    ],
+    edges: [
+      { source: "main.py", target: "load::main.py", type: "CONTAINS" },
+      { source: "main.py", target: "save::main.py", type: "CONTAINS" },
+    ],
+  }
+
+  function wrapper({ children }: { children: ReactNode }) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    return <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+  }
+
+  it("typing in the search dims without rebuilding", async () => {
+    vi.mocked(apiFetch).mockImplementation(((path: string) => {
+      if (path === "/repos") return Promise.resolve([REPO])
+      if (path.startsWith("/code/graph/")) return Promise.resolve(RAW)
+      return Promise.resolve([])
+    }) as typeof apiFetch)
+    const user = userEvent.setup()
+    render(<RealCodeGraphView repoId="r1" onRepoChange={() => {}} onOpenRepositories={() => {}} />, {
+      wrapper,
+    })
+    const field = await screen.findByPlaceholderText("Filter files & symbols…")
+    const sigmas = h.sigmas.length
+    const workers = h.workers.length
+    const sigma = last()
+    sigma.camera.setState({ x: 0.3, y: 0.6, ratio: 0.5 })
+
+    for (const text of ["s", "sa", "sav", "save", "l"]) {
+      await user.clear(field)
+      await user.type(field, text)
+    }
+    await user.clear(field)
+    await user.type(field, "save")
+
+    expect(h.sigmas.length).toBe(sigmas)
+    expect(h.workers.length).toBe(workers)
+    expect(sigma.killed).toBe(false)
+    expect(sigma.camera).toMatchObject({ x: 0.3, y: 0.6, ratio: 0.5 })
+    const nodeReducer = sigma.settings.nodeReducer as (
+      id: string,
+      d: Record<string, unknown>,
+    ) => Record<string, unknown>
+    const color = (id: string) =>
+      nodeReducer(id, { ...sigma.graph.getNodeAttributes(id) }).color
+    expect(color("load::main.py")).not.toBe(sigma.graph.getNodeAttribute("load::main.py", "color"))
+    expect(color("save::main.py")).toBe(sigma.graph.getNodeAttribute("save::main.py", "color"))
+  })
+})
+
+describe("CodeGlowCanvas selection across a rebuild", () => {
+  it("a rebuild re-centres a persisting selection", () => {
+    const { rerender } = render(<CodeGlowCanvas {...base} selectedId="b" />)
+    last().camera.setState({ x: 0.9, y: 0.1, ratio: 1 })
+    rerender(<CodeGlowCanvas {...base} selectedId="b" hiddenKinds={new Set(["file"])} />)
+    const sigma = last()
+    expect(h.sigmas).toHaveLength(2)
+    expect(sigma.camera.x).toBe(sigma.graph.getNodeAttribute("b", "x"))
+    expect(sigma.camera.y).toBe(sigma.graph.getNodeAttribute("b", "y"))
+    expect(sigma.camera.ratio).toBeCloseTo(0.15)
+  })
+})
+
+describe("CodeGlowCanvas overlay and follow", () => {
+  function fakeContext() {
+    const arcs: Array<[number, number]> = []
+    const ctx = new Proxy(
+      { arc: (x: number, y: number) => void arcs.push([x, y]) } as Record<string, unknown>,
+      {
+        get: (target, key) =>
+          key in target ? target[key as string] : () => ({ addColorStop: () => {} }),
+        set: () => true,
+      },
+    )
+    return { arcs, ctx }
+  }
+
+  it("ring overlay follows the selected node", () => {
+    const { arcs, ctx } = fakeContext()
+    const spy = vi
+      .spyOn(HTMLCanvasElement.prototype, "getContext")
+      .mockReturnValue(ctx as never)
+    try {
+      render(<CodeGlowCanvas {...base} selectedId="c" />)
+      const sigma = last() as FakeSigmaLike & {
+        getNodeDisplayData(id: string): { x: number; y: number }
+        framedGraphToViewport(p: { x: number; y: number }): { x: number; y: number }
+      }
+      for (const state of [{ x: 0.2, ratio: 0.5 }, { x: 0.8, y: 0.3, ratio: 2 }]) {
+        sigma.camera.setState(state)
+        arcs.length = 0
+        sigma.emit("afterRender")
+        const at = sigma.framedGraphToViewport(sigma.getNodeDisplayData("c"))
+        expect(arcs).toHaveLength(1)
+        expect(arcs[0]![0]).toBeCloseTo(at.x)
+        expect(arcs[0]![1]).toBeCloseTo(at.y)
+      }
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it("camera follows during the core run", () => {
+    vi.useFakeTimers()
+    try {
+      const { rerender } = render(<CodeGlowCanvas {...base} />)
+      const sigma = last()
+      rerender(<CodeGlowCanvas {...base} selectedId="c" />)
+      const setState = vi.spyOn(sigma.camera, "setState")
+
+      sigma.graph.setNodeAttribute("c", "x", 7)
+      sigma.graph.setNodeAttribute("c", "y", -3)
+      sigma.emit("beforeRender")
+      expect(setState).toHaveBeenCalledTimes(1)
+      expect(sigma.camera).toMatchObject({ x: 7, y: -3 })
+      sigma.emit("beforeRender")
+      expect(setState).toHaveBeenCalledTimes(1)
+
+      vi.advanceTimersByTime(60_000) // the run ends
+      sigma.graph.setNodeAttribute("c", "x", 11)
+      sigma.emit("beforeRender")
+      expect(setState).toHaveBeenCalledTimes(1)
+      expect(sigma.camera.x).toBe(7)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

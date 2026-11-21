@@ -180,9 +180,10 @@ export function RealCodeGraphView({
     )
   }, [graph, activeProcess])
 
-  // The filter box narrows the canvas and its counter as well as the
-  // explorer: a node stays when its name or its file matches, the same
-  // rule the explorer applies to its rows.
+  // The filter box dims the canvas and narrows its counter and the
+  // explorer: a node matches when its name or its file does, the same rule
+  // the explorer applies to its rows. The canvas keeps the whole graph, so a
+  // keystroke never rebuilds the renderer or restarts the layout.
   const trimmedSearch = search.trim().toLowerCase()
   const shown = useMemo(() => {
     if (!graph || trimmedSearch === "") return graph
@@ -197,6 +198,11 @@ export function RealCodeGraphView({
     )
     return { ...graph, nodes, edges }
   }, [graph, trimmedSearch])
+  const searchIds = useMemo(
+    () =>
+      shown && shown !== graph ? new Set(shown.nodes.map((n) => n.id)) : null,
+    [graph, shown],
+  )
 
   const kindCounts = useMemo(() => {
     const counts = new Map<CodeNodeKind, number>()
@@ -495,11 +501,11 @@ export function RealCodeGraphView({
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
           <div className="relative min-h-64 min-w-0 flex-1">
             <CodeGlowCanvas
-              graph={shown ?? graph}
+              graph={graph}
               colorBy={colorBy}
               selectedId={selectedId}
               onSelect={selectNode}
-              visibleIds={null}
+              visibleIds={searchIds}
               hiddenKinds={hiddenKinds}
               blastIds={
                 blast
