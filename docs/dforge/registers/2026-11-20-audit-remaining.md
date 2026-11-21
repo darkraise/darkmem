@@ -182,18 +182,18 @@
 | 175 | F3-2: the documents block editor throws away the typed text on any refused or failed write | docs/dforge/plans/2026-11-20-audit-remaining.md | A39 (Task 61) | done | 76c9235 |
 | 176 | F3-3: hygiene queue checkbox selections survive project and page changes; Supersede instead acts only on the visible page, then clears every selection | docs/dforge/plans/2026-11-20-audit-remaining.md | A40 (Task 63) | done | 7a312ac |
 | 177 | F3-5: every chat token re-parses the markdown of every earlier message | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 60 contracts | done | 84735e6 |
-| 178 | F3-6: a task filter on an open workstream re-downloads the whole ledger every 5 s | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 64 contracts | doing | - |
+| 178 | F3-6: a task filter on an open workstream re-downloads the whole ledger every 5 s | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 64 contracts | done | 8f788aa |
 | 179 | F3-7: after a refusal, the documents write queue re-reads the hash and sends the next write anyway | docs/dforge/plans/2026-11-20-audit-remaining.md | A39 (Task 61) | done | 76c9235 |
-| 180 | F3-8: a failed page title rename is silent | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 64 contracts | doing | - |
+| 180 | F3-8: a failed page title rename is silent | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 64 contracts | done | 8f788aa |
 | 181 | F3-9a: dead code: useBlockMove, and rank_note/consequence computed but never shown | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 59 contracts | done | cec12f6 |
 | 182 | F3-9b: the pager is hand-written twice although darkraise-ui ships pagination; the two knowledge queues use different list patterns | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 63 contracts | done | 7a312ac |
 | 183 | F3-9c: the two block editors duplicate the hash-precondition plumbing and handle conflicts differently | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 61 contracts | done | 76c9235 |
 | 184 | F3-9d: a first chat turn that never completes leaves an Untitled conversation the client never learns about | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 60 contracts | done | not reproduced: every exit of useChatStream's send (done, error event, EOF, fetch failure, abort) runs refreshAfterStream in finally, which invalidates [conversations]; a first-turn error test passed on the base and use-chat-stream-source-fields.test.tsx already pins the invalidation |
 | 185 | F3-9e: deleting a conversation has no error handling | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 60 contracts | done | 84735e6 |
-| 186 | F3-9f: two quick board edits to one register conflict with each other | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 64 contracts | doing | - |
-| 187 | F3-9g: Notes does a full-document conversion on every keystroke | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 64 contracts | doing | - |
+| 186 | F3-9f: two quick board edits to one register conflict with each other | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 64 contracts | done | 8f788aa |
+| 187 | F3-9g: Notes does a full-document conversion on every keystroke | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 64 contracts | done | 8f788aa |
 | 188 | F3-9h: the facts list's filter options cover only the pages already loaded | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 62/63 contracts | done | 7a312ac |
-| 189 | F3 mirror note: no test pins the TypeScript copy of block_verbs.py's refusals to the Python one | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 64 contracts | doing | - |
+| 189 | F3 mirror note: no test pins the TypeScript copy of block_verbs.py's refusals to the Python one | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 64 contracts | done | 8f788aa |
 | 190 | P1-1 (high): the extension's auto-capture stores every partial state of a streaming reply as its own memory | docs/dforge/plans/2026-11-20-audit-remaining.md | A5 (Task 65) | doing | - |
 | 191 | P1-2 (high): pull requests can run code on the self-hosted LAN runner; check the fork-approval setting | docs/dforge/plans/2026-11-20-audit-remaining.md | A6 (Task 4) | done | f0b79c0 |
 | 192 | P1-3: a cancelled tag job still lets github-release create the tag on master's tip | docs/dforge/plans/2026-11-20-audit-remaining.md | A49 (Task 66) | doing | - |
