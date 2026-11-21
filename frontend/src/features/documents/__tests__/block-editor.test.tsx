@@ -14,11 +14,23 @@ const remove = vi.fn()
 const retry = vi.fn()
 const discard = vi.fn()
 
+// Each mock is called as (value, { onSuccess, onError }) and its write settles
+// through the callback it invokes; one that invokes none never settles.
+const asAsync =
+  (
+    fn: (
+      value: unknown,
+      options: { onSuccess: (value?: unknown) => void; onError: (error: unknown) => void },
+    ) => unknown,
+  ) =>
+  (value: unknown): Promise<unknown> =>
+    new Promise((onSuccess, onError) => fn(value, { onSuccess, onError }))
+
 vi.mock("@/hooks/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/api")>()),
-  useBlockUpdate: () => ({ mutate: update }),
-  useBlockInsert: () => ({ mutate: insert }),
-  useBlockDelete: () => ({ mutate: remove }),
+  useBlockUpdate: () => ({ mutateAsync: asAsync(update) }),
+  useBlockInsert: () => ({ mutateAsync: asAsync(insert) }),
+  useBlockDelete: () => ({ mutateAsync: asAsync(remove) }),
   useBlockWriteRecovery: () => ({ retry, discard }),
 }))
 
@@ -378,7 +390,7 @@ describe("BlockEditor", () => {
       expect.objectContaining({ parentId: "parent", afterBlockId: "b1" }),
       expect.anything(),
     )
-    expect(screen.getByRole("alert")).toHaveTextContent("refused")
+    expect(await screen.findByRole("alert")).toHaveTextContent("refused")
   })
 
   it("announces delete failure", async () => {
@@ -394,7 +406,7 @@ describe("BlockEditor", () => {
     await userEvent.click(screen.getByRole("button"))
     fireEvent.keyDown(screen.getByRole("textbox"), { key: "Backspace" })
     fireEvent.keyDown(screen.getByRole("textbox"), { key: "Backspace" })
-    expect(screen.getByRole("alert")).toHaveTextContent("delete refused")
+    expect(await screen.findByRole("alert")).toHaveTextContent("delete refused")
   })
   it("edits the block's SOURCE, not its marker-stripped text", async () => {
     render(
@@ -554,7 +566,7 @@ describe("BlockEditor", () => {
     expect(screen.getByRole("textbox")).toHaveValue("body typed")
     expect(screen.getByRole("status")).toHaveTextContent(/saving/i)
 
-    act(() => confirm())
+    await act(async () => confirm())
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument()
   })
 

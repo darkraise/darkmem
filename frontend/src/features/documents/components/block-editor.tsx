@@ -214,20 +214,25 @@ export function BlockEditor({
       return next
     })
 
-  const mutationOptions = (
+  // Settled through each write's own promise: per-call mutate callbacks run
+  // only for an observer's latest mutate, so a second block's write would
+  // leave the first block's state unsettled.
+  const settle = (
+    write: Promise<unknown>,
     block: BlockRow,
     kind: HeldWrite["kind"],
     draftText: string | null = null,
-  ) => ({
-    onSuccess: () => release(block.block_id, kind),
-    onError: (error: unknown) =>
-      hold(block.block_id, {
-        kind,
-        draft: draftText,
-        message: failureMessage(error),
-        busy: false,
-      }),
-  })
+  ) =>
+    write.then(
+      () => release(block.block_id, kind),
+      (error: unknown) =>
+        hold(block.block_id, {
+          kind,
+          draft: draftText,
+          message: failureMessage(error),
+          busy: false,
+        }),
+    )
 
   const updateFor = (block: BlockRow, source: string) => {
     const { type, text, properties } = promote(
@@ -259,9 +264,11 @@ export function BlockEditor({
       message: null,
       busy: true,
     })
-    update.mutate(
-      updateFor(block, next),
-      mutationOptions(block, "update", next),
+    void settle(
+      update.mutateAsync(updateFor(block, next)),
+      block,
+      "update",
+      next,
     )
   }
 
@@ -343,14 +350,15 @@ export function BlockEditor({
                 } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                   e.preventDefault()
                   commit(block)
-                  insert.mutate(
-                    {
+                  void settle(
+                    insert.mutateAsync({
                       type: "paragraph",
                       text: "",
                       afterBlockId: block.block_id,
                       parentId: block.parent_id,
-                    },
-                    mutationOptions(block, "insert"),
+                    }),
+                    block,
+                    "insert",
                   )
                 } else if (e.key === "Backspace" && draft === "") {
                   e.preventDefault()
@@ -361,9 +369,10 @@ export function BlockEditor({
                   discarding.current = true
                   setArmedDelete(null)
                   setFocused(null)
-                  remove.mutate(
-                    { blockId: block.block_id },
-                    mutationOptions(block, "delete"),
+                  void settle(
+                    remove.mutateAsync({ blockId: block.block_id }),
+                    block,
+                    "delete",
                   )
                 }
               }}
