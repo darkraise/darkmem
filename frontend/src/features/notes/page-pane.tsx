@@ -42,6 +42,7 @@ export function PagePane({
   const qc = useQueryClient()
   const rename = usePageRename()
   const [title, setTitle] = useState(page.title ?? "")
+  const [titleRefused, setTitleRefused] = useState(false)
   const [generation, setGeneration] = useState(0)
   const field = useRef<HTMLInputElement | null>(null)
   const sync = usePageSync(page, generation)
@@ -50,6 +51,7 @@ export function PagePane({
   // to follow the page it is showing.
   useEffect(() => {
     setTitle(page.title ?? "")
+    setTitleRefused(false)
   }, [page.id, page.title])
 
   useEffect(() => {
@@ -64,8 +66,11 @@ export function PagePane({
     rename.mutate(
       { pageId: page.id, title: next === "" ? null : next },
       {
-        onError: (error) =>
-          toast.error(`Could not rename the page — ${error.message}`),
+        onSuccess: () => setTitleRefused(false),
+        onError: (error) => {
+          setTitleRefused(true)
+          toast.error(`Could not rename the page — ${error.message}`)
+        },
       },
     )
   }
@@ -109,7 +114,11 @@ export function PagePane({
             }
           }}
         />
-        {label ? (
+        {titleRefused ? (
+          <span role="status" className="text-destructive-text shrink-0 text-xs">
+            Title not saved
+          </span>
+        ) : label ? (
           <span className="text-muted-foreground shrink-0 text-xs">
             {label}
           </span>

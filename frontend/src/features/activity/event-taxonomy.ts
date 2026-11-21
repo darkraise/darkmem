@@ -120,13 +120,9 @@ const EVENT_TYPES_WITHOUT_TAB = new Set<string>([
   // exclusion rather than a sixth tab because the surface doc 13 names
   // already exists.
   //
-  // Of the two, only `inject_curbed` has a producer: PUT
-  // /api/v1/distribution/policy journals the human turning the curb on.
-  // `record_inject` has NO caller -- T3.10 owns the content fill and is held
-  // by G-D -- so no `inject` row exists anywhere yet, and nothing will render
-  // here until it does. `backend/app/services/inject_journal.py` states the
-  // same split at the writer; this comment claimed T3.12 "made both types
-  // live", which was never true of `inject`.
+  // Neither has a producer any more: the curb writer and the inject journal
+  // were removed, and both types stay in the vocabulary only so rows an
+  // older build journalled still classify.
   "inject",
   "inject_curbed",
   // The work-log lane's lifecycle (spec 2026-09-23). Operational state: a

@@ -294,6 +294,11 @@ export function BlockEditor({
       </p>
       {blocks.map((block) => {
         const write = held[block.block_id]
+        // A refused write pauses the document's queue, so every other
+        // pending write is waiting, not being sent.
+        const waiting = Object.entries(held).some(
+          ([id, other]) => id !== block.block_id && other.message !== null,
+        )
         return (
         <div
           key={block.block_id}
@@ -404,7 +409,9 @@ export function BlockEditor({
           ) : null}
           {write?.busy && write.message === null ? (
             <p role="status" className="text-muted-foreground text-xs">
-              Saving…
+              {waiting
+                ? "Waiting — not sent until the unsaved edit is retried or discarded"
+                : "Saving…"}
             </p>
           ) : null}
           {write?.message != null ? (

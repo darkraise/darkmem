@@ -106,6 +106,18 @@ describe("PagePane", () => {
     expect(field).toHaveValue("Renamed")
   })
 
+  it("a refused rename says the title is not saved, not the body's Saved", async () => {
+    binding.status = { kind: "saved" }
+    vi.mocked(apiFetch).mockRejectedValueOnce(new Error("Internal Server Error"))
+    render(<PagePane page={PAGE} autoFocusTitle={false} />, { wrapper })
+    expect(screen.getByText("Saved")).toBeInTheDocument()
+    const field = screen.getByLabelText("Page title")
+    fireEvent.change(field, { target: { value: "Renamed" } })
+    fireEvent.blur(field)
+    expect(await screen.findByText("Title not saved")).toBeInTheDocument()
+    expect(screen.queryByText("Saved")).not.toBeInTheDocument()
+  })
+
   it("focuses the title when asked", () => {
     render(<PagePane page={PAGE} autoFocusTitle />, { wrapper })
     expect(screen.getByLabelText("Page title")).toHaveFocus()

@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react"
 import { X } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
 import { cn } from "darkraise-ui/lib"
@@ -34,6 +35,9 @@ interface GraphDetailPanelProps {
   visibleEntities?: GraphEntity[]
   onNavigateToMemory?: (memoryId: string) => void
   colorMode: ColorMode
+  /** Moves focus to the close button on mount: the button that opened the
+   *  panel unmounts as it opens, which would otherwise drop focus to body. */
+  focusOnOpen?: boolean
 }
 
 export function GraphDetailPanel({
@@ -50,7 +54,14 @@ export function GraphDetailPanel({
   visibleEntities,
   onNavigateToMemory,
   colorMode,
+  focusOnOpen = false,
 }: GraphDetailPanelProps) {
+  const closeButton = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (focusOnOpen) closeButton.current?.focus()
+    // Mount only: a later selection change must not pull focus off the canvas.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const panelTitle = selectedEntity
     ? "Entity Detail"
     : selectedMemory
@@ -62,6 +73,7 @@ export function GraphDetailPanel({
       <div className="border-border flex shrink-0 items-center justify-between border-b px-4 pt-3 pb-2">
         <span className="text-sm font-medium">{panelTitle}</span>
         <Button
+          ref={closeButton}
           variant="ghost"
           size="icon"
           className="text-muted-foreground hover:text-foreground rounded-sm p-1"

@@ -103,6 +103,7 @@ export function RealMemoryGraphPage() {
     null,
   )
   const splitRef = useRef<HTMLDivElement>(null)
+  const [panelFocus, setPanelFocus] = useState<"panel" | "opener" | null>(null)
   const [splitWidth, setSplitWidth] = useState(0)
 
   const { width: panelWidth, floating: panelFloating } = panelLayout(
@@ -375,7 +376,16 @@ export function RealMemoryGraphPage() {
                     aria-label="Show details panel"
                     title="Show details panel"
                     className="bg-card/80 pointer-events-auto h-8 w-8 rounded-md border shadow-lg backdrop-blur-sm"
-                    onClick={() => selection.setShowPanel(true)}
+                    ref={(button) => {
+                      if (button && panelFocus === "opener") {
+                        button.focus()
+                        setPanelFocus(null)
+                      }
+                    }}
+                    onClick={() => {
+                      setPanelFocus("panel")
+                      selection.setShowPanel(true)
+                    }}
                   >
                     <PanelRightClose className="h-4 w-4" />
                   </Button>
@@ -522,7 +532,9 @@ export function RealMemoryGraphPage() {
               memories={filters.filteredMemories}
               clusterNames={data?.cluster_names ?? {}}
               visibleEdges={filters.filteredEdges}
+              focusOnOpen={panelFocus === "panel"}
               onClose={() => {
+                setPanelFocus("opener")
                 selection.setShowPanel(false)
                 selection.setSelectedNodeId(null)
                 selection.setSelectedEntityId(null)

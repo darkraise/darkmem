@@ -583,6 +583,31 @@ describe("BlockEditor", () => {
     update.mockReset()
   })
 
+  it("a write queued behind a refusal says it is waiting, not saving", async () => {
+    update
+      .mockImplementationOnce((_value, options) =>
+        options.onError(new ApiError("stale", 409, undefined, "hash_conflict")),
+      )
+      .mockImplementationOnce(() => {})
+    render(
+      <BlockEditor
+        documentId="d1"
+        blocks={[block({}), block({ block_id: "b2", text: "second", order_index: 1 })]}
+      />,
+    )
+    await userEvent.click(screen.getByRole("button", { name: /body/ }))
+    await userEvent.type(screen.getByRole("textbox"), " typed")
+    await userEvent.tab()
+    expect(screen.getByRole("alert")).toHaveTextContent("stale")
+
+    await userEvent.click(screen.getByRole("button", { name: /second/ }))
+    await userEvent.keyboard(" more")
+    await userEvent.tab()
+    expect(screen.getByText(/^Waiting — not sent until/)).toBeInTheDocument()
+    expect(screen.queryByText("Saving…")).not.toBeInTheDocument()
+    update.mockReset()
+  })
+
   it("a failed retry keeps the text and says why", async () => {
     update.mockImplementationOnce((_value, options) =>
       options.onError(new ApiError("stale", 409, undefined, "hash_conflict")),

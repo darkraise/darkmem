@@ -290,6 +290,29 @@ describe("memory graph in 3D", () => {
   })
 })
 
+describe("memory graph details panel", () => {
+  beforeEach(() => {
+    withSizedContainers()
+    mockUseUnifiedGraph.mockReturnValue({ data: DATA, isLoading: false })
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it("takes focus when opened from its button and gives it back on close", () => {
+    render(<RealMemoryGraphPage />, { wrapper })
+    const close = screen.queryByRole("button", { name: "Close details" })
+    if (close) fireEvent.click(close)
+    const opener = screen.getByRole("button", { name: "Show details panel" })
+    if (close) expect(opener).toHaveFocus()
+    fireEvent.click(opener)
+    const closeAgain = screen.getByRole("button", { name: "Close details" })
+    expect(closeAgain).toHaveFocus()
+    fireEvent.click(closeAgain)
+    expect(screen.getByRole("button", { name: "Show details panel" })).toHaveFocus()
+  })
+})
+
 function Renderer2D({ colorMode, hullMode }: { colorMode: ColorMode; hullMode: HullMode }) {
   const { tokens, palette } = useMemoryGraphTheme()
   const graph = syntheticGraph
