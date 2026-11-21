@@ -1798,3 +1798,87 @@ async def test_a23_two_subjects_with_one_name_and_different_types_get_articles_f
         )
     ).scalars().all()
     assert rows == ["saturn::concept", "saturn::tool"]
+
+
+# ------------------------------------------------------------------ A33 / A34
+
+from tests.test_code_pipeline_incremental import (  # noqa: E402,F401 - fixtures and helpers
+    _chunk_files,
+    _commit,
+    _index,
+    _repo,
+    _symbols,
+    embedder,
+)
+
+
+@pytest.mark.asyncio
+async def test_a33_a_file_whose_embed_failed_is_embedded_by_the_next_run(session, tmp_path, embedder):
+    repo = await _repo(session, tmp_path, {"one.py": "def first():\n    return 1\n", "two.py": "def second():\n    return 1\n"})
+    await _index(session, repo, embedder)
+    assert await _chunk_files(session, repo.id, embedder.fingerprint) == {"one.py", "two.py"}
+
+    embedder.fail_marker = "BREAKS_EMBED"
+    _commit(tmp_path, {"one.py": "def first():\n    return 'BREAKS_EMBED'\n"})
+    await _index(session, repo, embedder)
+    assert "one.py" not in await _chunk_files(session, repo.id, embedder.fingerprint)
+
+    embedder.fail_marker = None
+    _commit(tmp_path, {"two.py": "def second():\n    return 2\n"})
+    await _index(session, repo, embedder)
+    assert await _chunk_files(session, repo.id, embedder.fingerprint) == {"one.py", "two.py"}
+
+
+@pytest.mark.asyncio
+async def test_a33_an_unchanged_dependent_is_not_re_embedded(session, tmp_path, embedder):
+    repo = await _repo(
+        session,
+        tmp_path,
+        {
+            "lib.py": "def helper():\n    return 'LIB_V1'\n",
+            "user.py": "from lib import helper\n\ndef use_it():\n    return helper() + 'DEPENDENT_BODY'\n",
+        },
+    )
+    await _index(session, repo, embedder)
+    embedder.texts.clear()
+    _commit(tmp_path, {"lib.py": "def helper():\n    return 'LIB_V2'\n"})
+    await _index(session, repo, embedder)
+    assert any("LIB_V2" in t for t in embedder.texts)
+    assert not any("DEPENDENT_BODY" in t for t in embedder.texts)
+
+
+@pytest.mark.asyncio
+async def test_a34_an_incremental_run_handles_a_changed_non_ascii_path(session, tmp_path):
+    path = "src/é.py"
+    repo = await _repo(session, tmp_path, {path: "def before_change():\n    return 1\n"})
+    await _index(session, repo)
+    assert await _symbols(session, repo.id, path) == {"before_change"}
+    _commit(tmp_path, {path: "def after_change():\n    return 2\n"})
+    await _index(session, repo)
+    assert await _symbols(session, repo.id, path) == {"after_change"}
+
+
+@pytest.mark.asyncio
+async def test_a34_a_subclass_of_a_base_in_an_unchanged_file_keeps_its_extends_edge(session, tmp_path):
+    from sqlalchemy import text
+
+    repo = await _repo(
+        session,
+        tmp_path,
+        {
+            "parent.py": "class Parent:\n    def run(self):\n        return 1\n",
+            "child.py": "from parent import Parent\n\nclass Child(Parent):\n    pass\n",
+        },
+    )
+    await _index(session, repo)
+    _commit(tmp_path, {"child.py": "from parent import Parent\n\nclass Child(Parent):\n    def more(self):\n        return 2\n"})
+    await _index(session, repo)
+    targets = set(
+        (
+            await session.execute(
+                text("SELECT target_key FROM code_edges WHERE repo_id = :r AND edge_type='extends' AND source_key='Child::child.py'"),
+                {"r": repo.id},
+            )
+        ).scalars().all()
+    )
+    assert targets == {"Parent::parent.py"}
