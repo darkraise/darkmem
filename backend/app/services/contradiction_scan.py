@@ -20,9 +20,9 @@ Neither is a superset of the other, so the pool is interleaved rather than
 concatenated: a per-fact cap that drained the first arm before looking at the
 second would silently degrade to a same-endpoint-only generator on any fact
 with more than ``top_k`` structural neighbours, and nothing would report it.
-There is deliberately **no vector arm** — ``triple_embeddings`` stays
-template-only until a *measured* undercount of this generator justifies its
-writer (doc 04 §5.3, doc 08 §5.3), and that measurement is a separate task's.
+There is deliberately **no vector arm**: the registry has no fact-vector
+family, and adding one waits on a *measured* undercount of this generator
+(doc 04 §5.3, doc 08 §5.3).
 
 **The overlap filter is a pushdown, not a post-filter.** Disjoint validity
 windows are legitimate succession (doc 08 §3.1), and scoring them manufactures

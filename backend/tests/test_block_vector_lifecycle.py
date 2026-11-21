@@ -185,7 +185,7 @@ async def test_unembeddable_block_does_not_poison_the_sweep(session):
 
 FAMILY_MODULES = (
     "block_embeddings", "worklog_embeddings", "relation_embeddings",
-    "entity_anchoring", "triple_embeddings",
+    "entity_anchoring",
 )
 
 

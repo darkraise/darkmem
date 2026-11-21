@@ -3,9 +3,8 @@
 Doc 16 §3 makes block embedding part of the document ingestion variant: parse,
 strip-before-rewrite, then embed each block into the per-fingerprint
 ``block_embeddings__<slug>`` partition. This module is that write, following
-the shape ``relation_embeddings.embed_relations`` and
-``triple_embeddings.embed_facts`` already established for the sibling
-target-new families — a batch embed call, a register-before-insert partition
+the shape ``relation_embeddings.embed_relations`` already established for
+a sibling target-new family — a batch embed call, a register-before-insert partition
 guarantee, and an upsert keyed on ``(block_id, fingerprint)``.
 
 **Register-before-insert is not advisory.** ``ensure_registered`` runs before
@@ -42,8 +41,7 @@ Wiring this into the ingestion hot path (or a refresh job, if that turns out
 to be the right shape) is downstream work, not this task's.
 
 **This may commit the caller's transaction**, for the same reason
-``triple_embeddings.embed_facts`` and ``relation_embeddings.embed_relations``
-both record: first contact with an unknown fingerprint runs the child-table
+``relation_embeddings.embed_relations`` records: first contact with an unknown fingerprint runs the child-table
 DDL through ``embedder_registry.ensure_registered``, which commits on this session so
 the partition's inline ``REFERENCES blocks`` FK can take a lock that would
 otherwise conflict with row locks the caller already holds on its own

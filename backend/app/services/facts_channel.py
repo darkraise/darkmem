@@ -26,12 +26,10 @@ and the three retrieval indexes are partial on.
 **Keyword-only, and it says so.** This channel has no semantic modality. The
 reason changed on 2026-08-05 and the distinction matters to a reader deciding
 whether to add one: doc 04 §5.3's ``triple_embeddings`` writer was deferred
-until then, so no vector existed to search; T2.33 landed it
-(``app.services.triple_embeddings``) on T2.52's measured shortlist miss rate,
-and the partition can now hold fact vectors. What is still absent is a *caller*
-populating it and an arm here reading it — neither is T2.33's, which is terminal
-by design. So this stays keyword-only, but it is now a wiring gap rather than a
-missing substrate.
+until then, so no vector existed to search; T2.33 landed it on T2.52's
+measured shortlist miss rate, but no caller ever populated it and no arm read
+it, so the writer and its partition family were removed. A semantic arm here
+needs a fact-vector family, its writer and its reader together.
 The trace therefore reports the semantic arm as present-and-not-run
 (:meth:`FactChannelTrace.channel_status`) rather than omitting it: an absent
 channel key is exactly the silent gap doc 07 §2 forbids, while ``ran=False``

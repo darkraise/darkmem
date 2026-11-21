@@ -1,11 +1,9 @@
-"""The ten per-fingerprint parents exist as registry entries, not as DDL.
+"""The nine per-fingerprint parents exist as registry entries, not as DDL.
 
 Inventory §6: doc 19 §2 rejects expressing child tables as static migrations
-because their shape is parameterised by fingerprint. The four target-new
-families land here as templates; T0.13 labels them inert and T0.14's
-boot-time reconciliation creates them per registered fingerprint. Three are
-still inert — ``triple_embeddings`` gained its writer in T2.33 — but the
-template contract below is the same either way.
+because their shape is parameterised by fingerprint. The target-new families
+land here as templates, and T0.14's boot-time reconciliation creates them per
+registered fingerprint.
 """
 from __future__ import annotations
 
@@ -22,7 +20,6 @@ EXPECTED_PARENTS = {
     "page_embeddings",
     "relation_embeddings",
     "article_embeddings",
-    "triple_embeddings",
     "worklog_embeddings",
 }
 
@@ -57,14 +54,6 @@ def test_every_template_is_parameterised_plain_sql():
         assert "{name}" in tmpl, parent
         assert "{dims}" in tmpl, parent
         assert tmpl.lstrip().upper().startswith("CREATE TABLE IF NOT EXISTS"), parent
-
-
-def test_triple_embeddings_does_not_cascade():
-    # Facts are invalidate-not-delete (doc 04 §5.3/§8.3): a cascade would
-    # destroy the history the fact layer exists to keep.
-    tmpl = _TABLE_TEMPLATES["triple_embeddings"]
-    assert "knowledge_triples(id)" in tmpl
-    assert "ON DELETE CASCADE" not in tmpl
 
 
 def test_relation_embeddings_cascades_on_the_real_relation_id():

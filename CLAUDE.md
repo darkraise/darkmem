@@ -509,7 +509,7 @@ pgvector needs a fixed-dim `vector(N)`, so each fingerprint gets one child
 table per family in `embedder_registry._TABLE_TEMPLATES`: `memory_embeddings`,
 `entity_embeddings`, `code_chunk_embeddings`, `entity_embedding_cache`,
 `block_embeddings`, `page_embeddings`, `relation_embeddings`,
-`article_embeddings`, `triple_embeddings`, `worklog_embeddings` (each
+`article_embeddings`, `worklog_embeddings` (each
 `<family>__<slug>`). `worklog_embeddings` alone gets no HNSW index
 (`_EXACT_SCAN_PARENTS`): work-log search scans one project's rows exactly,
 through a `project` column copied onto each vector row. The

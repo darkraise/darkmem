@@ -76,14 +76,11 @@ _TABLE_TEMPLATES: dict[str, str] = {
         " PRIMARY KEY (name_lower, fingerprint)"
         ")"
     ),
-    # ── The four target-new families (doc 04 §5.3), landed as templates by
-    # T0.13. Three are still inert. `article_embeddings` is **no longer** —
-    # T3.23 shipped its writer (`article_synthesis.write_article_embedding`)
-    # and its reader (`articles_channel`), and it was the last of the four
-    # *mainline* templates to gain one: `block_embeddings` waits for the EH1
-    # documents horizon, `relation_embeddings` has T2.49's refresh job, and
-    # `triple_embeddings` may never ship at all (its writer is deferred behind
-    # a measured pg_trgm-on-fact undercount, T2.33).
+    # ── The target-new families (doc 04 §5.3), landed as templates by T0.13.
+    # `article_embeddings` has its writer (`article_synthesis.write_article_embedding`)
+    # and its reader (`articles_channel`), `block_embeddings` its writer in
+    # `block_embeddings`, `relation_embeddings` T2.49's refresh job. There is
+    # no fact family: no reader ever searched fact vectors.
     "block_embeddings": (
         "CREATE TABLE IF NOT EXISTS {name} ("
         " block_id UUID NOT NULL REFERENCES blocks(id) ON DELETE CASCADE,"
@@ -133,19 +130,6 @@ _TABLE_TEMPLATES: dict[str, str] = {
         " PRIMARY KEY (article_id, fingerprint)"
         ")"
     ),
-    # Template ships now; the WRITER is deferred behind a measured
-    # pg_trgm-on-fact undercount (T2.33) and may never ship. Deliberately NO
-    # cascade: facts are invalidate-not-delete, so a cascade would destroy
-    # the history the fact layer exists to keep.
-    "triple_embeddings": (
-        "CREATE TABLE IF NOT EXISTS {name} ("
-        " fact_id UUID NOT NULL REFERENCES knowledge_triples(id),"
-        " fingerprint TEXT NOT NULL REFERENCES embedders(fingerprint),"
-        " embedding vector({dims}) NOT NULL,"
-        " created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),"
-        " PRIMARY KEY (fact_id, fingerprint)"
-        ")"
-    ),
     # Work-log entries (spec 2026-09-23 §1). `project` is copied onto the row
     # so one project's vectors are found through a btree index and scanned
     # exactly; `_EXACT_SCAN_PARENTS` records why there is no HNSW index.
@@ -188,9 +172,6 @@ _AUX_INDEXES: dict[str, list[str]] = {
     ],
     "article_embeddings": [
         "CREATE INDEX IF NOT EXISTS ix_{name}_article_id ON {name} (article_id)",
-    ],
-    "triple_embeddings": [
-        "CREATE INDEX IF NOT EXISTS ix_{name}_fact_id ON {name} (fact_id)",
     ],
     "worklog_embeddings": [
         "CREATE INDEX IF NOT EXISTS ix_{name}_project ON {name} (project)",

@@ -1,8 +1,8 @@
 """The `block_embeddings` writer — first writer to T0.13's inert template (TH1.05).
 
 Three properties carry this module, mirroring the discipline
-`test_relation_embeddings.py` and `test_triple_embeddings.py` already
-established for the sibling target-new families.
+`test_relation_embeddings.py` already established for a sibling target-new
+family.
 
 **Register-before-insert is drilled, not merely exercised.** A happy-path test
 that reaches a live table after registration proves the writer works when the

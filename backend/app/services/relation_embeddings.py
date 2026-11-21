@@ -156,10 +156,9 @@ async def embed_relations(
     rotation arm depends on that: ordering by a last-touched timestamp would
     make the rotation re-read whatever it just wrote and never advance.
 
-    **This may commit the caller's transaction**, for the reason
-    `triple_embeddings.embed_facts` records: first contact with an unknown
-    fingerprint runs the child-table DDL through `embedder_registry.register`,
-    which commits on this session.
+    **This may commit the caller's transaction**: first contact with an
+    unknown fingerprint runs the child-table DDL through
+    `embedder_registry.register`, which commits on this session.
     """
     ids = [str(rid) for rid in relation_ids]
     if not ids:
