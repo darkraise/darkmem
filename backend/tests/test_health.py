@@ -203,3 +203,17 @@ async def test_health_reports_failed_at_boot(setup_database, client, monkeypatch
     monkeypatch.setattr(settings, "read_only", True)
     async with initialised(), booted(monkeypatch, llm_fails=False):
         assert await state() == "read_only"
+
+
+@pytest.mark.asyncio
+async def test_health_does_not_read_an_unreachable_database_as_unconfigured(client, monkeypatch):
+    import app.database
+
+    def unreachable():
+        raise ConnectionRefusedError("database unreachable")
+
+    monkeypatch.setattr(app.database, "async_session_factory", unreachable)
+    response = await client.get("/health")
+
+    assert response.status_code == 503
+    assert response.json()["pipeline_state"] == "unknown"

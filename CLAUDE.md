@@ -409,7 +409,8 @@ rows are settled, so the run records `error` instead of `ok`; a tick with
 any success reports its counts. A boot whose LLM setup raises leaves no
 pipeline: captures still queue, the flush records `skipped_reason` once,
 `GET /health` answers 200 with `pipeline_state: failed_at_boot` (otherwise
-`ok`, `not_configured` before setup or `read_only`), and the first
+`ok`, `not_configured` before setup, `read_only`, or `unknown` while the
+database cannot be read), and the first
 configuration save that installs an orchestrator builds the pipeline, so the
 queue drains on the next tick.
 

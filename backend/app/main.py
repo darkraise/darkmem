@@ -1198,20 +1198,24 @@ async def health():
             return False
         return kind == "local"
 
-    async def check_initialised() -> bool:
+    async def check_initialised() -> bool | None:
+        """Whether setup has run; None when the database cannot say."""
         try:
             async with async_session_factory() as session:
                 return (await session.execute(text(
                     "SELECT 1 FROM config WHERE key = 'admin_password_hash'"
                 ))).scalar_one_or_none() is not None
         except Exception:
-            return False
+            return None
 
     classifier_unavailable = await check_classifier_unavailable()
 
+    initialised = None if settings.read_only else await check_initialised()
     if settings.read_only:
         pipeline_state = "read_only"
-    elif not await check_initialised():
+    elif initialised is None:
+        pipeline_state = "unknown"
+    elif not initialised:
         pipeline_state = "not_configured"
     elif pipeline is None:
         pipeline_state = "failed_at_boot"
