@@ -640,3 +640,243 @@ async def test_a19_health_flags_a_stored_local_row_without_torch(client, setup_d
     finally:
         app.state.llm = previous
         await _clear_classification_row(factory)
+
+
+# ------------------------------------------------------------------ A24
+
+
+@pytest.mark.asyncio
+async def test_a24_unqualified_contradiction_role_scan_tick_drains_nothing_and_journals_nothing(session):
+    from sqlalchemy import text
+
+    from tests.test_contradiction_scan import StubLLM, _enqueue, _fact, _run, _source
+
+    for i in range(3):
+        fid = await _fact(session, subject=f"qa-svc-{i}", obj="postgres", fact=f"qa-svc-{i} stores data in postgres")
+        await _source(session, fid, f"qa-sess-{i}")
+        for _ in range(3):
+            await _enqueue(session, fid)
+
+    async def counts():
+        pending = (await session.execute(text("SELECT count(*) FROM events WHERE event_type='sources_changed'"))).scalar_one()
+        total = (await session.execute(text("SELECT count(*) FROM events"))).scalar_one()
+        cfg = (await session.execute(text("SELECT count(*) FROM config WHERE key='contradiction_scan_state'"))).scalar_one()
+        return pending, total, cfg
+
+    before = await counts()
+    llm = StubLLM([])
+    outcome = await _run(session, llm)
+    after = await counts()
+    assert after == before, "the tick changed events or the watermark row"
+    assert llm.calls == []
+    assert outcome.events_scanned == 0
+    assert outcome.watermark_advanced is False
+    scanned = (await session.execute(text("SELECT count(*) FROM events WHERE event_type='contradiction_scanned'"))).scalar_one()
+    assert scanned == 0
+
+
+# ------------------------------------------------------------------ A27
+
+import uuid
+
+
+@pytest.fixture
+def _stub_embedder_for_documents():
+    from app.main import app
+    from tests.test_document_door import FINGERPRINT, StubEmbedder
+    from app.services.embedder_registry import embedder_registry
+
+    embedder_registry.forget(FINGERPRINT)
+    previous = getattr(app.state, "llm", None)
+    app.state.llm = StubEmbedder()
+    yield
+    app.state.llm = previous
+    embedder_registry.forget(FINGERPRINT)
+
+
+async def _put_doc(client, auth_headers, content, uri="qa/a.md"):
+    r = await client.post(
+        "/api/v1/documents", json={"project": "qa27", "uri": uri, "content": content}, headers=auth_headers
+    )
+    assert r.status_code in (200, 201), r.text
+    return r.json()["document_id"]
+
+
+async def _set_history(session, doc_id, ages):
+    from sqlalchemy import text
+
+    await session.execute(text("DELETE FROM document_revisions WHERE document_id = CAST(:d AS uuid)"), {"d": doc_id})
+    ids = []
+    n = len(ages)
+    for pos, age in enumerate(ages):
+        rid = str(uuid.uuid4())
+        ids.append(rid)
+        await session.execute(
+            text(
+                "INSERT INTO document_revisions (id, document_id, content, content_hash, created_at) "
+                "VALUES (CAST(:i AS uuid), CAST(:d AS uuid), :c, md5(:c), now() - make_interval(days => :age) - make_interval(secs => :back))"
+            ),
+            {"i": rid, "d": doc_id, "c": f"old {pos}", "age": age, "back": n - pos},
+        )
+    return ids
+
+
+async def _live_ids(session, doc_id):
+    from sqlalchemy import text
+
+    rows = await session.execute(
+        text("SELECT CAST(id AS text) FROM document_revisions WHERE document_id = CAST(:d AS uuid) ORDER BY created_at, id"),
+        {"d": doc_id},
+    )
+    return [r[0] for r in rows]
+
+
+@pytest.mark.asyncio
+async def test_a27_prune_removes_exactly_the_old_beyond_fifty_and_journals_first(
+    client, auth_headers, session, _stub_embedder_for_documents
+):
+    from sqlalchemy import text
+
+    doc = await _put_doc(client, auth_headers, "# A\n\nFirst.\n")
+    other = await _put_doc(client, auth_headers, "# B\n\nFirst.\n", uri="qa/b.md")
+    # 15 old (100d), 5 young-but-beyond-50 cannot exist without 50 newer: 15 old + 5 mid-age + 45 newest
+    ages = [100] * 15 + [10] * 50
+    ids = await _set_history(session, doc, ages)
+    other_ids = await _set_history(session, other, [100] * 70)
+    before_other = await _live_ids(session, other)
+
+    r = await client.post(
+        "/api/v1/documents", json={"project": "qa27", "uri": "qa/a.md", "content": "# A\n\nSecond.\n"}, headers=auth_headers
+    )
+    assert r.status_code in (200, 201)
+    live = await _live_ids(session, doc)
+    # the 15 old ones are beyond the newest 50 (50 young + new one => 51 newer) and older than 90 days
+    assert set(ids[:15]).isdisjoint(live)
+    assert set(ids[15:]) <= set(live)
+    assert len(live) == 51
+    assert await _live_ids(session, other) == before_other, "another document's revisions were touched"
+    events = (
+        await session.execute(
+            text("SELECT payload FROM events WHERE event_type='document_revisions_pruned' AND object_id=CAST(:d AS uuid)"),
+            {"d": doc},
+        )
+    ).all()
+    assert [e[0] for e in events] == [{"pruned": 15}]
+
+
+@pytest.mark.asyncio
+async def test_a27_old_revisions_inside_the_newest_fifty_stay(client, auth_headers, session, _stub_embedder_for_documents):
+    doc = await _put_doc(client, auth_headers, "# A\n\nFirst.\n")
+    ids = await _set_history(session, doc, [400] * 30)
+    r = await client.post(
+        "/api/v1/documents", json={"project": "qa27", "uri": "qa/a.md", "content": "# A\n\nThird.\n"}, headers=auth_headers
+    )
+    assert r.status_code in (200, 201)
+    assert set(ids) <= set(await _live_ids(session, doc))
+
+
+@pytest.mark.asyncio
+async def test_a27_a_prune_whose_journal_row_does_not_land_is_skipped_and_the_put_succeeds(
+    client, auth_headers, session, monkeypatch, _stub_embedder_for_documents
+):
+    import app.services.document_ingest as ingest
+
+    real = ingest.record_event
+
+    async def refuse(session_, *, event_type, **kw):
+        if event_type == "document_revisions_pruned":
+            return False
+        return await real(session_, event_type=event_type, **kw)
+
+    monkeypatch.setattr(ingest, "record_event", refuse)
+    doc = await _put_doc(client, auth_headers, "# A\n\nFirst.\n")
+    await _set_history(session, doc, [100] * 15 + [10] * 50)
+    r = await client.post(
+        "/api/v1/documents", json={"project": "qa27", "uri": "qa/a.md", "content": "# A\n\nSecond.\n"}, headers=auth_headers
+    )
+    assert r.status_code in (200, 201), r.text
+    assert len(await _live_ids(session, doc)) == 66
+
+
+@pytest.mark.asyncio
+async def test_a27_before_cursor_naming_a_pruned_revision_answers_404(
+    client, auth_headers, session, _stub_embedder_for_documents
+):
+    doc = await _put_doc(client, auth_headers, "# A\n\nFirst.\n")
+    ids = await _set_history(session, doc, [100] * 15 + [10] * 50)
+    await client.post(
+        "/api/v1/documents", json={"project": "qa27", "uri": "qa/a.md", "content": "# A\n\nSecond.\n"}, headers=auth_headers
+    )
+    assert ids[0] not in await _live_ids(session, doc)
+    r = await client.get(f"/api/v1/documents/{doc}/revisions", params={"before": ids[0]}, headers=auth_headers)
+    assert r.status_code == 404
+
+
+# ------------------------------------------------------------------ A31 / A32
+
+
+@pytest.mark.asyncio
+async def test_a31_a_boot_whose_llm_setup_raises_still_reconciles_partitions_and_health_says_failed_at_boot(
+    setup_database, client, monkeypatch
+):
+    from tests.test_boot_reconciliation import _committed_factory, _drop_far_partitions, _event_children
+    from tests.test_health import initialised
+    from tests.test_boot_reconciliation import booted
+
+    factory = _committed_factory()
+    months = await _drop_far_partitions(factory)
+    assert not set(months) <= await _event_children(factory)
+    async with initialised():
+        async with booted(monkeypatch, llm_fails=True):
+            r = await client.get("/health")
+            assert r.status_code == 200
+            assert r.json()["pipeline_state"] == "failed_at_boot"
+            assert set(months) <= await _event_children(factory)
+
+
+@pytest.mark.asyncio
+async def test_a32_partitions_three_months_ahead_with_pipeline_failure_cleanup_disabled(setup_database):
+    from sqlalchemy import delete, select
+
+    from app.models.config import Config
+    from app.services.job_registry import Job, JobConfig, JobRegistry
+    from tests.test_boot_reconciliation import _committed_factory, _drop_far_partitions, _event_children
+
+    factory = _committed_factory()
+    months = await _drop_far_partitions(factory)
+    slept: list[float] = []
+    parked = asyncio.Event()
+
+    async def tick(seconds):
+        slept.append(seconds)
+        if len(slept) > 1:
+            await parked.wait()
+
+    async def must_not_run():
+        raise AssertionError("the disabled cleanup ran")
+
+    registry = JobRegistry(factory, maintenance_sleep=tick)
+    registry.register(
+        Job(
+            key="pipeline_failure_cleanup", display_name="c", description="", default_cron="0 * * * *",
+            min_interval_seconds=60, runner=must_not_run,
+        )
+    )
+    async with factory() as s:
+        existed = (await s.execute(select(Config.key).where(Config.key == "job:pipeline_failure_cleanup"))).scalar_one_or_none() is not None
+    await registry.save_config(
+        "pipeline_failure_cleanup", JobConfig(enabled=False, cron="0 * * * *", min_interval_seconds=60, config={})
+    )
+    try:
+        await registry.start_all()
+        for _ in range(100):
+            if set(months) <= await _event_children(factory):
+                break
+            await asyncio.sleep(0.05)
+        assert set(months) <= await _event_children(factory)
+    finally:
+        await registry.stop_all()
+        if not existed:
+            async with factory() as s:
+                await s.execute(delete(Config).where(Config.key == "job:pipeline_failure_cleanup"))
+                await s.commit()
