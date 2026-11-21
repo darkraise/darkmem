@@ -111,16 +111,15 @@ def name_clusters(
                 prefix = top
 
         carried = Counter(key for mid in ids for key in terms[mid])
-        excluded = {_key(prefix)} if prefix else set()
-        if shared_project_key is not None:
-            excluded.add(shared_project_key)
+        prefix_key = _key(prefix) if prefix else ""
+        excluded = {shared_project_key} if shared_project_key is not None else set()
         scored = sorted(
             (
                 -(count / size) * math.log(1 + mean_size / df[key]),
                 key,
             )
             for key, count in carried.items()
-            if count >= 2 and key not in excluded
+            if count >= 2 and key not in excluded and not (prefix_key and key in prefix_key)
         )
 
         chosen: list[str] = []
@@ -137,4 +136,19 @@ def name_clusters(
 
         name = _join(prefix, spellings)
         names[str(cluster_id)] = name or f"Cluster {cluster_id}"
-    return names
+    return _unique(names)
+
+
+def _unique(names: dict[str, str]) -> dict[str, str]:
+    """Suffix repeated names in cluster-id order; the smallest id keeps the bare one."""
+    used: set[str] = set()
+    out: dict[str, str] = {}
+    for cluster_id in sorted(names, key=int):
+        name = names[cluster_id]
+        n = 2
+        while name in used:
+            name = f"{names[cluster_id]} {n}"
+            n += 1
+        used.add(name)
+        out[cluster_id] = name
+    return out

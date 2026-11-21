@@ -1,4 +1,5 @@
 import json
+from typing import TypedDict
 
 from pydantic import BaseModel, field_validator
 
@@ -37,3 +38,18 @@ class NeighborsResponse(BaseModel):
 class FullGraphResponse(BaseModel):
     entities: list[EntityResponse]
     relations: list[RelationResponse]
+
+
+class GraphMemoryNode(TypedDict):
+    """One memory node of ``GET /graph/unified``; ``content`` is a preview."""
+
+    id: str
+    content: str
+    content_truncated: bool
+    source: str
+    tags: list[str]
+    memory_type: str | None
+    importance: float
+    cluster: int
+    project: str | None
+    status: str | None

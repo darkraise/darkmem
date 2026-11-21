@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.memory import Memory
 from app.repositories.graph import PostgresGraphRepository
 from app.repositories.vector import EmbedderFingerprintUnresolved, MemoryFilter, PostgresVectorRepository
+from app.schemas.graph import GraphMemoryNode
 from app.services.llm import LLMOrchestrator
 from app.utils.cluster_names import name_clusters
 
@@ -21,6 +22,9 @@ logger = logging.getLogger(__name__)
 GRAPH_MEMORY_STATUSES: tuple[str, ...] = ("active",)
 
 GRAPH_MAX_NODES = 50_000
+# Labels, the page's text filter and the detail panel's first paint need only
+# this much; the panel reads the whole memory when a node says it was cut.
+NODE_PREVIEW_CHARS = 280
 GRAPH_MAX_ENTITIES = 20_000
 _RESULT_CACHE_SIZE = 4
 
@@ -142,16 +146,18 @@ class GraphService:
             limit=limit,
             filters=scope,
         )
-        memory_nodes: list[dict] = []
+        memory_nodes: list[GraphMemoryNode] = []
         clusters: dict[int, list[str]] = {}
         for p in clustered:
             payload = p.get("payload") or {}
             mid = str(p["memory_id"])
             cluster_id = p.get("cluster", -1)
             importance = p.get("importance")
+            content = payload.get("content", "") or ""
             memory_nodes.append({
                 "id": mid,
-                "content": payload.get("content", "") or "",
+                "content": content[:NODE_PREVIEW_CHARS],
+                "content_truncated": len(content) > NODE_PREVIEW_CHARS,
                 "source": payload.get("source", ""),
                 "tags": payload.get("tags", []),
                 "memory_type": payload.get("memory_type"),

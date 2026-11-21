@@ -1,4 +1,4 @@
-from app.utils.cluster_names import name_clusters
+from app.utils.cluster_names import MAX_NAME_CHARS, name_clusters
 
 
 class View:
@@ -182,3 +182,34 @@ def test_names_are_deterministic():
         reversed_dict(v.entity_terms),
     )
     assert second == first
+
+
+def test_two_clusters_never_share_a_name():
+    v = View()
+    for cluster in (7, 3):
+        for _ in range(3):
+            v.add(cluster, "alpha", ["gpu"])
+    assert v.names() == {"3": "gpu", "7": "gpu 2"}
+
+    for _ in range(3):
+        v.add(9, "alpha", ["gpu"])
+    assert v.names() == {"3": "gpu", "7": "gpu 2", "9": "gpu 3"}
+
+    long = View()
+    for cluster in (0, 1):
+        for _ in range(3):
+            long.add(cluster, "longprojectname-abcde", ["abcdefghijklmnop"])
+    for _ in range(3):
+        long.add(2, "other", ["zzz"])
+    names = long.names()
+    assert len(names["0"]) == MAX_NAME_CHARS
+    assert names["1"] == names["0"] + " 2"
+
+
+def test_term_inside_the_prefix_is_skipped():
+    v = View()
+    for _ in range(3):
+        v.add(0, "darkraise-ai-plugins", ["plugins", "routing"])
+    for _ in range(3):
+        v.add(1, "other", ["zzz"])
+    assert v.names()["0"] == "darkraise-ai-plugins · routing"
