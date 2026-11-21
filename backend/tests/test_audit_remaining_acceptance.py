@@ -2004,3 +2004,74 @@ async def test_a16_two_concurrent_phase5_writes_sharing_entities_both_commit_wit
         assert [s["graph"] for s in statuses] == ["ok", "ok"], statuses
         for i in range(2):
             assert await bed.entity_names(i) == set(names)
+
+
+# ------------------------------------------------------------------ A18
+
+from tests.test_wait_process import _pipeline as _qa18_pipeline  # noqa: E402
+
+
+@pytest.mark.asyncio
+async def test_a18_a_wait_process_capture_past_its_deadline_answers_the_ack_and_its_flush_finishes(
+    client, auth_headers, session, monkeypatch
+):
+    import app.services.memory as memory_module
+    from sqlalchemy import select, text
+
+    from app.main import app
+    from app.models.memory import MemoryBuffer
+    from app.services import wait_process
+    from app.services.embedder_registry import child_table
+    from app.services.pipeline import ProcessingPipeline, _flag_cache_reset
+    from tests.test_buffer_flush import EXTRACTION
+    from tests.test_pipeline_phase1 import FakeEmbedder
+    from app.services.buffer_flush import as_session_factory
+
+    gate = asyncio.Event()
+
+    class SlowLLM:
+        async def chat_completion(self, purpose, **kwargs):
+            await gate.wait()
+            return json.dumps(EXTRACTION)
+
+    fp = "qa18-deadline|4"
+    _flag_cache_reset()
+    pipeline = ProcessingPipeline(FakeEmbedder([fp]), as_session_factory(session))
+    pipeline.extraction.llm = SlowLLM()
+    monkeypatch.setattr(memory_module, "BUFFER_WAIT_TIMEOUT_SECONDS", 0.4)
+    app.state.pipeline = pipeline
+    try:
+        r = await client.post("/api/v1/memories?wait_process=true", json={"content": "slow inline capture qa18"}, headers=auth_headers)
+    finally:
+        app.state.pipeline = None
+    assert r.status_code == 202
+    assert r.json()["status"] == "accepted"
+    memory_id = r.json()["id"]
+    gate.set()
+    await asyncio.gather(*wait_process.continuing_flushes())
+    row = (
+        await session.execute(
+            select(MemoryBuffer).where(MemoryBuffer.metadata_["memory_id"].astext == memory_id).execution_options(populate_existing=True)
+        )
+    ).scalar_one()
+    assert row.status == "done"
+    n = (
+        await session.execute(
+            text(f"SELECT count(*) FROM {child_table('memory_embeddings', fp)} WHERE memory_id = CAST(:m AS uuid)"), {"m": memory_id}
+        )
+    ).scalar_one()
+    assert n == 1
+
+
+@pytest.mark.asyncio
+async def test_a18_a_hard_failed_replay_never_answers_201_with_an_unprocessed_memory(client, auth_headers, session):
+    from app.main import app
+
+    pipeline = _qa18_pipeline(session, fail=True)
+    app.state.pipeline = pipeline
+    try:
+        r = await client.post("/api/v1/memories?wait_process=true", json={"content": "replay that hard-fails qa18"}, headers=auth_headers)
+    finally:
+        app.state.pipeline = None
+    assert r.status_code == 202, r.text
+    assert r.json()["status"] == "accepted"
