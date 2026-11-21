@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react"
+import { Button } from "darkraise-ui/components/button"
 import { Textarea } from "darkraise-ui/components/textarea"
 import { cn } from "darkraise-ui/lib"
 import {
   useBlockDelete,
   useBlockInsert,
   useBlockUpdate,
+  useBlockWriteRecovery,
   type BlockRow,
 } from "@/hooks/api"
+import { ApiError } from "@/lib/api"
 import { BlockView } from "./block-view"
 import { listDepths } from "./document-reader"
 
@@ -120,6 +123,21 @@ export function promote(
   return { type: "paragraph", text: source }
 }
 
+/** A write the editor has sent and not yet seen confirmed. An update keeps
+ *  its typed text on screen until the server takes it, and a failed write of
+ *  any kind stays until the operator retries or discards it: the document's
+ *  queue sends nothing else meanwhile. */
+interface HeldWrite {
+  kind: "update" | "insert" | "delete"
+  draft: string | null
+  message: string | null
+  busy: boolean
+}
+
+function failureMessage(error: unknown): string {
+  return error instanceof ApiError ? error.message : "Could not save"
+}
+
 /** The editor: one editable per block, holding that block's markdown source.
  *
  *  No framework (spec §8.3). The storage format and the edit format are the
@@ -136,10 +154,9 @@ export function BlockEditor({
 }) {
   const [focused, setFocused] = useState<string | null>(null)
   const [draft, setDraft] = useState("")
-  const [failure, setFailure] = useState<{
-    id: string
-    message: string
-  } | null>(null)
+  const [held, setHeld] = useState<Record<string, HeldWrite>>({})
+  /** The block a first Escape over unsaved text armed for discarding. */
+  const [armedEscape, setArmedEscape] = useState<string | null>(null)
   /** The block a first Backspace on an empty draft armed for deletion. A
    *  delete has no undo, so it takes a second press, not one keystroke too
    *  many while clearing a line. */
@@ -147,6 +164,7 @@ export function BlockEditor({
   const update = useBlockUpdate(documentId)
   const insert = useBlockInsert(documentId)
   const remove = useBlockDelete(documentId)
+  const recovery = useBlockWriteRecovery(documentId)
   const area = useRef<HTMLTextAreaElement | null>(null)
   /** Set by Escape so the blur that follows closing the textarea does not
    *  commit the draft Escape just discarded. */
@@ -180,11 +198,50 @@ export function BlockEditor({
     return prefix
   }
 
-  const mutationOptions = (block: BlockRow) => ({
-    onSuccess: () => setFailure(null),
+  const hold = (id: string, write: HeldWrite | null) =>
+    setHeld((current) => {
+      const next = { ...current }
+      if (write) next[id] = write
+      else delete next[id]
+      return next
+    })
+
+  const release = (id: string, kind: HeldWrite["kind"]) =>
+    setHeld((current) => {
+      if (current[id]?.kind !== kind) return current
+      const next = { ...current }
+      delete next[id]
+      return next
+    })
+
+  const mutationOptions = (
+    block: BlockRow,
+    kind: HeldWrite["kind"],
+    draftText: string | null = null,
+  ) => ({
+    onSuccess: () => release(block.block_id, kind),
     onError: (error: unknown) =>
-      setFailure({ id: block.block_id, message: String(error) }),
+      hold(block.block_id, {
+        kind,
+        draft: draftText,
+        message: failureMessage(error),
+        busy: false,
+      }),
   })
+
+  const updateFor = (block: BlockRow, source: string) => {
+    const { type, text, properties } = promote(
+      source,
+      block.type,
+      block.source == null ? "" : prefixOf(block),
+    )
+    return {
+      blockId: block.block_id,
+      text,
+      type,
+      properties: properties ?? null,
+    }
+  }
 
   const commit = (block: BlockRow) => {
     if (discarding.current) {
@@ -194,25 +251,50 @@ export function BlockEditor({
     const next = draft
     setFocused(null)
     setArmedDelete(null)
+    setArmedEscape(null)
     if (next === sourceOf(block)) return
-    const { type, text, properties } = promote(
-      next,
-      block.type,
-      block.source == null ? "" : prefixOf(block),
-    )
+    hold(block.block_id, {
+      kind: "update",
+      draft: next,
+      message: null,
+      busy: true,
+    })
     update.mutate(
-      { blockId: block.block_id, text, type, properties: properties ?? null },
-      mutationOptions(block),
+      updateFor(block, next),
+      mutationOptions(block, "update", next),
     )
+  }
+
+  const retryHeld = (block: BlockRow, write: HeldWrite) => {
+    hold(block.block_id, { ...write, busy: true })
+    recovery
+      .retry(write.draft === null ? undefined : updateFor(block, write.draft))
+      .then(
+        () => release(block.block_id, write.kind),
+        (error: unknown) =>
+          hold(block.block_id, {
+            ...write,
+            message: failureMessage(error),
+            busy: false,
+          }),
+      )
+  }
+
+  const discardHeld = (block: BlockRow, write: HeldWrite) => {
+    recovery.discard()
+    release(block.block_id, write.kind)
   }
 
   return (
     <div className="space-y-1.5">
       <p className="text-muted-foreground pb-1 text-xs">
-        Click a block to edit its markdown · Esc cancels · Ctrl+Enter adds a
-        block below · Backspace twice on an empty block deletes it
+        Click a block to edit its markdown · Esc cancels (twice over unsaved
+        text) · Ctrl+Enter adds a block below · Backspace twice on an empty
+        block deletes it
       </p>
-      {blocks.map((block) => (
+      {blocks.map((block) => {
+        const write = held[block.block_id]
+        return (
         <div
           key={block.block_id}
           id={block.block_id}
@@ -233,15 +315,25 @@ export function BlockEditor({
               onChange={(e) => {
                 setDraft(e.target.value)
                 setArmedDelete(null)
+                setArmedEscape(null)
               }}
               onBlur={() => commit(block)}
               onKeyDown={(e) => {
                 if (e.key === "Escape") {
                   // Cancels: the draft is dropped, the block keeps its
-                  // stored source, and nothing is sent.
+                  // stored source, and nothing is sent. Typed text is not
+                  // dropped on one keystroke.
                   e.preventDefault()
+                  if (
+                    draft !== sourceOf(block) &&
+                    armedEscape !== block.block_id
+                  ) {
+                    setArmedEscape(block.block_id)
+                    return
+                  }
                   discarding.current = true
                   setArmedDelete(null)
+                  setArmedEscape(null)
                   setFocused(null)
                 } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                   e.preventDefault()
@@ -253,7 +345,7 @@ export function BlockEditor({
                       afterBlockId: block.block_id,
                       parentId: block.parent_id,
                     },
-                    mutationOptions(block),
+                    mutationOptions(block, "insert"),
                   )
                 } else if (e.key === "Backspace" && draft === "") {
                   e.preventDefault()
@@ -266,10 +358,21 @@ export function BlockEditor({
                   setFocused(null)
                   remove.mutate(
                     { blockId: block.block_id },
-                    mutationOptions(block),
+                    mutationOptions(block, "delete"),
                   )
                 }
               }}
+            />
+          ) : write?.draft != null ? (
+            <Textarea
+              value={write.draft}
+              readOnly={write.busy}
+              rows={Math.max(1, write.draft.split("\n").length)}
+              aria-label="block source"
+              className="font-mono text-sm"
+              onChange={(e) =>
+                hold(block.block_id, { ...write, draft: e.target.value })
+              }
             />
           ) : (
             <button
@@ -294,13 +397,42 @@ export function BlockEditor({
               Press Backspace again to delete this block, or type to keep it.
             </p>
           ) : null}
-          {failure?.id === block.block_id ? (
-            <p role="alert" className="text-destructive-text text-sm">
-              the edit was not saved — {failure.message}
+          {armedEscape === block.block_id ? (
+            <p role="status" className="text-muted-foreground text-xs">
+              Press Escape again to discard your changes.
             </p>
           ) : null}
+          {write?.busy && write.message === null ? (
+            <p role="status" className="text-muted-foreground text-xs">
+              Saving…
+            </p>
+          ) : null}
+          {write?.message != null ? (
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <p role="alert" className="text-destructive-text text-sm">
+                Not saved: {write.message}
+              </p>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={write.busy}
+                onClick={() => retryHeld(block, write)}
+              >
+                Retry
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={write.busy}
+                onClick={() => discardHeld(block, write)}
+              >
+                Discard
+              </Button>
+            </div>
+          ) : null}
         </div>
-      ))}
+        )
+      })}
     </div>
   )
 }

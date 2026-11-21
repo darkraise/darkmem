@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest"
+import { readFileSync } from "node:fs"
+import path from "node:path"
 import { createMutationQueue } from "../lib/mutation-queue"
 
 const noReread = async () => "unused"
@@ -49,18 +51,140 @@ describe("the mutation queue", () => {
     expect(seen).toEqual(["hash-fresh"])
   })
 
-  it("re-reads the hash after a rejection instead of wedging", async () => {
+  it("no queued write follows a refusal", async () => {
     const queue = createMutationQueue("hash-0", async () => "hash-fresh")
-    const seen: string[] = []
-    await expect(
-      queue.enqueue(async () => {
-        throw new Error("409")
-      }),
-    ).rejects.toThrow("409")
-    await queue.enqueue(async (hash) => {
-      seen.push(hash)
+    const sent: string[] = []
+    const refused = queue.enqueue(async () => {
+      sent.push("first")
+      throw Object.assign(new Error("stale"), { status: 409, code: "hash_conflict" })
+    })
+    const second = queue.enqueue(async (hash) => {
+      sent.push("second")
       return { result: null, content_hash: hash }
     })
-    expect(seen).toEqual(["hash-fresh"])
+    const third = queue.enqueue(async (hash) => {
+      sent.push("third")
+      return { result: null, content_hash: hash }
+    })
+    void second
+    void third
+    await expect(refused).rejects.toThrow("stale")
+    await new Promise((r) => setTimeout(r, 20))
+    expect(sent).toEqual(["first"])
+    expect(queue.paused).toBe(true)
+  })
+
+  it("the queue resumes when the operator acts", async () => {
+    const refusal = () =>
+      Object.assign(new Error("stale"), { status: 409, code: "hash_conflict" })
+
+    for (const action of ["retry", "discard"] as const) {
+      let reads = 0
+      const queue = createMutationQueue("hash-0", async () => `read-${++reads}`)
+      const seen: string[] = []
+      let refuse = true
+      const write = (name: string, answer: string) =>
+        queue.enqueue(async (hash) => {
+          seen.push(`${name}@${hash}`)
+          if (name === "first" && refuse) {
+            refuse = false
+            throw refusal()
+          }
+          return { result: name, content_hash: answer }
+        })
+      const first = write("first", "hash-1")
+      const second = write("second", "hash-2")
+      const third = write("third", "hash-3")
+      await expect(first).rejects.toThrow("stale")
+
+      if (action === "retry") {
+        await expect(queue.retry()).resolves.toBe("first")
+      } else {
+        queue.discard()
+      }
+      await expect(second).resolves.toBe("second")
+      await expect(third).resolves.toBe("third")
+      expect(queue.paused).toBe(false)
+      expect(seen).toEqual(
+        action === "retry"
+          ? ["first@hash-0", "first@read-1", "second@hash-1", "third@hash-2"]
+          : ["first@hash-0", "second@read-1", "third@hash-2"],
+      )
+    }
+  })
+
+  it("a retry may carry the operator's edited write", async () => {
+    const queue = createMutationQueue("hash-0", async () => "hash-fresh")
+    await expect(
+      queue.enqueue(async () => {
+        throw Object.assign(new Error("stale"), { status: 409, code: "hash_conflict" })
+      }),
+    ).rejects.toThrow("stale")
+    const seen: string[] = []
+    await queue.retry(async (hash) => {
+      seen.push(`edited@${hash}`)
+      return { result: null, content_hash: "hash-1" }
+    })
+    expect(seen).toEqual(["edited@hash-fresh"])
+  })
+
+  it("a failed retry keeps the queue paused", async () => {
+    const queue = createMutationQueue("hash-0", async () => "hash-fresh")
+    const failing = async () => {
+      throw new Error("offline")
+    }
+    await expect(queue.enqueue(failing)).rejects.toThrow("offline")
+    const sent: string[] = []
+    const next = queue.enqueue(async (hash) => {
+      sent.push(hash)
+      return { result: null, content_hash: hash }
+    })
+    await expect(queue.retry()).rejects.toThrow("offline")
+    expect(queue.paused).toBe(true)
+    expect(sent).toEqual([])
+    queue.discard()
+    await next
+    expect(sent).toEqual(["hash-fresh"])
+  })
+
+  it("a write that failed without a refusal is retried under its own hash", async () => {
+    // It may have landed unseen; the old hash makes the server refuse a
+    // second copy instead of applying it twice.
+    const queue = createMutationQueue("hash-0", async () => "hash-fresh")
+    const seen: string[] = []
+    let fail = true
+    const write = async (hash: string) => {
+      seen.push(hash)
+      if (fail) {
+        fail = false
+        throw new Error("network")
+      }
+      return { result: null, content_hash: "hash-1" }
+    }
+    await expect(queue.enqueue(write)).rejects.toThrow("network")
+    await queue.retry()
+    expect(seen).toEqual(["hash-0", "hash-0"])
+  })
+})
+
+describe("one hash-precondition helper", () => {
+  it("both editors use one hash-precondition helper", () => {
+    const read = (file: string) =>
+      readFileSync(path.resolve(__dirname, "../../..", file), "utf8")
+    const local = /(function|const)\s+(nextExpectedHash|isHashConflict|expectedHashParam|precondition)\b/
+    const users: Record<string, string[]> = {
+      "features/documents/lib/mutation-queue.ts": ["nextExpectedHash", "isHashConflict"],
+      "features/notes/lib/page-sync.ts": ["isHashConflict"],
+      "features/notes/lib/page-transport.ts": ["nextExpectedHash", "expectedHashParam"],
+      "hooks/api/use-blocks-api.ts": ["expectedHashParam"],
+    }
+    for (const [file, names] of Object.entries(users)) {
+      const source = read(file)
+      const imported = /import \{([^}]*)\} from "@\/lib\/hash-precondition"/.exec(source)
+      expect(imported, file).not.toBeNull()
+      for (const name of names) expect(imported![1], `${file} ${name}`).toContain(name)
+      expect(local.test(source), file).toBe(false)
+      expect(source, file).not.toMatch(/status === 409/)
+    }
   })
 })

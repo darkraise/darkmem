@@ -11,6 +11,7 @@ import {
   useBlockDelete,
   useBlockInsert,
   useBlockUpdate,
+  useBlockWriteRecovery,
 } from "../use-blocks-api"
 import { useDocumentBlocks } from "../use-documents-api"
 
@@ -59,7 +60,12 @@ function serve(path: string, init?: RequestInit) {
   if (refuseNextWrite) {
     refuseNextWrite = false
     readHash = "h-concurrent"
-    return Promise.reject(new Error("409 expected_hash does not match"))
+    return Promise.reject(
+      Object.assign(new Error("expected_hash does not match"), {
+        status: 409,
+        code: "hash_conflict",
+      }),
+    )
   }
   // Delete is 204 with no body, and it moved the document -- so a read after
   // one answers a hash no write handed back.
@@ -102,6 +108,7 @@ function useEditorHooks(documentId: string) {
     update: useBlockUpdate(documentId),
     insert: useBlockInsert(documentId),
     remove: useBlockDelete(documentId),
+    recovery: useBlockWriteRecovery(documentId),
   }
 }
 
@@ -296,7 +303,7 @@ describe("a refused write leaves no stale view behind", () => {
     vi.mocked(apiFetch).mockImplementation(serve as never)
   })
 
-  it("refetches the blocks after a 409, before the next write goes out", async () => {
+  it("refetches the blocks after a 409 and holds the next write until the operator acts", async () => {
     const qc = makeClient()
     const { result } = renderHook(() => useEditorHooks(DOC), {
       wrapper: wrapperFor(qc),
@@ -318,15 +325,15 @@ describe("a refused write leaves no stale view behind", () => {
     act(() => {
       result.current.update.mutate({ blockId: "b1", text: "two" })
     })
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20))
+    })
+    expect(writes()).toHaveLength(1)
+
+    act(() => result.current.recovery.discard())
     await waitFor(() => expect(result.current.update.isSuccess).toBe(true))
 
     const second = writes()[1]!
-    expect(second.body!.expected_hash).toBe("h-concurrent")
-    // The read that repaired the view went out before the write that follows
-    // it, which is what makes the exposure one round trip rather than a
-    // session.
-    const firstRead = seen.findIndex((call) => call.method === "GET")
-    expect(firstRead).toBeGreaterThan(-1)
-    expect(firstRead).toBeLessThan(seen.indexOf(second))
+    expect(second.body).toMatchObject({ text: "two", expected_hash: "h-concurrent" })
   })
 })

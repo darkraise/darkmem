@@ -1,4 +1,5 @@
 import { ApiError, apiFetchWithHeaders } from "@/lib/api"
+import { expectedHashParam, nextExpectedHash } from "@/lib/hash-precondition"
 import { pageQuery } from "@/hooks/api"
 import { canonicalTree, fromPageBlocks } from "./block-mapping"
 import { SyncTransportError, type PageTransport } from "./page-sync"
@@ -34,12 +35,12 @@ export function createPageTransport(pageId: string): PageTransport {
       }
     },
     async send(op: SyncOp, expectedHash: string) {
-      const expected_hash = expectedHash === "" ? undefined : expectedHash
+      const expected_hash = expectedHashParam(expectedHash)
       try {
         switch (op.kind) {
           case "insert": {
             const { data } = await send(`/pages/${pageId}/blocks/batch`, "POST", { blocks: op.blocks, expected_hash })
-            return data?.content_hash ?? ""
+            return nextExpectedHash(data) ?? ""
           }
           case "move": {
             const { data } = await send(`/pages/${pageId}/blocks/${op.id}/move`, "POST", {
@@ -47,7 +48,7 @@ export function createPageTransport(pageId: string): PageTransport {
               after_block_id: op.afterId,
               expected_hash,
             })
-            return data?.content_hash ?? ""
+            return nextExpectedHash(data) ?? ""
           }
           case "update": {
             const { data } = await send(`/pages/${pageId}/blocks/${op.id}`, "PATCH", {
@@ -56,7 +57,7 @@ export function createPageTransport(pageId: string): PageTransport {
               properties: op.properties,
               expected_hash,
             })
-            return data?.content_hash ?? ""
+            return nextExpectedHash(data) ?? ""
           }
           case "delete": {
             // DELETE carries no body, so the precondition rides the query and

@@ -1,21 +1,25 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen, fireEvent } from "@testing-library/react"
+import { render, screen, fireEvent, act } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 
 import { BlockEditor, promote } from "../components/block-editor"
 import type { BlockRow } from "@/hooks/api"
+import { ApiError } from "@/lib/api"
 import { execFileSync } from "node:child_process"
 import path from "node:path"
 
 const update = vi.fn()
 const insert = vi.fn()
 const remove = vi.fn()
+const retry = vi.fn()
+const discard = vi.fn()
 
 vi.mock("@/hooks/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/api")>()),
   useBlockUpdate: () => ({ mutate: update }),
   useBlockInsert: () => ({ mutate: insert }),
   useBlockDelete: () => ({ mutate: remove }),
+  useBlockWriteRecovery: () => ({ retry, discard }),
 }))
 
 function block(over: Partial<BlockRow>): BlockRow {
@@ -360,7 +364,7 @@ describe("BlockEditor", () => {
 
   it("inserts alongside a nested block and announces insert failure", async () => {
     insert.mockImplementationOnce((_value, options) =>
-      options?.onError(new Error("refused")),
+      options?.onError(new ApiError("refused", 422)),
     )
     render(
       <BlockEditor documentId="d1" blocks={[block({ parent_id: "parent" })]} />,
@@ -379,7 +383,7 @@ describe("BlockEditor", () => {
 
   it("announces delete failure", async () => {
     remove.mockImplementationOnce((_value, options) =>
-      options.onError(new Error("delete refused")),
+      options.onError(new ApiError("delete refused", 409, undefined, "hash_conflict")),
     )
     render(
       <BlockEditor
@@ -497,6 +501,10 @@ describe("BlockEditor", () => {
     await userEvent.click(screen.getByRole("button"))
     await userEvent.type(screen.getByRole("textbox"), " changed")
     await userEvent.keyboard("{Escape}")
+    // Unsaved text: the first press asks, the second discards.
+    expect(screen.getByRole("status")).toHaveTextContent(/escape again/i)
+    expect(screen.getByRole("textbox")).toHaveValue("body changed")
+    await userEvent.keyboard("{Escape}")
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument()
     expect(update).not.toHaveBeenCalled()
     // The next edit still commits: Escape's guard does not leak forward.
@@ -504,6 +512,89 @@ describe("BlockEditor", () => {
     await userEvent.type(screen.getByRole("textbox"), " again")
     await userEvent.tab()
     expect(update).toHaveBeenCalledTimes(1)
+  })
+
+  it("escape on an unchanged block closes it at once", async () => {
+    render(<BlockEditor documentId="d1" blocks={[block({})]} />)
+    await userEvent.click(screen.getByRole("button"))
+    await userEvent.keyboard("{Escape}")
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument()
+  })
+
+  it.each([
+    [
+      "a stale hash",
+      new ApiError("This document changed since you opened it", 409, undefined, "hash_conflict"),
+      "This document changed since you opened it",
+    ],
+    ["a refusal", new ApiError("block type not allowed here", 422), "block type not allowed here"],
+    ["a network failure", new TypeError("Failed to fetch"), "Could not save"],
+  ])("a refused write keeps the edit box and the typed text (%s)", async (_case, error, reason) => {
+    update.mockImplementationOnce((_value, options) => options.onError(error))
+    render(<BlockEditor documentId="d1" blocks={[block({})]} />)
+    await userEvent.click(screen.getByRole("button"))
+    await userEvent.type(screen.getByRole("textbox"), " typed")
+    await userEvent.tab()
+
+    expect(screen.getByRole("textbox")).toHaveValue("body typed")
+    expect(screen.getByRole("alert")).toHaveTextContent(reason)
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Discard" })).toBeInTheDocument()
+  })
+
+  it("the box closes only once the write is confirmed", async () => {
+    let confirm!: () => void
+    update.mockImplementationOnce((_value, options) => {
+      confirm = () => options.onSuccess()
+    })
+    render(<BlockEditor documentId="d1" blocks={[block({})]} />)
+    await userEvent.click(screen.getByRole("button"))
+    await userEvent.type(screen.getByRole("textbox"), " typed")
+    await userEvent.tab()
+    expect(screen.getByRole("textbox")).toHaveValue("body typed")
+    expect(screen.getByRole("status")).toHaveTextContent(/saving/i)
+
+    act(() => confirm())
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument()
+  })
+
+  it("retry resends the box's text and discard drops it", async () => {
+    update.mockImplementation((_value, options) =>
+      options.onError(new ApiError("stale", 409, undefined, "hash_conflict")),
+    )
+    retry.mockResolvedValueOnce(undefined)
+    render(<BlockEditor documentId="d1" blocks={[block({})]} />)
+    await userEvent.click(screen.getByRole("button"))
+    await userEvent.type(screen.getByRole("textbox"), " typed")
+    await userEvent.tab()
+    await userEvent.type(screen.getByRole("textbox"), " more")
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }))
+    expect(retry).toHaveBeenCalledWith(
+      expect.objectContaining({ blockId: "b1", text: "body typed more", type: "paragraph" }),
+    )
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole("button"))
+    await userEvent.type(screen.getByRole("textbox"), " again")
+    await userEvent.tab()
+    await userEvent.click(screen.getByRole("button", { name: "Discard" }))
+    expect(discard).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument()
+    update.mockReset()
+  })
+
+  it("a failed retry keeps the text and says why", async () => {
+    update.mockImplementationOnce((_value, options) =>
+      options.onError(new ApiError("stale", 409, undefined, "hash_conflict")),
+    )
+    retry.mockRejectedValueOnce(new TypeError("Failed to fetch"))
+    render(<BlockEditor documentId="d1" blocks={[block({})]} />)
+    await userEvent.click(screen.getByRole("button"))
+    await userEvent.type(screen.getByRole("textbox"), " typed")
+    await userEvent.tab()
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }))
+    expect(screen.getByRole("textbox")).toHaveValue("body typed")
+    expect(screen.getByRole("alert")).toHaveTextContent("Could not save")
   })
 
   it("keeps the reader's list indentation in edit mode", () => {

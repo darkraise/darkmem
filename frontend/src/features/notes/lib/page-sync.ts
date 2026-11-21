@@ -1,3 +1,4 @@
+import { isHashConflict } from "@/lib/hash-precondition"
 import { applyOp, nextOp, treesEqual, type SyncOp, type SyncTree } from "./sync-tree"
 
 /** A failed write or read. `status` is the HTTP status, absent for a network
@@ -35,7 +36,7 @@ const GONE_MESSAGE = "This page is no longer available."
 function isRetryable(error: unknown): error is SyncTransportError {
   return (
     error instanceof SyncTransportError &&
-    (error.status === undefined || error.status >= 500 || error.status === 409)
+    (error.status === undefined || error.status >= 500 || isHashConflict(error))
   )
 }
 
@@ -169,7 +170,7 @@ export class PageSync {
         // Not landed and nothing else changed. A 409 with no change behind it
         // has no benign cause (the hash covers only the content), so a second
         // one in a row stops rather than looping.
-        if (outcome === "unchanged" && error.status === 409 && ++unexplained409 >= 2) {
+        if (outcome === "unchanged" && isHashConflict(error) && ++unexplained409 >= 2) {
           this.stop("conflict", CONFLICT_MESSAGE)
           return
         }

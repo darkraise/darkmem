@@ -7,6 +7,7 @@ import {
 
 import { createMutationQueue } from "@/features/documents/lib/mutation-queue"
 import { apiFetch } from "@/lib/api"
+import { expectedHashParam } from "@/lib/hash-precondition"
 import { DEMO } from "@/lib/demo-flag"
 import {
   documentBlocksQuery,
@@ -110,53 +111,77 @@ function useBlockMutation<V>(
         return { result, content_hash: result?.content_hash ?? null }
       }),
     // Settled, not succeeded: a refusal is exactly when the rendered tree is
-    // known to be wrong. The queue re-reads the hash before the next write, so
-    // without this the editor would send the winner's hash carrying text
-    // edited over the loser's view -- the clobber the precondition exists to
-    // stop, one retry later. Refetching cannot prevent that outright without
-    // blocking edits until it lands; it narrows the window to one round trip.
-    // One handler rather than an onError beside an onSuccess, so the two paths
-    // cannot come to invalidate different keys.
-    onSettled: () => {
-      void qc.invalidateQueries({ queryKey: ["documentBlocks", documentId] })
-      void qc.invalidateQueries({ queryKey: ["documentOutline", documentId] })
-      void qc.invalidateQueries({ queryKey: ["documentsAll"] })
-    },
+    // known to be wrong, and the operator decides between retrying and
+    // discarding against the refetched view. One handler rather than an
+    // onError beside an onSuccess, so the two paths cannot come to invalidate
+    // different keys.
+    onSettled: () => invalidateDocument(qc, documentId),
   })
 }
 
-/** An empty hash means none is known, and the demo's re-read is the only thing
- *  that produces one -- it answers "" because it makes no request at all. Every
- *  filed document has a `content_hash`, including one filed from bytes: that
- *  document stores no `content`, but the hash is taken over its bytes. So
- *  omitting the field is the demo's path, plus a defence against a null the
- *  server does not send; either way the write falls back to the last-writer-wins
- *  the routes default to, rather than being refused.
- */
-function precondition(hash: string) {
-  return hash === "" ? undefined : hash
+export interface BlockUpdateValue {
+  blockId: string
+  text: string
+  type?: string
+  properties?: Record<string, unknown> | null
+}
+
+/** Omitting the hash (the demo's re-read answers "") falls back to the
+ *  last-writer-wins the routes default to. Every filed document has a
+ *  `content_hash`, including one filed from bytes, so outside the demo this is
+ *  a defence against a null the server does not send. */
+function sendBlockUpdate(
+  documentId: string,
+  { blockId, text, type, properties }: BlockUpdateValue,
+  expectedHash: string,
+) {
+  return apiFetch<BlockWriteResponse>(
+    `/documents/${documentId}/blocks/${blockId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        text,
+        type,
+        properties,
+        expected_hash: expectedHashParam(expectedHash),
+      }),
+    },
+  )
+}
+
+function invalidateDocument(qc: QueryClient, documentId: string) {
+  void qc.invalidateQueries({ queryKey: ["documentBlocks", documentId] })
+  void qc.invalidateQueries({ queryKey: ["documentOutline", documentId] })
+  void qc.invalidateQueries({ queryKey: ["documentsAll"] })
+}
+
+/** The operator's way out of a paused queue: resend the failed write (an
+ *  edited update in its place when given) or drop it. Either releases the
+ *  writes queued behind it. */
+export function useBlockWriteRecovery(documentId: string) {
+  const qc = useQueryClient()
+  return {
+    retry: (update?: BlockUpdateValue) =>
+      queueFor(documentId, qc)
+        .retry(
+          update
+            ? async (hash) => {
+                const result = await sendBlockUpdate(documentId, update, hash)
+                return { result, content_hash: result.content_hash }
+              }
+            : undefined,
+        )
+        .finally(() => invalidateDocument(qc, documentId)),
+    discard: () => {
+      queueFor(documentId, qc).discard()
+      invalidateDocument(qc, documentId)
+    },
+  }
 }
 
 export function useBlockUpdate(documentId: string) {
-  return useBlockMutation<{
-    blockId: string
-    text: string
-    type?: string
-    properties?: Record<string, unknown> | null
-  }>(
-    ({ blockId, text, type, properties }, expectedHash) =>
-      apiFetch<BlockWriteResponse>(
-        `/documents/${documentId}/blocks/${blockId}`,
-        {
-          method: "PATCH",
-          body: JSON.stringify({
-            text,
-            type,
-            properties,
-            expected_hash: precondition(expectedHash),
-          }),
-        },
-      ),
+  return useBlockMutation<BlockUpdateValue>(
+    (value, expectedHash) => sendBlockUpdate(documentId, value, expectedHash),
     documentId,
   )
 }
@@ -178,7 +203,7 @@ export function useBlockInsert(documentId: string) {
           parent_id: parentId ?? null,
           after_block_id: afterBlockId ?? null,
           properties: properties ?? null,
-          expected_hash: precondition(expectedHash),
+          expected_hash: expectedHashParam(expectedHash),
         }),
       }),
     documentId,
@@ -188,7 +213,7 @@ export function useBlockInsert(documentId: string) {
 export function useBlockDelete(documentId: string) {
   return useBlockMutation<{ blockId: string }>(({ blockId }, expectedHash) => {
     // The hash rides the query string here: DELETE carries no body.
-    const query = precondition(expectedHash)
+    const query = expectedHashParam(expectedHash)
       ? `?expected_hash=${encodeURIComponent(expectedHash)}`
       : ""
     return apiFetch<void>(
