@@ -36,7 +36,12 @@ import {
   TooltipTrigger,
 } from "darkraise-ui/components/tooltip"
 import { cn } from "darkraise-ui/lib"
-import { HelpTip, IconButton, NumberField } from "@/components/darkmem"
+import {
+  EmptyState,
+  HelpTip,
+  IconButton,
+  NumberField,
+} from "@/components/darkmem"
 import { armStatus } from "@/demo/settings"
 import type {
   DemoBehavioralFlag,
@@ -51,6 +56,7 @@ import {
   useFlagsTabBinding,
   type FlagsTabBinding,
 } from "../use-flags-tab-binding"
+import { useDialogSave } from "../use-dialog-save"
 
 const SETTING_NAMES: Record<string, string> = {
   confidence_rank_gamma: "Confidence",
@@ -122,12 +128,14 @@ function SavingMark({ saving }: { saving: boolean }) {
  *  The footer names what a save will write. That list is the point of editing
  *  in a dialog at all: the whole section leaves in one request, so the
  *  operator should be able to see the extent of it before committing rather
- *  than inferring it from which fields they happen to remember touching. */
+ *  than inferring it from which fields they happen to remember touching.
+ *
+ *  It stays open until the write lands, and a refusal leaves it open with the
+ *  edits and the server's reason in the footer. */
 function SectionDialog({
   title,
   description,
   dirty,
-  saving,
   canSave = true,
   onOpenChange,
   onSave,
@@ -137,20 +145,26 @@ function SectionDialog({
   description: string
   /** Field names this save will write, in display order. */
   dirty: string[]
-  saving: boolean
   canSave?: boolean
   onOpenChange: (open: boolean) => void
-  onSave: () => void
+  onSave: () => Promise<unknown>
   children: ReactNode
 }) {
+  const save = useDialogSave(() => onOpenChange(false))
+  const saving = save.pending
   return (
-    <Dialog open onOpenChange={onOpenChange}>
+    <Dialog open onOpenChange={save.guard(onOpenChange)}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="font-mono text-sm">{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-2">{children}</div>
+        {save.error && (
+          <p role="alert" className="text-destructive-text text-sm">
+            Not saved: {save.error}
+          </p>
+        )}
         <div className="border-border flex flex-wrap items-center gap-2 border-t pt-3">
           {dirty.length > 0 && (
             <span className="text-muted-foreground font-mono text-xs">
@@ -158,7 +172,6 @@ function SectionDialog({
             </span>
           )}
           <span className="flex-1" />
-          <SavingMark saving={saving} />
           <Button
             variant="ghost"
             onClick={() => onOpenChange(false)}
@@ -170,9 +183,9 @@ function SectionDialog({
             className="border-primary/60"
             variant="outline"
             disabled={dirty.length === 0 || !canSave || saving}
-            onClick={onSave}
+            onClick={() => save.run(onSave)}
           >
-            Save
+            {saving ? "Saving…" : "Save"}
           </Button>
         </div>
       </DialogContent>
@@ -254,65 +267,68 @@ function ClampedPill({ param }: { param: DemoLadderParam }) {
   )
 }
 
-/** Blur/Enter-commit numeric field — a keystroke is not yet an edit. */
-function ArmInput({
-  arm,
+/** A dialog's number field. Every keystroke is the draft, so Save enables
+ *  without a blur. The field is given no bounds: the library clamps to its
+ *  `min`/`max` on blur, which would change the number silently, so the row
+ *  shows its own range error instead. NaN (text the field cannot parse) is
+ *  kept as the draft and refused by that error, never written as zero. */
+function DraftNumber({
+  name,
+  step,
   value,
   onChange,
   className,
 }: {
-  arm: DemoRankArm
+  name: string
+  step: number
   value: number
   onChange: (value: number) => void
   className?: string
 }) {
-  const [draft, setDraft] = useState(value)
-  // Follow the value when it changes from outside this field — a dialog
-  // reopening on fresh server data, a sibling control. Without it the draft is
-  // initial-value-only and the next blur writes the stale number back.
-  const [seen, setSeen] = useState(value)
-  if (value !== seen) {
-    setSeen(value)
-    setDraft(value)
-  }
-  const commit = () => {
-    // NaN is what the field reports for text it cannot parse, and is the case
-    // a raw number input used to collapse into a committed zero.
-    if (Number.isFinite(draft) && draft !== value) onChange(draft)
-    else setDraft(value)
-  }
   return (
     <NumberField
-      step={arm.step ?? 1}
-      value={draft}
-      aria-label={arm.key}
-      onValueChange={setDraft}
-      onBlur={commit}
-      onKeyDown={(e) => e.key === "Enter" && commit()}
+      step={step}
+      value={value}
+      aria-label={name}
+      onValueChange={onChange}
       className={cn("w-24", className)}
     />
   )
 }
 
-/** Why a draft arm value would be refused, or null. The bounds are the
- *  server's (`numeric_bounds`), so this refuses exactly what the PUT would
- *  answer 422 to, before the dialog closes on a save that cannot land. */
-function armRangeError(arm: DemoRankArm, value: number): string | null {
-  if (arm.min === undefined || arm.max === undefined) return null
-  if (value < arm.min || value > arm.max)
-    return `Enter a value from ${arm.min} to ${arm.max}.`
+/** Why a draft number would be refused, or null. The bounds are the server's
+ *  (`numeric_bounds`, `FeatureFlagsUpdate`'s own), so this refuses exactly
+ *  what the PUT would answer 422 to. */
+function rangeError(value: number, min?: number, max?: number): string | null {
+  const bounded = min !== undefined && max !== undefined
+  if (!Number.isFinite(value))
+    return bounded ? `Enter a value from ${min} to ${max}.` : "Enter a number."
+  if (bounded && (value < min || value > max))
+    return `Enter a value from ${min} to ${max}.`
   return null
 }
 
-/** The allowed range under an arm being edited, turning into the error when
+function armRangeError(arm: DemoRankArm, value: number): string | null {
+  return rangeError(value, arm.min, arm.max)
+}
+
+/** The allowed range under a field being edited, turning into the error when
  *  the draft leaves it. */
-function ArmRange({ arm, error }: { arm: DemoRankArm; error: string | null }) {
+function RangeHint({
+  min,
+  max,
+  error,
+}: {
+  min?: number
+  max?: number
+  error: string | null
+}) {
   if (error)
     return <p className="text-destructive-text basis-full text-sm">{error}</p>
-  if (arm.min === undefined || arm.max === undefined) return null
+  if (min === undefined || max === undefined) return null
   return (
     <p className="text-muted-foreground basis-full text-right text-xs">
-      {arm.min} to {arm.max}
+      {min} to {max}
     </p>
   )
 }
@@ -350,7 +366,12 @@ function ArmRow({
       <RowValue>
         <SourceTag source={arm.source} />
         {editing ? (
-          <ArmInput arm={arm} value={draft} onChange={onChange} />
+          <DraftNumber
+            name={arm.key}
+            step={arm.step ?? 1}
+            value={draft}
+            onChange={onChange}
+          />
         ) : (
           <ValueTag value={arm.value} />
         )}
@@ -358,7 +379,7 @@ function ArmRow({
             an effect the save cannot have. */}
         {!error && <ArmPill value={shown} />}
       </RowValue>
-      {editing && <ArmRange arm={arm} error={error} />}
+      {editing && <RangeHint min={arm.min} max={arm.max} error={error} />}
       {DORMANT_RANK_ARMS.has(arm.key) && (
         <FieldDescription className="basis-full">
           {DORMANT_ARM_NOTE}
@@ -505,62 +526,56 @@ function TunableRow({
       <RowValue>
         <SourceTag source={tunable.source} />
         {editing ? (
-          <TunableInput tunable={tunable} value={draft} onChange={onChange} />
+          <span className="flex items-center gap-2">
+            <DraftNumber
+              name={tunable.key}
+              step={1}
+              value={draft}
+              onChange={onChange}
+            />
+            {tunable.unit && (
+              <span className="text-muted-foreground font-mono text-xs whitespace-nowrap">
+                {tunable.unit}
+              </span>
+            )}
+          </span>
         ) : (
           <ValueTag value={tunable.value} unit={tunable.unit} />
         )}
       </RowValue>
-    </div>
-  )
-}
-
-function TunableInput({
-  tunable,
-  value,
-  onChange,
-}: {
-  tunable: DemoTunable
-  value: number
-  onChange: (value: number) => void
-}) {
-  const [draft, setDraft] = useState(value)
-  const [seen, setSeen] = useState(value)
-  if (value !== seen) {
-    setSeen(value)
-    setDraft(value)
-  }
-  const commit = () => {
-    // Clamped to the API's own bound so the field refuses locally exactly what
-    // the request would 422 on — and so one out-of-range field cannot fail the
-    // whole section's single write.
-    const clamped = Math.min(Math.max(draft, tunable.min), tunable.max)
-    if (Number.isFinite(draft) && clamped !== value) onChange(clamped)
-    else setDraft(value)
-  }
-  return (
-    <div className="flex items-center gap-2">
-      <NumberField
-        step={1}
-        min={tunable.min}
-        max={tunable.max}
-        value={draft}
-        aria-label={tunable.key}
-        onValueChange={setDraft}
-        onBlur={commit}
-        onKeyDown={(e) => e.key === "Enter" && commit()}
-        className="w-24"
-      />
-      {tunable.unit && (
-        <span className="text-muted-foreground font-mono text-xs whitespace-nowrap">
-          {tunable.unit}
-        </span>
+      {editing && (
+        <RangeHint
+          min={tunable.min}
+          max={tunable.max}
+          error={tunableRangeError(tunable, draft)}
+        />
       )}
     </div>
   )
 }
 
-function LoadFailed({ children }: { children: ReactNode }) {
-  return <p className="text-destructive-text text-sm">{children}</p>
+function tunableRangeError(tunable: DemoTunable, value: number) {
+  return rangeError(value, tunable.min, tunable.max)
+}
+
+/** A source of this tab whose read failed, in the app's one failed state. */
+function LoadFailed({
+  title,
+  error,
+  retry,
+}: {
+  title: string
+  error: Error
+  retry: () => void
+}) {
+  return (
+    <EmptyState
+      kind="failed"
+      title={title}
+      description={error.message}
+      action={<Button onClick={retry}>Retry</Button>}
+    />
+  )
 }
 
 function RepoAllowlistSection({ binding }: { binding: FlagsTabBinding }) {
@@ -579,10 +594,16 @@ function RepoAllowlistSection({ binding }: { binding: FlagsTabBinding }) {
             ? "empty"
             : `${patterns.length} pattern${patterns.length === 1 ? "" : "s"}`
         }
-        onEdit={() => setEditing(true)}
+        onEdit={binding.allowlistError ? undefined : () => setEditing(true)}
         saving={saving}
       >
-        {patterns.length === 0 ? (
+        {binding.allowlistError ? (
+          <LoadFailed
+            title="Could not load the allowlist"
+            error={binding.allowlistError}
+            retry={binding.retryAllowlist}
+          />
+        ) : patterns.length === 0 ? (
           <p className="text-muted-foreground text-sm">
             No patterns — every repo hint is refused until at least one is
             saved.
@@ -600,24 +621,16 @@ function RepoAllowlistSection({ binding }: { binding: FlagsTabBinding }) {
           </div>
         )}
       </Section>
-      {editing && (
-        <AllowlistDialog
-          binding={binding}
-          saving={saving}
-          onOpenChange={setEditing}
-        />
-      )}
+      {editing && <AllowlistDialog binding={binding} onOpenChange={setEditing} />}
     </>
   )
 }
 
 function AllowlistDialog({
   binding,
-  saving,
   onOpenChange,
 }: {
   binding: FlagsTabBinding
-  saving: boolean
   onOpenChange: (open: boolean) => void
 }) {
   const committed = binding.allowlistPatterns
@@ -633,12 +646,8 @@ function AllowlistDialog({
       title="repo_allowlist"
       description="One pattern per line: host, *.host or host/path-prefix."
       dirty={dirty}
-      saving={saving}
       onOpenChange={onOpenChange}
-      onSave={() => {
-        binding.saveAllowlist(patterns)
-        onOpenChange(false)
-      }}
+      onSave={() => binding.saveAllowlist(patterns)}
     >
       <Textarea
         value={draft}
@@ -714,28 +723,24 @@ function CorroborationSection({ binding }: { binding: FlagsTabBinding }) {
               )}
             </div>
           ))
-        ) : binding.corroborationLoading ? null : (
-          <LoadFailed>Could not load the corroboration thresholds.</LoadFailed>
-        )}
+        ) : binding.ladderError ? (
+          <LoadFailed
+            title="Could not load the corroboration thresholds"
+            error={binding.ladderError}
+            retry={binding.retryLadder}
+          />
+        ) : null}
       </Section>
-      {editing && (
-        <LadderDialog
-          binding={binding}
-          saving={saving}
-          onOpenChange={setEditing}
-        />
-      )}
+      {editing && <LadderDialog binding={binding} onOpenChange={setEditing} />}
     </>
   )
 }
 
 function LadderDialog({
   binding,
-  saving,
   onOpenChange,
 }: {
   binding: FlagsTabBinding
-  saving: boolean
   onOpenChange: (open: boolean) => void
 }) {
   const corr = binding.corroboration
@@ -750,20 +755,23 @@ function LadderDialog({
   const dirty = corr.params
     .filter((p) => draft[p.name] !== committed[p.name])
     .map((p) => p.name)
+  const errorOf = (name: string) => {
+    const value = draft[name]
+    return value === null || value === undefined ? null : rangeError(value)
+  }
 
   return (
     <SectionDialog
       title="corroboration promotion gate"
       description="Minimum source counts. Lowering one below its floor may be clamped back; the card shows it if so."
       dirty={dirty}
-      saving={saving}
+      canSave={corr.params.every((p) => errorOf(p.name) === null)}
       onOpenChange={onOpenChange}
-      onSave={() => {
+      onSave={() =>
         binding.saveLadder(
           Object.fromEntries(dirty.map((name) => [name, draft[name] ?? null])),
         )
-        onOpenChange(false)
-      }}
+      }
     >
       {corr.params.map((param) => (
         // Two columns (name | fixed-width control group) so floor, input and
@@ -783,15 +791,9 @@ function LadderDialog({
             <span className="text-muted-foreground w-14 font-mono text-xs whitespace-nowrap sm:text-right">
               floor {param.floor}
             </span>
-            <ArmInput
-              arm={{
-                key: param.name,
-                desc: "",
-                value: draft[param.name] ?? param.floor,
-                coded_default: param.floor,
-                source: draft[param.name] === null ? "default" : "override",
-                step: 1,
-              }}
+            <DraftNumber
+              name={param.name}
+              step={1}
               value={draft[param.name] ?? param.floor}
               onChange={(v) => setDraft((d) => ({ ...d, [param.name]: v }))}
               className="w-20"
@@ -805,6 +807,7 @@ function LadderDialog({
               reset to floor
             </Button>
           </div>
+          <RangeHint error={errorOf(param.name)} />
         </div>
       ))}
     </SectionDialog>
@@ -961,11 +964,7 @@ function ClassificationSection({ binding }: { binding: FlagsTabBinding }) {
         </div>
       </Section>
       {editing && (
-        <ClassificationDialog
-          binding={binding}
-          saving={saving}
-          onOpenChange={setEditing}
-        />
+        <ClassificationDialog binding={binding} onOpenChange={setEditing} />
       )}
     </>
   )
@@ -973,11 +972,9 @@ function ClassificationSection({ binding }: { binding: FlagsTabBinding }) {
 
 function ClassificationDialog({
   binding,
-  saving,
   onOpenChange,
 }: {
   binding: FlagsTabBinding
-  saving: boolean
   onOpenChange: (open: boolean) => void
 }) {
   const [mode, setMode] = useState(binding.classificationMode)
@@ -1004,7 +1001,6 @@ function ClassificationDialog({
       title="classification"
       description="Choose the label mode and, in expanded mode, the label areas."
       dirty={dirty}
-      saving={saving}
       onOpenChange={onOpenChange}
       onSave={() => {
         const patch: Record<string, unknown> = {}
@@ -1014,8 +1010,7 @@ function ClassificationDialog({
         if (dirty.includes("classification_areas")) {
           patch.classification_areas = areas
         }
-        binding.saveFlags(SECTIONS.classification, patch)
-        onOpenChange(false)
+        return binding.saveFlags(SECTIONS.classification, patch)
       }}
     >
       <div className="border-inset bg-card flex flex-wrap items-center gap-2.5 rounded-md border px-3 py-2">
@@ -1111,25 +1106,27 @@ function FlagsSectionDialog({
   const dirty = Object.keys(committed).filter((k) => draft[k] !== committed[k])
   const set = (key: string, value: number | boolean) =>
     setDraft((d) => ({ ...d, [key]: value }))
-  const armsInRange = (arms ?? []).every(
-    (arm) => armRangeError(arm, draft[arm.key] as number) === null,
-  )
+  const inRange =
+    (arms ?? []).every(
+      (arm) => armRangeError(arm, draft[arm.key] as number) === null,
+    ) &&
+    (tunables ?? []).every(
+      (t) => tunableRangeError(t, draft[t.key] as number) === null,
+    )
 
   return (
     <SectionDialog
       title={title}
       description={description}
       dirty={dirty}
-      canSave={armsInRange}
-      saving={binding.isSaving(section)}
+      canSave={inRange}
       onOpenChange={onOpenChange}
-      onSave={() => {
+      onSave={() =>
         binding.saveFlags(
           section,
           Object.fromEntries(dirty.map((k) => [k, draft[k]])),
         )
-        onOpenChange(false)
-      }}
+      }
     >
       {(arms ?? []).map((arm) => (
         <ArmRow
@@ -1192,15 +1189,13 @@ function GraphDialog({
       canSave={weightsInRange}
       description="Each channel adds results from the entity graph; its weight sets how much they count in the ranking."
       dirty={dirty}
-      saving={binding.isSaving(SECTIONS.graph)}
       onOpenChange={onOpenChange}
-      onSave={() => {
+      onSave={() =>
         binding.saveFlags(
           SECTIONS.graph,
           Object.fromEntries(dirty.map((k) => [k, draft[k]])),
         )
-        onOpenChange(false)
-      }}
+      }
     >
       {binding.graphFlags.map((flag) => (
         <div
@@ -1224,8 +1219,9 @@ function GraphDialog({
                 {flag.paired_arm.desc}
               </HelpTip>
               <RowValue>
-                <ArmInput
-                  arm={flag.paired_arm}
+                <DraftNumber
+                  name={flag.paired_arm.key}
+                  step={flag.paired_arm.step ?? 1}
                   value={draft[flag.paired_arm.key] as number}
                   onChange={(v) => set(flag.paired_arm!.key, v)}
                 />
@@ -1233,7 +1229,11 @@ function GraphDialog({
                   <ArmPill value={draft[flag.paired_arm.key] as number} />
                 )}
               </RowValue>
-              <ArmRange arm={flag.paired_arm} error={weightError(flag)} />
+              <RangeHint
+                min={flag.paired_arm.min}
+                max={flag.paired_arm.max}
+                error={weightError(flag)}
+              />
             </div>
           )}
         </div>
@@ -1255,6 +1255,16 @@ export function FlagsTab() {
   const tunablesOverridden = binding.tunables.filter(
     (t) => t.source === "override",
   ).length
+
+  if (binding.error) {
+    return (
+      <LoadFailed
+        title="Could not load the feature flags"
+        error={binding.error}
+        retry={binding.retry}
+      />
+    )
+  }
 
   return (
     <div className="space-y-4">
@@ -1330,9 +1340,7 @@ export function FlagsTab() {
                 )}
               </div>
             ))
-          ) : binding.isLoading ? null : (
-            <LoadFailed>Could not load the graph channels.</LoadFailed>
-          )}
+          ) : null}
         </Section>
 
         <Section
@@ -1383,7 +1391,7 @@ export function FlagsTab() {
       {editing === SECTIONS.tunables && (
         <FlagsSectionDialog
           title="pipeline & embedding tunables"
-          description="Values outside the accepted range are clamped to it."
+          description="Each value must lie in its field's range."
           section={SECTIONS.tunables}
           binding={binding}
           tunables={binding.tunables}

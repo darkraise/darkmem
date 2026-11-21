@@ -28,7 +28,6 @@ import {
 import { useGitAccountsData } from "../use-git-accounts-binding"
 import { GitAccountDialog } from "./git-account-dialog"
 import { SettingsCard } from "./settings-card"
-import { keepDialogOpenOnListEscape } from "@/lib/portal-overlays"
 
 function formatVerified(at: string | null): string {
   if (!at) return "never checked"
@@ -258,7 +257,7 @@ function DeleteAccountDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent onEscapeKeyDown={keepDialogOpenOnListEscape}>
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>Delete {account.label}?</DialogTitle>
           <DialogDescription>

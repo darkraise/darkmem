@@ -135,7 +135,8 @@ describe("ResearchTab — the arm switch", () => {
         screen.getByText(/research settings could not be loaded/),
       ).toBeInTheDocument(),
     )
-    expect(screen.getByText("unreadable")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument()
+    expect(screen.queryByText("disarmed")).not.toBeInTheDocument()
   })
 })
 
@@ -258,7 +259,9 @@ describe("ResearchTab — the budgets", () => {
     )
 
     await waitFor(() =>
-      expect(screen.getByText(/not saved/)).toBeInTheDocument(),
+      expect(toast.error).toHaveBeenCalledWith("Not armed", {
+        description: "auto_research.enabled must be a boolean",
+      }),
     )
     expect(screen.getAllByText("disarmed").length).toBeGreaterThan(0)
   })

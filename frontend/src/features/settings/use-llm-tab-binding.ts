@@ -117,10 +117,12 @@ export interface LLMTabBinding {
   /** null = not live-bound in this mode (real mode has no buckets endpoint
    *  yet — there is no backend table for these, demo or otherwise). */
   buckets: DemoCodeBucket[] | null
+  /** Resolves once the write lands, announcing it; rejects with the
+   *  server's refusal, which the purpose dialog shows. */
   savePurpose: (
     purpose: LLMPurposeName,
     patch: Partial<Omit<DemoLLMPurpose, "purpose">>,
-  ) => void
+  ) => Promise<void>
   setClassifierKind: (kind: "llm" | "local") => void
   saveCodeBucket: ((key: DemoCodeBucket["key"], model: string) => void) | null
   isLoading: boolean
@@ -175,6 +177,7 @@ export function useLLMTabBinding(): LLMTabBinding {
       savePurpose: (purpose, patch) => {
         saveDemoPurpose(purpose, patch)
         announceSave(purpose, Object.keys(patch))
+        return Promise.resolve()
       },
       setClassifierKind: (kind) => {
         setDemoClassifierKind(kind)
@@ -212,15 +215,10 @@ export function useLLMTabBinding(): LLMTabBinding {
     classifierKind,
     classifierUnavailable: health.data?.classifier_unavailable ?? false,
     buckets: null,
-    savePurpose: (purpose, patch) => {
-      update.mutate(
-        { [purpose]: toWirePatch(patch) },
-        {
-          onSuccess: () => announceSave(purpose, Object.keys(patch)),
-          onError: (error) => announceFailure(purpose, error),
-        },
-      )
-    },
+    savePurpose: (purpose, patch) =>
+      update
+        .mutateAsync({ [purpose]: toWirePatch(patch) })
+        .then(() => announceSave(purpose, Object.keys(patch))),
     setClassifierKind: (kind) => {
       update.mutate(
         { classification: { classifier_kind: kind } },

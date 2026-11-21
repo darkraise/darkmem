@@ -29,7 +29,6 @@ import {
 } from "@/hooks/api/use-llm-providers-api"
 
 import { Field } from "./purpose-sections"
-import { keepDialogOpenOnListEscape } from "@/lib/portal-overlays"
 
 function ApiKindSelect({
   value,
@@ -192,7 +191,6 @@ export function ProviderDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        onEscapeKeyDown={keepDialogOpenOnListEscape}
         className="flex max-h-[80vh] max-w-lg flex-col gap-3"
       >
         <DialogHeader>

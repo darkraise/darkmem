@@ -64,7 +64,8 @@ export function NotificationsTab() {
       <EmptyState
         kind="failed"
         title="Couldn’t load notification settings"
-        description="Reload the page to try again."
+        description={query.error.message}
+        action={<Button onClick={() => void query.refetch()}>Retry</Button>}
       />
     )
   }

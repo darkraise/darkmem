@@ -9,7 +9,7 @@ import { McpPromptDialog } from "./mcp-prompt-dialog"
 import { McpConnectSnippets, mcpEndpoint } from "./mcp-connect-snippets"
 import { ModuleSurface } from "@/features/activity/components/module-surface"
 import { DEMO } from "@/lib/demo-flag"
-import { useDetailLevel } from "@/components/darkmem"
+import { EmptyState, useDetailLevel } from "@/components/darkmem"
 import { useDistribution, useEvents } from "@/hooks/api"
 import { relativeTime } from "@/lib/format"
 
@@ -59,9 +59,21 @@ function RecentInjects() {
     <div className="flex flex-col gap-2">
       <SectionHead icon={Clock}>Inject log</SectionHead>
       {pushes.isError || curbs.isError ? (
-        <p className="text-muted-foreground text-sm">
-          The inject log could not be loaded.
-        </p>
+        <EmptyState
+          kind="failed"
+          title="The inject log could not be loaded"
+          description={(pushes.error ?? curbs.error)?.message}
+          action={
+            <Button
+              onClick={() => {
+                if (pushes.isError) void pushes.refetch()
+                if (curbs.isError) void curbs.refetch()
+              }}
+            >
+              Retry
+            </Button>
+          }
+        />
       ) : pushes.isLoading || curbs.isLoading ? (
         <p className="text-muted-foreground text-sm">loading…</p>
       ) : rows.length === 0 ? (
@@ -125,13 +137,18 @@ function RecentInjects() {
 /** The registry's targets and the configured rows it refused. */
 function LiveDistribution() {
   const level = useDetailLevel((s) => s.level)
-  const { data, isLoading, isError } = useDistribution({ enabled: !DEMO })
+  const { data, isLoading, isError, error, refetch } = useDistribution({
+    enabled: !DEMO,
+  })
 
-  if (isError) {
+  if (isError && !data) {
     return (
-      <p className="text-muted-foreground text-sm">
-        The distribution settings could not be loaded.
-      </p>
+      <EmptyState
+        kind="failed"
+        title="The distribution settings could not be loaded"
+        description={error.message}
+        action={<Button onClick={() => void refetch()}>Retry</Button>}
+      />
     )
   }
   if (isLoading || !data) {

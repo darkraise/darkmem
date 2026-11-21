@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { fireEvent, render, screen, within } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import type { ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { useDemoStore } from "@/demo/store"
@@ -32,9 +32,11 @@ const openEditor = (section: string) => {
   fireEvent.click(within(header as HTMLElement).getByRole("button", { name: /Edit/ }))
 }
 
-/** The dialog's own Save — the single request for that section. */
-const saveEditor = () => {
+/** The dialog's own Save — the single request for that section. The dialog
+ *  closes once the save lands, a microtask after the click. */
+const saveEditor = async () => {
   fireEvent.click(screen.getByRole("button", { name: "Save" }))
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
 }
 
 afterEach(() => {
@@ -83,13 +85,13 @@ describe("FlagsTab — invariant 23 honesty (demo mode)", () => {
 })
 
 describe("FlagsTab — feature flag editing", () => {
-  it("flipping reranker_enabled writes it to the store", () => {
+  it("flipping reranker_enabled writes it to the store", async () => {
     renderTab()
     openEditor("feature flags")
     const toggle = screen.getByLabelText("reranker_enabled")
     expect(toggle).not.toBeDisabled()
     fireEvent.click(toggle)
-    saveEditor()
+    await saveEditor()
     expect(
       useDemoStore
         .getState()
@@ -173,13 +175,13 @@ describe("FlagsTab — graph augmentation is editable", () => {
     expect(screen.queryByLabelText("w_community")).not.toBeInTheDocument()
   })
 
-  it("committing a paired weight writes it to the store", () => {
+  it("committing a paired weight writes it to the store", async () => {
     renderTab()
     openEditor("graph augmentation")
     const input = screen.getByLabelText("w_ppr")
     fireEvent.change(input, { target: { value: "0.3" } })
     fireEvent.keyDown(input, { key: "Enter" })
-    saveEditor()
+    await saveEditor()
     const ppr = useDemoStore
       .getState()
       .flags.graph_flags.find((f) => f.key === "ppr_enabled")
@@ -195,13 +197,13 @@ describe("FlagsTab — the corroboration gate is editable and honest", () => {
     }
   })
 
-  it("tightening a threshold is honoured", () => {
+  it("tightening a threshold is honoured", async () => {
     renderTab()
     openEditor("corroboration promotion gate")
     const input = screen.getByLabelText("n_default")
     fireEvent.change(input, { target: { value: "5" } })
     fireEvent.keyDown(input, { key: "Enter" })
-    saveEditor()
+    await saveEditor()
     const param = useDemoStore
       .getState()
       .flags.corroboration.params.find((p) => p.name === "n_default")
@@ -209,13 +211,13 @@ describe("FlagsTab — the corroboration gate is editable and honest", () => {
     expect(param?.state).toBe("honoured")
   })
 
-  it("an unbacked loosening clamps, and the clamp is rendered rather than logged", () => {
+  it("an unbacked loosening clamps, and the clamp is rendered rather than logged", async () => {
     renderTab()
     openEditor("corroboration promotion gate")
     const input = screen.getByLabelText("n_diverse")
     fireEvent.change(input, { target: { value: "1" } })
     fireEvent.keyDown(input, { key: "Enter" })
-    saveEditor()
+    await saveEditor()
 
     const param = useDemoStore
       .getState()
@@ -244,7 +246,10 @@ describe("FlagsTab — the corroboration gate is editable and honest", () => {
     const resets = screen.getAllByRole("button", { name: "reset to floor" })
     fireEvent.click(resets[1]!)
     fireEvent.blur(input)
-    saveEditor()
+    // The blur writes no stale 4 back: the draft is the stored (uncommitted)
+    // value again, so there is nothing to save.
+    expect(screen.getByLabelText("n_diverse")).toHaveValue("2")
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled()
 
     const param = useDemoStore
       .getState()
@@ -314,13 +319,13 @@ describe("FlagsTab — the tunables the API served and nothing rendered", () => 
     }
   })
 
-  it("committing a tunable writes it to the store", () => {
+  it("committing a tunable writes it to the store", async () => {
     renderTab()
     openEditor("pipeline & embedding tunables")
     const input = screen.getByLabelText("pipeline_concurrency")
     fireEvent.change(input, { target: { value: "8" } })
     fireEvent.keyDown(input, { key: "Enter" })
-    saveEditor()
+    await saveEditor()
     expect(
       useDemoStore
         .getState()
@@ -328,18 +333,19 @@ describe("FlagsTab — the tunables the API served and nothing rendered", () => 
     ).toBe(8)
   })
 
-  it("clamps a value past the API's own bound instead of sending a 422", () => {
+  it("refuses a value past the API's own bound instead of sending a 422", () => {
     renderTab()
     openEditor("pipeline & embedding tunables")
     const input = screen.getByLabelText("pipeline_concurrency")
     fireEvent.change(input, { target: { value: "99" } })
     fireEvent.keyDown(input, { key: "Enter" })
-    saveEditor()
+    expect(screen.getByText("Enter a value from 1 to 20.")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled()
     expect(
       useDemoStore
         .getState()
         .flags.tunables.find((t) => t.key === "pipeline_concurrency")?.value,
-    ).toBe(20)
+    ).toBe(5)
   })
 })
 
@@ -369,18 +375,18 @@ describe("FlagsTab — the classification label space", () => {
     expect(screen.queryByText("would add")).not.toBeInTheDocument()
   })
 
-  it("brings the areas back in expanded mode", () => {
+  it("brings the areas back in expanded mode", async () => {
     renderTab()
     openEditor("classification")
     switchToExpanded()
-    saveEditor()
+    await saveEditor()
     // The read-only card now lists the enabled areas and what each contributes.
     expect(screen.getByText("Technical")).toBeInTheDocument()
   })
 })
 
 describe("FlagsTab — classification areas", () => {
-  it("edits mode and areas together, in one request", () => {
+  it("edits mode and areas together, in one request", async () => {
     // The pair is the point: switching to expanded and choosing the areas that
     // expanded mode reads are one decision, and used to be two writes.
     renderTab()
@@ -392,7 +398,7 @@ describe("FlagsTab — classification areas", () => {
         /edited: classification_mode, classification_areas/,
       ),
     ).toBeInTheDocument()
-    saveEditor()
+    await saveEditor()
 
     const flags = useDemoStore.getState().flags
     expect(flags.classification_mode).toBe("expanded")
@@ -450,26 +456,26 @@ describe("FlagsTab — ruling 2: repo_allowlist editing surface", () => {
     expect(screen.getByText("github.com/darkraise/*")).toBeInTheDocument()
   })
 
-  it("saving a new pattern writes it to the store", () => {
+  it("saving a new pattern writes it to the store", async () => {
     renderTab()
     openEditor("repo auto-provision allowlist")
     fireEvent.change(screen.getByLabelText("repo_allowlist patterns"), {
       target: { value: "github.com/darkraise/*\n*.forge.internal.example" },
     })
-    saveEditor()
+    await saveEditor()
     expect(useDemoStore.getState().flags.repo_allowlist.patterns).toEqual([
       "github.com/darkraise/*",
       "*.forge.internal.example",
     ])
   })
 
-  it("names the empty-allowlist-refuses-everything honesty when cleared", () => {
+  it("names the empty-allowlist-refuses-everything honesty when cleared", async () => {
     renderTab()
     openEditor("repo auto-provision allowlist")
     fireEvent.change(screen.getByLabelText("repo_allowlist patterns"), {
       target: { value: "" },
     })
-    saveEditor()
+    await saveEditor()
     expect(
       screen.getByText(/every repo hint is refused until at least one/),
     ).toBeInTheDocument()

@@ -23,27 +23,24 @@ import {
   ComboboxItemText,
   ComboboxList,
 } from "darkraise-ui/components/combobox"
-import { keepDialogOpenOnListEscape } from "../portal-overlays"
 
 const ITEMS = [
   { value: "github", label: "GitHub" },
   { value: "gitlab", label: "GitLab" },
 ]
 
-function Harness({ guarded, triggerId }: { guarded: boolean; triggerId?: string }) {
+function Harness() {
   const [open, setOpen] = useState(true)
   return (
     <>
       <span>{open ? "dialog open" : "dialog closed"}</span>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent
-          onEscapeKeyDown={guarded ? keepDialogOpenOnListEscape : undefined}
-        >
+        <DialogContent>
           <DialogTitle>Add git account</DialogTitle>
           <DialogDescription>probe</DialogDescription>
           <input aria-label="typed" defaultValue="half-typed token" />
           <Select defaultValue="github">
-            <SelectTrigger aria-label="provider" id={triggerId}>
+            <SelectTrigger aria-label="provider">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -82,11 +79,11 @@ async function openSelect() {
   return listbox
 }
 
-describe("keepDialogOpenOnListEscape", () => {
-  // 6.6 closed the whole dialog here; 7.0 closes only the list. While this
-  // and the Combobox twin hold, the helper is redundant and can be retired.
-  it("without it, the library itself closes only an open Select", async () => {
-    render(<Harness guarded={false} />)
+describe("Escape in a dialog with a list", () => {
+  // darkraise-ui 6.6 closed the whole dialog here, and the app carried its own
+  // Escape handler on every such dialog; 7.0 closes only the open list.
+  it("the library closes only an open Select", async () => {
+    render(<Harness />)
     const listbox = await openSelect()
     fireEvent.keyDown(listbox, { key: "Escape" })
     await act(async () => {})
@@ -97,8 +94,8 @@ describe("keepDialogOpenOnListEscape", () => {
     )
   })
 
-  it("without it, the library itself closes only an open Combobox", async () => {
-    render(<Harness guarded={false} />)
+  it("the library closes only an open Combobox", async () => {
+    render(<Harness />)
     const input = screen.getByRole("combobox", { name: "model" })
     fireEvent.focus(input)
     fireEvent.click(input)
@@ -109,48 +106,16 @@ describe("keepDialogOpenOnListEscape", () => {
     expect(screen.getByText("dialog open")).toBeInTheDocument()
   })
 
-  it("closes only the Select, keeping the dialog and what was typed", async () => {
-    render(<Harness guarded />)
+  it("a second Escape, with nothing open, closes the dialog", async () => {
+    render(<Harness />)
     const listbox = await openSelect()
     fireEvent.keyDown(listbox, { key: "Escape" })
     await act(async () => {})
-    expect(screen.getByRole("combobox", { name: "provider" })).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    )
-    expect(screen.getByText("dialog open")).toBeInTheDocument()
     expect(screen.getByLabelText("typed")).toHaveValue("half-typed token")
 
-    // A second Escape, with nothing open, still closes the dialog.
     fireEvent.keyDown(screen.getByRole("combobox", { name: "provider" }), {
       key: "Escape",
     })
     expect(await screen.findByText("dialog closed")).toBeInTheDocument()
-  })
-
-  it("finds a trigger given its own id for a label", async () => {
-    // The list's aria-labelledby keeps naming the generated id, which no
-    // element carries once the trigger has its own (Add git account).
-    render(<Harness guarded triggerId="git-account-provider" />)
-    const listbox = await openSelect()
-    fireEvent.keyDown(listbox, { key: "Escape" })
-    await act(async () => {})
-    expect(screen.getByText("dialog open")).toBeInTheDocument()
-    expect(screen.getByRole("combobox", { name: "provider" })).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    )
-  })
-
-  it("closes only an open Combobox list", async () => {
-    render(<Harness guarded />)
-    const input = screen.getByRole("combobox", { name: "model" })
-    fireEvent.focus(input)
-    fireEvent.click(input)
-    expect(input).toHaveAttribute("aria-expanded", "true")
-    fireEvent.keyDown(input, { key: "Escape" })
-    await act(async () => {})
-    expect(input).toHaveAttribute("aria-expanded", "false")
-    expect(screen.getByText("dialog open")).toBeInTheDocument()
   })
 })

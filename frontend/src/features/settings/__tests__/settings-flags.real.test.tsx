@@ -364,7 +364,9 @@ describe("useFlagsTabBinding (DEMO off — real /config/feature-flags)", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false))
     expect(result.current.isSaving("arms")).toBe(false)
 
-    act(() => result.current.saveFlags("arms", { w_heat: 0.5 }))
+    act(() => {
+      void result.current.saveFlags("arms", { w_heat: 0.5 })
+    })
     await waitFor(() => expect(result.current.isSaving("arms")).toBe(true))
     // One shared mutation object serves every section, so its own isPending
     // would light up the whole tab. Only the saving section may report.
@@ -394,11 +396,12 @@ describe("useFlagsTabBinding (DEMO off — real /config/feature-flags)", () => {
     const { result } = renderHook(() => useFlagsTabBinding(), { wrapper })
     await waitFor(() => expect(result.current.isLoading).toBe(false))
 
-    act(() =>
-      result.current.saveFlags("classification", {
+    let saved: Promise<void> = Promise.resolve()
+    act(() => {
+      saved = result.current.saveFlags("classification", {
         classification_mode: "expanded",
-      }),
-    )
+      })
+    })
     await waitFor(() =>
       expect(result.current.isSaving("classification")).toBe(true),
     )
@@ -412,9 +415,10 @@ describe("useFlagsTabBinding (DEMO off — real /config/feature-flags)", () => {
     await waitFor(() =>
       expect(result.current.isSaving("classification")).toBe(false),
     )
-    // The section dialog has closed by now; the refusal has to be said
-    // somewhere, or the old value just reappears.
-    expect(toast.error).toHaveBeenCalledWith("Not saved: boom")
+    // The refusal goes back to the dialog that asked, which stays open to
+    // show it; nothing announces a save that did not land.
+    await expect(saved).rejects.toThrow("boom")
+    expect(toast.success).not.toHaveBeenCalled()
   })
 
   it("saveFlags PUTs the section patch to /config/feature-flags, never the demo store", async () => {

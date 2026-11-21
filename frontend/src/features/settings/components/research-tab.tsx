@@ -4,7 +4,7 @@ import { Button } from "darkraise-ui/components/button"
 import { Label } from "darkraise-ui/components/label"
 import { toast } from "darkraise-ui/components/sonner"
 
-import { HelpTip, NumberField } from "@/components/darkmem"
+import { EmptyState, HelpTip, NumberField } from "@/components/darkmem"
 import { Search } from "lucide-react"
 import { SettingsCard } from "./settings-card"
 import {
@@ -40,6 +40,8 @@ import {
 export function ResearchTab() {
   const config = useAutoResearch()
   const update = useUpdateAutoResearch()
+  // Its own mutation, so a refused arm is not reported as a refused budget.
+  const arm = useUpdateAutoResearch()
   const runs = useResearchRuns()
   const rerun = useRerunResearchRun()
   // Numbers, not strings: the old text inputs sent Number("") = 0 for an
@@ -69,6 +71,19 @@ export function ResearchTab() {
   const charsError = known ? budgetError(chars, charsMax) : null
   const budgetsValid = findingsError === null && charsError === null
 
+  if (config.isError && !known) {
+    return (
+      <SettingsCard icon={Search} title="Auto research">
+        <EmptyState
+          kind="failed"
+          title="The research settings could not be loaded"
+          description={config.error.message}
+          action={<Button onClick={() => void config.refetch()}>Retry</Button>}
+        />
+      </SettingsCard>
+    )
+  }
+
   return (
     <SettingsCard icon={Search} title="Auto research">
       <div className="space-y-3.5">
@@ -78,18 +93,25 @@ export function ResearchTab() {
             size="sm"
             className={enabled ? "font-mono" : "border-dashed font-mono"}
           >
-            {config.isError
-              ? "unreadable"
-              : !known
-                ? "reading…"
-                : enabled
-                  ? "armed"
-                  : "disarmed"}
+            {!known ? "reading…" : enabled ? "armed" : "disarmed"}
           </Badge>
           <Button
             variant="outline"
-            disabled={!known || update.isPending}
-            onClick={() => update.mutate({ enabled: !enabled })}
+            disabled={!known || arm.isPending}
+            onClick={() =>
+              arm.mutate(
+                { enabled: !enabled },
+                {
+                  // The button and badge read the stored row, so a refusal
+                  // leaves them where they were; the toast says why.
+                  onError: (error) =>
+                    toast.error(
+                      enabled ? "Not disarmed" : "Not armed",
+                      { description: error.message },
+                    ),
+                },
+              )
+            }
           >
             {!known
               ? "Reading the current state…"
@@ -161,11 +183,6 @@ export function ResearchTab() {
             not saved — {update.error.message}
           </p>
         )}
-        {config.isError && (
-          <p className="text-muted-foreground text-sm">
-            The research settings could not be loaded.
-          </p>
-        )}
 
         <div className="space-y-2 border-t pt-3.5">
           <div className="text-muted-foreground flex flex-wrap items-center gap-1.5 text-sm">
@@ -177,9 +194,14 @@ export function ResearchTab() {
           </div>
 
           {runs.isError && (
-            <p className="text-muted-foreground text-sm">
-              the run list could not be read
-            </p>
+            <EmptyState
+              kind="failed"
+              title="The run list could not be read"
+              description={runs.error.message}
+              action={
+                <Button onClick={() => void runs.refetch()}>Retry</Button>
+              }
+            />
           )}
           {runs.data && runs.data.items.length === 0 && (
             <p className="text-muted-foreground text-sm">

@@ -69,12 +69,10 @@ describe("useLLMTabBinding (DEMO off — real /config/llm)", () => {
     const { result } = renderHook(() => useLLMTabBinding(), { wrapper })
     await waitFor(() => expect(result.current.isLoading).toBe(false))
 
-    result.current.savePurpose("reasoning", { provider_name: "verification-judge" })
-
-    await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1))
-    expect(vi.mocked(toast.error).mock.calls[0]?.[1]).toEqual({
-      description: "verification-judge serves the verification purpose only",
-    })
+    // The refusal goes back to the purpose dialog, which stays open to show it.
+    await expect(
+      result.current.savePurpose("reasoning", { provider_name: "verification-judge" }),
+    ).rejects.toThrow("verification-judge serves the verification purpose only")
     expect(toast.success).not.toHaveBeenCalled()
   })
 

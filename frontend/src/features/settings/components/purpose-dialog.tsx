@@ -39,8 +39,8 @@ import {
   useProbeProviderModels,
 } from "@/hooks/api/use-llm-providers-api"
 import type { LLMTabBinding } from "../use-llm-tab-binding"
+import { useDialogSave } from "../use-dialog-save"
 import { ClassifierKindRow, CodeBuckets, Field } from "./purpose-sections"
-import { keepDialogOpenOnListEscape } from "@/lib/portal-overlays"
 
 type Draft = {
   provider_name: string
@@ -121,6 +121,7 @@ export function PurposeDialog({
 
   const dirty = dirtyFields(purpose, draft)
   const patch = (p: Partial<Draft>) => setDraft((d) => ({ ...d, ...p }))
+  const saving = useDialogSave(() => onOpenChange(false))
 
   const save = () => {
     if (!paramsCheck.ok) return
@@ -146,16 +147,12 @@ export function PurposeDialog({
           break
       }
     }
-    binding.savePurpose(purpose.purpose, changed)
-    onOpenChange(false)
+    saving.run(() => binding.savePurpose(purpose.purpose, changed))
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        onEscapeKeyDown={keepDialogOpenOnListEscape}
-        className="flex max-h-[85vh] max-w-2xl flex-col gap-3"
-      >
+    <Dialog open={open} onOpenChange={saving.guard(onOpenChange)}>
+      <DialogContent className="flex max-h-[85vh] max-w-2xl flex-col gap-3">
         <DialogHeader>
           <DialogTitle>{purpose.purpose} — configuration</DialogTitle>
           <DialogDescription>
@@ -307,6 +304,11 @@ export function PurposeDialog({
           )}
         </div>
 
+        {saving.error && (
+          <p role="alert" className="text-destructive-text text-sm">
+            Not saved: {saving.error}
+          </p>
+        )}
         <div className="flex items-center gap-2.5 pt-1">
           {dirty.length > 0 && (
             <span className="text-muted-foreground text-sm">
@@ -316,6 +318,7 @@ export function PurposeDialog({
           <Button
             variant="ghost"
             className="ml-auto"
+            disabled={saving.pending}
             onClick={() => onOpenChange(false)}
           >
             Cancel
@@ -323,10 +326,10 @@ export function PurposeDialog({
           <Button
             variant="outline"
             className="border-primary/60 text-primary-text"
-            disabled={dirty.length === 0 || !paramsCheck.ok}
+            disabled={dirty.length === 0 || !paramsCheck.ok || saving.pending}
             onClick={save}
           >
-            Save
+            {saving.pending ? "Saving…" : "Save"}
           </Button>
         </div>
       </DialogContent>

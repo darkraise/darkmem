@@ -24,6 +24,7 @@ import {
 } from "darkraise-ui/components/password-input"
 import { Textarea } from "darkraise-ui/components/textarea"
 import { Switch } from "darkraise-ui/components/switch"
+import { toast } from "darkraise-ui/components/sonner"
 import { cn } from "darkraise-ui/lib"
 import {
   Select,
@@ -53,7 +54,6 @@ import {
   useBackupsTabBinding,
   type BackupOutcome,
 } from "@/features/settings/use-backups-tab-binding"
-import { keepDialogOpenOnListEscape } from "@/lib/portal-overlays"
 
 /**
  * The `backup_destinations` operator surface (increment 6, spec §9.3).
@@ -89,11 +89,9 @@ export function BackupsTab() {
   // A new destination is the same form over a blank draft; it differs only
   // in what Save does (append rather than replace) and in naming the kind.
   const [adding, setAdding] = useState(false)
-  // Two error slots, not one: a refusal belongs beside the control that
-  // caused it. One shared slot renders the dialog's 422 behind the dialog as
-  // well, which reads as two separate failures.
+  // The dialog's 422 stays in the dialog; a refused switch is a toast, as for
+  // every Settings control that saves at once.
   const [formError, setFormError] = useState<string | null>(null)
-  const [rowError, setRowError] = useState<string | null>(null)
   const [runMessage, setRunMessage] = useState<string | null>(null)
 
   async function commit(next: BackupDestination) {
@@ -122,7 +120,6 @@ export function BackupsTab() {
   }
 
   async function toggle(destination: BackupDestination, enabled: boolean) {
-    setRowError(null)
     try {
       await save(
         destinations.map((d) =>
@@ -130,7 +127,10 @@ export function BackupsTab() {
         ),
       )
     } catch (exc) {
-      setRowError(exc instanceof Error ? exc.message : String(exc))
+      toast.error(
+        `${destination.name} not ${enabled ? "enabled" : "disabled"}`,
+        { description: exc instanceof Error ? exc.message : String(exc) },
+      )
     }
   }
 
@@ -172,12 +172,6 @@ export function BackupsTab() {
             Add destination
           </Button>
         </div>
-
-        {rowError ? (
-          <p role="alert" className="text-destructive-text text-sm">
-            {rowError}
-          </p>
-        ) : null}
 
         {isError ? (
           // Not the empty state: "No destinations configured" tells an
@@ -227,7 +221,6 @@ export function BackupsTab() {
         onOpenChange={(open) => !open && closeForm()}
       >
         <DialogContent
-          onEscapeKeyDown={keepDialogOpenOnListEscape}
           className="max-h-[90vh] overflow-y-auto"
         >
           <DialogTitle>

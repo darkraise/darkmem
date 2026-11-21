@@ -179,15 +179,25 @@ export interface FlagsTabBinding {
   isSaving: (key: string) => boolean
   allowlistPatterns: string[]
   isLoading: boolean
+  /** A failed read with nothing loaded, per source the tab renders, and the
+   *  refetch that retries it. */
+  error: Error | null
+  ladderError: Error | null
+  allowlistError: Error | null
+  retry: () => void
+  retryLadder: () => void
+  retryAllowlist: () => void
   /** One `feature_flags` write for a whole section's edits. Every control on
    *  this tab that lives in that row goes through here, so a card with six
-   *  changed fields costs one request rather than six. */
-  saveFlags: (section: SectionKey, patch: Record<string, unknown>) => void
+   *  changed fields costs one request rather than six. Each save resolves
+   *  once the write lands, announcing it, and rejects with the server's
+   *  refusal for the dialog to show. */
+  saveFlags: (section: SectionKey, patch: Record<string, unknown>) => Promise<void>
   /** One `verification_ladder` write. `null` clears a threshold back to its
    *  floor. The response is the resolver's report, so a clamped save reports
    *  the clamp rather than echoing the number back. */
-  saveLadder: (patch: Record<string, number | null>) => void
-  saveAllowlist: (patterns: string[]) => void
+  saveLadder: (patch: Record<string, number | null>) => Promise<void>
+  saveAllowlist: (patterns: string[]) => Promise<void>
 }
 
 function armFrom(
@@ -237,18 +247,11 @@ export function useFlagsTabBinding(): FlagsTabBinding {
     [inFlight],
   )
   const track = useCallback(
-    (key: string, run: () => Promise<unknown>) => {
+    (key: string, run: () => Promise<unknown>): Promise<void> => {
       setInFlight((keys) => [...keys, key])
-      // The catch is required, not defensive: `mutateAsync` rejects on a failed
-      // write and an unhandled rejection would take the page down over a
-      // settings save. It also has to say so: the section dialogs close on
-      // Save, and nothing else rendered a refusal, so an out-of-range value
-      // (the server's 422) vanished and the old value stayed without a word.
-      void run()
-        .catch((error: unknown) => {
-          toast.error(
-            `Not saved: ${error instanceof Error ? error.message : String(error)}`,
-          )
+      return run()
+        .then(() => {
+          toast.success("Saved")
         })
         .finally(() =>
           setInFlight((keys) => {
@@ -288,6 +291,12 @@ export function useFlagsTabBinding(): FlagsTabBinding {
       isSaving: () => false,
       allowlistPatterns: demoFlags.repo_allowlist.patterns,
       isLoading: false,
+      error: null,
+      ladderError: null,
+      allowlistError: null,
+      retry: () => {},
+      retryLadder: () => {},
+      retryAllowlist: () => {},
       // Demo mode has no request to batch, so one section save fans back out
       // to the store actions the fixture already had. The *caller's* shape is
       // what matters — one save per section — and it is the same in both
@@ -309,13 +318,21 @@ export function useFlagsTabBinding(): FlagsTabBinding {
             }
           }
         }
+        toast.success("Saved")
+        return Promise.resolve()
       },
       saveLadder: (patch) => {
         for (const [name, committed] of Object.entries(patch)) {
           saveDemoCorroboration(name, committed)
         }
+        toast.success("Saved")
+        return Promise.resolve()
       },
-      saveAllowlist: saveDemoAllowlist,
+      saveAllowlist: (patterns) => {
+        saveDemoAllowlist(patterns)
+        toast.success("Saved")
+        return Promise.resolve()
+      },
     }
   }
 
@@ -426,21 +443,23 @@ export function useFlagsTabBinding(): FlagsTabBinding {
     isSaving,
     allowlistPatterns: allowlistQuery.data?.patterns ?? [],
     isLoading: flagsQuery.isLoading,
-    saveFlags: (section, patch) => {
-      // `FeatureFlagsUpdate` is a partial schema, so a many-key body is one
-      // valid request. Sending them one at a time was never required by the
-      // API — it was the UI's own habit, and it cost a round-trip and a cache
-      // reconcile per keystroke-commit.
+    // A failed refetch keeps the last good values on screen.
+    error: flags ? null : flagsQuery.error,
+    ladderError: ladderQuery.data ? null : ladderQuery.error,
+    allowlistError: allowlistQuery.data ? null : allowlistQuery.error,
+    retry: () => void flagsQuery.refetch(),
+    retryLadder: () => void ladderQuery.refetch(),
+    retryAllowlist: () => void allowlistQuery.refetch(),
+    // `FeatureFlagsUpdate` is a partial schema, so a many-key body is one
+    // valid request; a section's edits leave together.
+    saveFlags: (section, patch) =>
       track(section, () =>
         updateFlags.mutateAsync(patch as Partial<FeatureFlags>),
-      )
-    },
-    saveLadder: (patch) => {
-      track(SECTIONS.ladder, () => updateLadder.mutateAsync(patch))
-    },
-    saveAllowlist: (patterns) => {
-      track(SECTIONS.allowlist, () => updateAllowlist.mutateAsync(patterns))
-    },
+      ),
+    saveLadder: (patch) =>
+      track(SECTIONS.ladder, () => updateLadder.mutateAsync(patch)),
+    saveAllowlist: (patterns) =>
+      track(SECTIONS.allowlist, () => updateAllowlist.mutateAsync(patterns)),
   }
 }
 
