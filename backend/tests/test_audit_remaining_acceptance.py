@@ -1727,3 +1727,37 @@ async def test_a20_undoing_a_refine_journalled_with_tags_still_restores_them(com
     row = await memory_row(committing, memory)
     assert row["summary"] == "the old summary"
     assert sorted(row["tag_names"]) == ["project/keep", "t213-original"]
+
+
+# ------------------------------------------------------------------ A21
+
+
+@pytest.mark.asyncio
+async def test_a21_the_digest_marks_an_associate_undoable_exactly_when_its_undo_succeeds(committing, project):
+    from app.services import dream_digest as digest
+    from app.services import dream_undo as undo
+    from app.services import memory_dream as dream
+    from app.utils.ids import new_id
+    from tests.test_dream_digest import _derived_edge, edges, journal
+
+    cycle = str(new_id())
+    untouched = await _derived_edge(committing, project, cycle_id=cycle, label="qa21-keep")
+    rewritten = await _derived_edge(committing, project, cycle_id=cycle, label="qa21-moved")
+    signal = dream.SIGNAL_EMBEDDING_PROXIMITY
+    async with committing() as session:
+        await edges.upsert_edge(
+            session, source_memory_id=rewritten[0], target_memory_id=rewritten[1], rel_type=rewritten[2],
+            project=project, pass_key=journal.DERIVATION_PASS,
+            block=dream.derived_block(signal=signal, scores={signal: 0.33}, derived_at="a later pass"),
+        )
+        await session.commit()
+
+    async with committing() as session:
+        views = await digest.annotate_undoability(session, await digest.read_cycle_actions(session, cycle))
+    by_source = {v.object_id: v for v in views}
+    assert by_source[untouched[0]].undoable is True
+    assert by_source[rewritten[0]].undoable is False
+
+    await undo_ids(committing, by_source[untouched[0]].event_id)
+    with pytest.raises(undo.UndoRefused):
+        await undo_ids(committing, by_source[rewritten[0]].event_id)
