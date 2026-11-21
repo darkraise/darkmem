@@ -270,6 +270,9 @@ async def test_trigger_route_returns_409_and_does_not_queue_a_run(
     calls ``trigger()`` directly rather than through this route pre-check.
     """
     job = dream_family_client.get(MEMORY_DREAM_JOB_KEY)
+    # Run state falls back to the newest committed job_runs row, which a test
+    # file run earlier in this worker may have left, so compare before/after.
+    prior = await dream_family_client.load_config(MEMORY_DREAM_JOB_KEY)
     await job.lock.acquire()
     before = set(asyncio.all_tasks())
     try:
@@ -281,8 +284,7 @@ async def test_trigger_route_returns_409_and_does_not_queue_a_run(
         job.lock.release()
     await _drain_pending_tasks(before)
     cfg = await dream_family_client.load_config(MEMORY_DREAM_JOB_KEY)
-    assert cfg.last_run_at is None
-    assert cfg.last_status is None
+    assert (cfg.last_run_at, cfg.last_status) == (prior.last_run_at, prior.last_status)
 
 
 # ── Done-when 3 + test-plan point 5: no Tier-A/B caller reaches a job ─────
