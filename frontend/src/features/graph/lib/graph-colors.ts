@@ -8,7 +8,7 @@ export type ColorMode = "type" | "cluster" | "tag"
 export const DEFAULT_COLOR_MODE: ColorMode = "cluster"
 
 // Relocated from code-graph-theme.ts to keep all pure color math in one place
-// and break the would-be import cycle (code-graph-theme imports darkenHex here).
+// and break the would-be import cycle (code-graph-theme imports from here).
 export function hslToHex(h: number, s: number, l: number): string {
   const sat = s / 100
   const lum = l / 100
@@ -216,31 +216,6 @@ export function hexToRgba(hex: string, alpha: number): string {
 
 export function restEdgeColor(hex: string, isDark: boolean): string {
   return hexToRgba(hex, isDark ? 0.08 : 0.12)
-}
-
-export function lightenHex(hex: string, amount = 0.35): string {
-  const r = Math.min(
-    255,
-    Math.round(
-      parseInt(hex.slice(1, 3), 16) +
-        (255 - parseInt(hex.slice(1, 3), 16)) * amount,
-    ),
-  )
-  const g = Math.min(
-    255,
-    Math.round(
-      parseInt(hex.slice(3, 5), 16) +
-        (255 - parseInt(hex.slice(3, 5), 16)) * amount,
-    ),
-  )
-  const b = Math.min(
-    255,
-    Math.round(
-      parseInt(hex.slice(5, 7), 16) +
-        (255 - parseInt(hex.slice(5, 7), 16)) * amount,
-    ),
-  )
-  return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`
 }
 
 export function blendHex(hex1: string, hex2: string, ratio = 0.5): string {

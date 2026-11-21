@@ -1,22 +1,22 @@
 import { describe, expect, it } from "vitest"
-import { labelSide, placeLabels, visibleLabelIds } from "../lib/label-placement"
+import { labelSide, placeLabels } from "../lib/label-placement"
 import { MAX_ZOOM, MIN_ZOOM, panView, zoomViewAt } from "../lib/viewbox"
 
-describe("visibleLabelIds", () => {
+describe("placeLabels collisions", () => {
   it("keeps labels that do not collide", () => {
-    const ids = visibleLabelIds([
+    const ids = placeLabels([
       { id: "a", x: 0, y: 0, text: "postgres" },
       { id: "b", x: 0, y: 40, text: "redis" },
-    ])
+    ]).keys()
     expect([...ids]).toEqual(["a", "b"])
   })
 
   it("hides a label that would overlap one already placed", () => {
-    const ids = visibleLabelIds([
+    const ids = placeLabels([
       { id: "a", x: 0, y: 0, text: "postgres" },
       { id: "b", x: 20, y: 4, text: "pgvector" },
       { id: "c", x: 200, y: 0, text: "redis" },
-    ])
+    ]).keys()
     expect([...ids]).toEqual(["a", "c"])
   })
 })

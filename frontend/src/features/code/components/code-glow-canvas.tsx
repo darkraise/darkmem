@@ -4,12 +4,13 @@ import Sigma from "sigma"
 import { EdgeRectangleProgram } from "sigma/rendering"
 import type { CameraState, NodeDisplayData } from "sigma/types"
 import { EmptyState } from "@/components/darkmem"
-import type {
-  CodeNodeKind,
-  DemoCodeCommunity,
-  DemoCodeEdge,
-  DemoCodeGraph,
-  DemoCodeNode,
+import {
+  KIND_CHART,
+  type CodeNodeKind,
+  type DemoCodeCommunity,
+  type DemoCodeEdge,
+  type DemoCodeGraph,
+  type DemoCodeNode,
 } from "@/features/code/types"
 import {
   seededUnit,
@@ -18,6 +19,7 @@ import {
 } from "@/features/graph/lib/code-graph-theme"
 import { blendHex, hexToRgba, restEdgeColor } from "@/features/graph/lib/graph-colors"
 import { scaleSettings } from "@/features/graph/lib/graph-scale"
+import { forgetUndrawn, rememberPositions } from "@/features/graph/lib/remembered-positions"
 import {
   constellationFa2Settings,
   createConstellationRunner,
@@ -77,25 +79,6 @@ const KEY_ACTIONS: Record<string, CanvasKeyAction> = {
 
 export function canvasKeyAction(key: string): CanvasKeyAction | null {
   return Object.prototype.hasOwnProperty.call(KEY_ACTIONS, key) ? KEY_ACTIONS[key]! : null
-}
-
-// The SVG canvas's tiers (code-canvas.tsx): structural, types, callables.
-export const KIND_CHART: Record<CodeNodeKind, 1 | 2 | 3> = {
-  file: 1,
-  module: 1,
-  class: 2,
-  struct: 2,
-  interface: 2,
-  trait: 2,
-  enum: 2,
-  namespace: 2,
-  impl: 2,
-  type: 2,
-  property: 2,
-  method: 3,
-  function: 3,
-  route: 3,
-  tool: 3,
 }
 
 const HUB_DEGREE = 5
@@ -307,6 +290,8 @@ export function CodeGlowCanvas({
       })
     }
 
+    forgetUndrawn(settled, g)
+
     const scale = scaleSettings(g.order, g.size)
     const runner: ConstellationRunner = createConstellationRunner(g, {
       layoutMs: scale.layoutMs,
@@ -498,11 +483,7 @@ export function CodeGlowCanvas({
     }
 
     return () => {
-      g.forEachNode((id, attrs) => {
-        const x = attrs.x as number
-        const y = attrs.y as number
-        if (Number.isFinite(x) && Number.isFinite(y)) settled.set(id, { x, y })
-      })
+      rememberPositions(settled, g)
       const c = sigma.getCamera()
       cameraStateRef.current = { nodes: nodeSig, state: { x: c.x, y: c.y, ratio: c.ratio, angle: c.angle } }
       stopMotion()

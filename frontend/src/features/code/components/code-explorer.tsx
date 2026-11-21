@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { ChevronRight, FileCode2, FolderClosed, FolderOpen } from "lucide-react"
 import { cn } from "darkraise-ui/lib"
-import type { CodeNodeKind, DemoCodeGraph, DemoCodeNode } from "@/features/code/types"
+import { KIND_CHART, type DemoCodeGraph, type DemoCodeNode } from "@/features/code/types"
 import {
   ancestorDirs,
   createFileTree,
@@ -11,26 +11,20 @@ import {
 } from "../lib/file-tree"
 import { chartVar } from "./code-canvas"
 
-const KIND_CHART: Record<CodeNodeKind, number> = {
-  file: 1,
-  module: 1,
-  class: 2,
-  struct: 2,
-  interface: 2,
-  trait: 2,
-  enum: 2,
-  namespace: 2,
-  impl: 2,
-  type: 2,
-  property: 2,
-  method: 3,
-  function: 3,
-  route: 3,
-  tool: 3,
-}
-
 const ROW_HEIGHT = 24
 const INDENT = 12
+
+/** Each file's symbols, files and modules left out. */
+export function groupSymbolsByFile(nodes: readonly DemoCodeNode[]): Map<string, DemoCodeNode[]> {
+  const map = new Map<string, DemoCodeNode[]>()
+  for (const node of nodes) {
+    if (node.kind === "file" || node.kind === "module") continue
+    const list = map.get(node.file)
+    if (list) list.push(node)
+    else map.set(node.file, [node])
+  }
+  return map
+}
 
 export function CodeExplorer({
   files,
@@ -53,14 +47,7 @@ export function CodeExplorer({
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
-  const symbolsByFile = useMemo(() => {
-    const map = new Map<string, DemoCodeNode[]>()
-    for (const node of graph?.nodes ?? []) {
-      if (node.kind === "file" || node.kind === "module") continue
-      map.set(node.file, [...(map.get(node.file) ?? []), node])
-    }
-    return map
-  }, [graph])
+  const symbolsByFile = useMemo(() => groupSymbolsByFile(graph?.nodes ?? []), [graph])
 
   const trimmed = query.trim().toLowerCase()
 

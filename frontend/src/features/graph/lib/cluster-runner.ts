@@ -1,6 +1,6 @@
 import Graph from "graphology"
-import FA2Layout from "graphology-layout-forceatlas2/worker"
 import { seededUnit } from "./code-graph-theme"
+import { createLayoutLoop } from "./layout-loop"
 import {
   HALO_SIZE,
   ROLE_BRIGHTNESS,
@@ -13,11 +13,12 @@ import {
 } from "./constellation-layout"
 import {
   ISLAND_K,
-  fitIsland,
+  createSpreadScratch,
+  fitIslandInto,
   layoutIslands,
   seedIsland,
   simulationCentres,
-  spreadPoints,
+  spreadInPlace,
   type IslandLayout,
 } from "./cluster-layout"
 
@@ -111,35 +112,70 @@ export function createClusterRunner(
     role.set(id, best)
   }
 
-  const placeRiders = (pos: Map<string, Point>) => {
-    for (const { id, linked } of riders) {
+  // Every placed node has one index for the whole run: the loose island's
+  // fixed members, then each simulated island's members together, then the
+  // riders. The layout runs for seconds at up to 20k nodes, so a frame works
+  // in these buffers and allocates nothing per node.
+  const order: string[] = [...fixed.keys()]
+  const spans = simulatedGroups.map((g) => {
+    const from = order.length
+    order.push(...g.members)
+    return { from, to: order.length, centre: centres.get(g.key)!, radius: g.radius }
+  })
+  const pointCount = order.length
+  for (const r of riders) order.push(r.id)
+  const indexOf = new Map(order.map((id, i) => [id, i]))
+  const fixedX = Float64Array.from(fixed.values(), (p: Point) => p.x)
+  const fixedY = Float64Array.from(fixed.values(), (p: Point) => p.y)
+  const riderLinks = riders.map((r) => Int32Array.from(r.linked, (m) => indexOf.get(m)!))
+  const jitter = 0.25 * ISLAND_K
+  const riderDx = Float64Array.from(riders, (r) => (seededUnit(r.id, 2) - 0.5) * jitter)
+  const riderDy = Float64Array.from(riders, (r) => (seededUnit(r.id, 3) - 0.5) * jitter)
+  const simX = new Float64Array(pointCount)
+  const simY = new Float64Array(pointCount)
+  const fitX = new Float64Array(pointCount)
+  const fitY = new Float64Array(pointCount)
+  const offX = new Float64Array(pointCount)
+  const offY = new Float64Array(pointCount)
+  const outX = new Float64Array(order.length)
+  const outY = new Float64Array(order.length)
+  const dists = new Float64Array(spans.reduce((m, sp) => Math.max(m, sp.to - sp.from), 0))
+  const scratch = createSpreadScratch(pointCount)
+  const idOf = (i: number) => order[i]!
+
+  const arrange = (iterations: number) => {
+    fitX.set(fixedX)
+    fitY.set(fixedY)
+    for (const sp of spans) {
+      fitIslandInto(simX, simY, sp.from, sp.to, sp.centre, sp.radius, fitX, fitY, dists)
+    }
+    for (let i = 0; i < pointCount; i++) {
+      outX[i] = fitX[i]! + offX[i]!
+      outY[i] = fitY[i]! + offY[i]!
+    }
+    spreadInPlace(outX, outY, pointCount, layout.gap, iterations, idOf, scratch)
+    for (let i = 0; i < pointCount; i++) {
+      offX[i] = outX[i]! - fitX[i]!
+      offY[i] = outY[i]! - fitY[i]!
+    }
+    for (let r = 0; r < riderLinks.length; r++) {
+      const linked = riderLinks[r]!
       let x = 0
       let y = 0
-      for (const m of linked) {
-        const p = pos.get(m)!
-        x += p.x
-        y += p.y
+      for (let k = 0; k < linked.length; k++) {
+        x += outX[linked[k]!]!
+        y += outY[linked[k]!]!
       }
-      const jitter = 0.25 * ISLAND_K
-      pos.set(id, {
-        x: x / linked.length + (seededUnit(id, 2) - 0.5) * jitter,
-        y: y / linked.length + (seededUnit(id, 3) - 0.5) * jitter,
-      })
+      outX[pointCount + r] = x / linked.length + riderDx[r]!
+      outY[pointCount + r] = y / linked.length + riderDy[r]!
     }
-    return pos
   }
-
-  const offsets = new Map<string, Point>()
-  const arrange = (sim: ReadonlyMap<string, Point>, iterations: number) => {
-    const fitted = new Map<string, Point>(fixed)
-    for (const g of simulatedGroups) {
-      const own = new Map<string, Point>()
-      for (const id of g.members) own.set(id, sim.get(id)!)
-      for (const [id, p] of fitIsland(own, centres.get(g.key)!, g.radius)) fitted.set(id, p)
-    }
-    return placeRiders(spreadPoints(fitted, layout.gap, offsets, iterations))
+  for (const [id, p] of startAt) {
+    const i = indexOf.get(id)!
+    simX[i] = p.x
+    simY[i] = p.y
   }
-  const first = arrange(startAt, SETTLE_ITERATIONS)
+  arrange(SETTLE_ITERATIONS)
 
   const glowSizes = [...simulated]
     .map((id) => graph.getNodeAttribute(id, "size") as number)
@@ -156,15 +192,15 @@ export function createClusterRunner(
 
   graph.updateEachNodeAttributes((id, attrs) => {
     const r = role.get(id) ?? "halo"
-    const p = first.get(id) ?? { x: 0, y: 0 }
+    const i = indexOf.get(id)
     return {
       ...attrs,
       _role: r,
       brightness: ROLE_BRIGHTNESS[r],
       phase: seededUnit(id, 7),
       ...(looseIds.has(id) ? { size: looseSize } : {}),
-      x: p.x,
-      y: p.y,
+      x: i === undefined ? 0 : outX[i]!,
+      y: i === undefined ? 0 : outY[i]!,
     }
   })
 
@@ -178,42 +214,38 @@ export function createClusterRunner(
   const weightOf = (s: number | undefined) =>
     hi > lo ? WEAK_EDGE_WEIGHT + (1 - WEAK_EDGE_WEIGHT) * (((s ?? lo) - lo) / (hi - lo)) : 1
 
-  let worker: FA2Layout | null = null
   let simGraph: Graph | null = null
-  let frame: number | null = null
-  let timer: ReturnType<typeof setTimeout> | null = null
-  let running = false
 
+  const readSim = (id: string, a: Record<string, unknown>) => {
+    const i = indexOf.get(id)!
+    simX[i] = a.x as number
+    simY[i] = a.y as number
+  }
+  // In place: a copy per node per frame is garbage at 20k nodes.
+  const writePlaced = (id: string, attrs: Record<string, unknown>) => {
+    const i = indexOf.get(id)
+    if (i !== undefined) {
+      attrs.x = outX[i]
+      attrs.y = outY[i]
+    }
+    return attrs
+  }
+  const XY = { attributes: ["x", "y"] }
   const mirror = (iterations = FRAME_ITERATIONS) => {
     if (!simGraph) return
-    const sim = new Map<string, Point>()
-    simGraph.forEachNode((id, a) => sim.set(id, { x: a.x as number, y: a.y as number }))
-    const placed = arrange(sim, iterations)
-    graph.updateEachNodeAttributes(
-      (id, attrs) => {
-        const p = placed.get(id)
-        // In place: a copy per node per frame is garbage at 20k nodes.
-        if (p) {
-          attrs.x = p.x
-          attrs.y = p.y
-        }
-        return attrs
-      },
-      { attributes: ["x", "y"] },
-    )
+    simGraph.forEachNode(readSim)
+    arrange(iterations)
+    graph.updateEachNodeAttributes(writePlaced, XY)
   }
-  const loop = () => {
-    mirror()
-    frame = requestAnimationFrame(loop)
-  }
-  const halt = () => {
-    if (frame !== null) cancelAnimationFrame(frame)
-    if (timer !== null) clearTimeout(timer)
-    frame = null
-    timer = null
-    worker?.stop()
-    running = false
-  }
+  const loop = createLayoutLoop({
+    layoutMs: opts.layoutMs,
+    fa2Settings: opts.fa2Settings,
+    onFrame: () => mirror(),
+    onSettle: () => {
+      mirror(SETTLE_ITERATIONS)
+      opts.onStop?.()
+    },
+  })
 
   return {
     layout,
@@ -225,7 +257,7 @@ export function createClusterRunner(
     outer: { haloInner: 0, haloOuter: looseGroup?.radius ?? 0, clumpSpacing: layout.gap },
     groupOf,
     start() {
-      if (running) return
+      if (loop.isRunning()) return
       simGraph = new Graph({ type: "undirected" })
       for (const id of simulated) simGraph.addNode(id, { ...startAt.get(id)! })
       // Only an island's own edges move it: an edge to another island would
@@ -240,27 +272,10 @@ export function createClusterRunner(
         opts.onStop?.()
         return
       }
-      worker?.kill()
-      worker = new FA2Layout(simGraph, { settings: opts.fa2Settings })
-      worker.start()
-      running = true
-      frame = requestAnimationFrame(loop)
-      timer = setTimeout(() => {
-        halt()
-        mirror(SETTLE_ITERATIONS)
-        opts.onStop?.()
-      }, opts.layoutMs)
+      loop.start(simGraph)
     },
-    stop() {
-      halt()
-    },
-    kill() {
-      halt()
-      worker?.kill()
-      worker = null
-    },
-    isRunning() {
-      return running
-    },
+    stop: loop.stop,
+    kill: loop.kill,
+    isRunning: loop.isRunning,
   }
 }

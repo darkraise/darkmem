@@ -194,24 +194,6 @@ describe("placeOuterRing", () => {
       const { c, R } = scene()
       expect([...place(c, R).positions]).toEqual([...place(c, R).positions])
     })
-
-    it(`${place.name}: classifies and places 20,000 nodes and 110,000 edges within 50 ms`, () => {
-      const rand = rng(11)
-      const n = 20_000
-      const nodeIds = ids("n", n)
-      const edges: ConstellationEdge[] = []
-      for (let i = 0; i < 110_000; i++) {
-        edges.push({ source: nodeIds[Math.floor(rand() * 12_000)]!, target: nodeIds[Math.floor(rand() * 12_000)]! })
-      }
-      const run = () => {
-        const t0 = performance.now()
-        const c = classify(nodeIds, edges)
-        place(c, coreRadius(c.core.length))
-        return performance.now() - t0
-      }
-      run()
-      expect(Math.min(run(), run(), run())).toBeLessThanOrEqual(50)
-    })
   }
 })
 

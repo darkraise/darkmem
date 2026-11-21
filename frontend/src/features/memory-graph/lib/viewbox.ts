@@ -10,11 +10,6 @@ export interface ViewBox {
 export const MIN_ZOOM = 0.5
 export const MAX_ZOOM = 6
 
-/** The current magnification of `view` against the fitted `base`. */
-export function zoomLevel(view: ViewBox, base: ViewBox): number {
-  return base.w / view.w
-}
-
 /**
  * Scale the view by `factor` (< 1 zooms in, > 1 zooms out) about the point
  * (px, py) in user units, so that point stays under the cursor/fingers.

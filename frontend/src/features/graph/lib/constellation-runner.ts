@@ -1,6 +1,6 @@
 import Graph from "graphology"
-import FA2Layout from "graphology-layout-forceatlas2/worker"
 import { inferSettings } from "graphology-layout-forceatlas2"
+import { createLayoutLoop } from "./layout-loop"
 import { seededUnit } from "./code-graph-theme"
 import {
   classify,
@@ -95,11 +95,7 @@ export function createConstellationRunner(
     }
   })
 
-  let worker: FA2Layout | null = null
   let coreGraph: Graph | null = null
-  let frame: number | null = null
-  let timer: ReturnType<typeof setTimeout> | null = null
-  let running = false
 
   const mirror = () => {
     if (!coreGraph) return
@@ -119,25 +115,22 @@ export function createConstellationRunner(
       { attributes: ["x", "y"] },
     )
   }
-  const loop = () => {
-    mirror()
-    frame = requestAnimationFrame(loop)
-  }
-  const halt = () => {
-    if (frame !== null) cancelAnimationFrame(frame)
-    if (timer !== null) clearTimeout(timer)
-    frame = null
-    timer = null
-    worker?.stop()
-    running = false
-  }
+  const loop = createLayoutLoop({
+    layoutMs: opts.layoutMs,
+    fa2Settings: opts.fa2Settings,
+    onFrame: mirror,
+    onSettle: () => {
+      mirror()
+      opts.onStop?.()
+    },
+  })
 
   return {
     classification,
     coreRadius: R,
     outer,
     start() {
-      if (running) return
+      if (loop.isRunning()) return
       coreGraph = new Graph({ type: "undirected" })
       for (const id of simulated) {
         coreGraph.addNode(id, {
@@ -150,27 +143,10 @@ export function createConstellationRunner(
           coreGraph!.mergeEdge(source, target)
         }
       })
-      worker?.kill()
-      worker = new FA2Layout(coreGraph, { settings: opts.fa2Settings })
-      worker.start()
-      running = true
-      frame = requestAnimationFrame(loop)
-      timer = setTimeout(() => {
-        halt()
-        mirror()
-        opts.onStop?.()
-      }, opts.layoutMs)
+      loop.start(coreGraph)
     },
-    stop() {
-      halt()
-    },
-    kill() {
-      halt()
-      worker?.kill()
-      worker = null
-    },
-    isRunning() {
-      return running
-    },
+    stop: loop.stop,
+    kill: loop.kill,
+    isRunning: loop.isRunning,
   }
 }

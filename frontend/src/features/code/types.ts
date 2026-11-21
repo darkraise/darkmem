@@ -11,8 +11,7 @@
 // CodeSymbol.kind value (KIND_MAP in code_parser.py), aux code_graph_nodes
 // rows carry their own top-level kind column — T1.59 widened this union to
 // the full real union so neither vocabulary gets silently narrowed. See
-// KIND_CHART in code-glow-canvas.tsx / code-explorer.tsx / code-filters.tsx,
-// which must stay exhaustive over every value added here.
+// KIND_CHART below, which must stay exhaustive over every value added here.
 export type CodeNodeKind =
   | "file"
   | "module"
@@ -29,6 +28,25 @@ export type CodeNodeKind =
   | "property"
   | "route"
   | "tool"
+
+/** The chart colour tier of each kind: structural, types, callables. */
+export const KIND_CHART: Record<CodeNodeKind, 1 | 2 | 3> = {
+  file: 1,
+  module: 1,
+  class: 2,
+  struct: 2,
+  interface: 2,
+  trait: 2,
+  enum: 2,
+  namespace: 2,
+  impl: 2,
+  type: 2,
+  property: 2,
+  method: 3,
+  function: 3,
+  route: 3,
+  tool: 3,
+}
 
 export interface DemoCodeNode {
   id: string

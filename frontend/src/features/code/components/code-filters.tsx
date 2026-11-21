@@ -1,26 +1,8 @@
 import { Button } from "darkraise-ui/components/button"
 import { Checkbox } from "darkraise-ui/components/checkbox"
 import { cn } from "darkraise-ui/lib"
-import type { CodeNodeKind } from "@/features/code/types"
+import { KIND_CHART, type CodeNodeKind } from "@/features/code/types"
 import { chartVar } from "./code-canvas"
-
-const KIND_CHART: Record<CodeNodeKind, number> = {
-  file: 1,
-  module: 1,
-  class: 2,
-  struct: 2,
-  interface: 2,
-  trait: 2,
-  enum: 2,
-  namespace: 2,
-  impl: 2,
-  type: 2,
-  property: 2,
-  method: 3,
-  function: 3,
-  route: 3,
-  tool: 3,
-}
 
 const KIND_ORDER: CodeNodeKind[] = [
   "file",

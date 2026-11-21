@@ -70,11 +70,3 @@ export function placeLabels(
   }
   return visible
 }
-
-/** The ids `placeLabels` shows. */
-export function visibleLabelIds(
-  labels: readonly LabelBox[],
-  width?: number,
-): Set<string> {
-  return new Set(placeLabels(labels, width).keys())
-}

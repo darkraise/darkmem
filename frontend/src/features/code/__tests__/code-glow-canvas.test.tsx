@@ -34,9 +34,9 @@ import {
   CodeGlowCanvas,
   drawnGraph,
   isDimmed,
-  KIND_CHART,
   showsLabel,
 } from "../components/code-glow-canvas"
+import { KIND_CHART } from "../types"
 
 const GRAPH = {
   repo_id: "r1",

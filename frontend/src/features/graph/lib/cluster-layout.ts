@@ -25,6 +25,8 @@ export const ISLAND_REACH = 1
 const LOOSE_GROUP = "loose"
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
 const PLACE_ITERATIONS = 300
+/** Island count past which collisions search a grid instead of every pair. */
+const GRID_MIN_ISLANDS = 150
 /** Share of the seeding disc the island footprints cover. It only spaces the
  *  seed slots; the simulation holds no rim. */
 const PACK_FILL = 0.62
@@ -176,31 +178,8 @@ function groupIndexed(
   return { groups, groupOf, role }
 }
 
-export function groupMemories(
-  memories: readonly { id: string; cluster: number }[],
-  edges: readonly ScoredEdge[],
-): { groups: IslandGroup[]; groupOf: Map<string, string>; role: Map<string, ConstellationRole> } {
-  return groupIndexed(memories, indexEdges(memories.map((m) => m.id), edges))
-}
-
 const islandGap = (a: IslandGroup, b: IslandGroup) =>
   Math.max(ISLAND_GAP_MIN, ISLAND_GAP * Math.min(a.radius, b.radius))
-
-/**
- * Island centres from a small deterministic simulation: islands start on the
- * slots of a sunflower inside a disc, each taking the free slot nearest the
- * islands it links to (the largest island takes the middle, the loose island
- * the rim); islands sharing edges pull toward touching, a pull toward the
- * centre keeps the whole round and compact, and collisions keep a gap.
- */
-export function placeIslands(
-  groups: readonly IslandGroup[],
-  groupOf: ReadonlyMap<string, string>,
-  edges: readonly ScoredEdge[],
-): Map<string, Point> {
-  const ids = [...groupOf.keys()]
-  return placeIndexed(groups, islandIndexOf(groups, groupOf, ids), indexEdges(ids, edges))
-}
 
 function islandIndexOf(
   groups: readonly IslandGroup[],
@@ -213,6 +192,13 @@ function islandIndexOf(
   return out
 }
 
+/**
+ * Island centres from a small deterministic simulation: islands start on the
+ * slots of a sunflower inside a disc, each taking the free slot nearest the
+ * islands it links to (the largest island takes the middle, the loose island
+ * the rim); islands sharing edges pull toward touching, a pull toward the
+ * centre keeps the whole round and compact, and collisions keep a gap.
+ */
 function placeIndexed(
   groups: readonly IslandGroup[],
   islandAt: Int32Array,
@@ -252,33 +238,83 @@ function placeIndexed(
   const xs = new Float64Array(n)
   const ys = new Float64Array(n)
   seedSlots(groups, pairs, rad, discR, xs, ys)
-  const collide = () => {
+  const separate = (i: number, j: number) => {
+    const ri = rad[i]!
+    const rj = rad[j]!
+    const want = ISLAND_REACH * (ri + rj) + Math.max(ISLAND_GAP_MIN, ISLAND_GAP * Math.min(ri, rj))
+    let dx = xs[j]! - xs[i]!
+    let dy = ys[j]! - ys[i]!
+    if (dx * dx + dy * dy >= want * want) return
+    let d = Math.hypot(dx, dy)
+    if (d < 1e-9) {
+      const t = seededUnit(`${groups[i]!.key}|${groups[j]!.key}`, 3) * Math.PI * 2
+      dx = Math.cos(t)
+      dy = Math.sin(t)
+      d = 1
+    }
+    // The smaller island moves further, so big islands hold the middle.
+    const ai = area[i]!
+    const aj = area[j]!
+    const push = want - d
+    xs[i] = xs[i]! - (dx / d) * push * (aj / (ai + aj))
+    ys[i] = ys[i]! - (dy / d) * push * (aj / (ai + aj))
+    xs[j] = xs[j]! + (dx / d) * push * (ai / (ai + aj))
+    ys[j] = ys[j]! + (dy / d) * push * (ai / (ai + aj))
+  }
+  const collideAll = () => {
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) separate(i, j)
+  }
+  // Past about 150 islands every pair costs more than a grid. Two islands
+  // touch only within the sum of their reaches, and one large island would
+  // put every small one in its cell, so each island sits in the grid of its
+  // own size class (cells double per class) and searches its own and every
+  // larger class's grid around it. Each pair is found once per pass; the
+  // grid is taken at the start of the pass.
+  const reach = Float64Array.from(
+    rad,
+    (r) => ISLAND_REACH * r + Math.max(ISLAND_GAP_MIN, ISLAND_GAP * r) / 2,
+  )
+  let minReach = Infinity
+  for (let i = 0; i < n; i++) minReach = Math.min(minReach, reach[i]!)
+  const sizeClass = Int32Array.from(reach, (r) => Math.max(0, Math.ceil(Math.log2(r / minReach))))
+  let classes = 0
+  for (let i = 0; i < n; i++) classes = Math.max(classes, sizeClass[i]! + 1)
+  const classCell = Array.from({ length: classes }, (_, c) => 2 * minReach * 2 ** c)
+  const grids = Array.from({ length: classes }, () => new Map<number, number[]>())
+  const occupied = [...new Set(sizeClass)].sort((p, q) => p - q)
+  const gridKey = (gx: number, gy: number) => gx * 4294967296 + gy
+  const collideGrid = () => {
+    for (const g of grids) g.clear()
     for (let i = 0; i < n; i++) {
-      const ri = rad[i]!
-      for (let j = i + 1; j < n; j++) {
-        const rj = rad[j]!
-        const want = ISLAND_REACH * (ri + rj) + Math.max(ISLAND_GAP_MIN, ISLAND_GAP * Math.min(ri, rj))
-        let dx = xs[j]! - xs[i]!
-        let dy = ys[j]! - ys[i]!
-        if (dx * dx + dy * dy >= want * want) continue
-        let d = Math.hypot(dx, dy)
-        if (d < 1e-9) {
-          const t = seededUnit(`${groups[i]!.key}|${groups[j]!.key}`, 3) * Math.PI * 2
-          dx = Math.cos(t)
-          dy = Math.sin(t)
-          d = 1
+      const c = classCell[sizeClass[i]!]!
+      const grid = grids[sizeClass[i]!]!
+      const k = gridKey(Math.floor(xs[i]! / c), Math.floor(ys[i]! / c))
+      const bucket = grid.get(k)
+      if (bucket) bucket.push(i)
+      else grid.set(k, [i])
+    }
+    for (let i = 0; i < n; i++) {
+      const own = sizeClass[i]!
+      for (const cls of occupied) {
+        if (cls < own) continue
+        const c = classCell[cls]!
+        const gx = Math.floor(xs[i]! / c)
+        const gy = Math.floor(ys[i]! / c)
+        for (let a = -1; a <= 1; a++) {
+          for (let b = -1; b <= 1; b++) {
+            const bucket = grids[cls]!.get(gridKey(gx + a, gy + b))
+            if (!bucket) continue
+            for (const j of bucket) {
+              if (cls === own && j <= i) continue
+              if (i < j) separate(i, j)
+              else separate(j, i)
+            }
+          }
         }
-        // The smaller island moves further, so big islands hold the middle.
-        const ai = area[i]!
-        const aj = area[j]!
-        const push = want - d
-        xs[i] = xs[i]! - (dx / d) * push * (aj / (ai + aj))
-        ys[i] = ys[i]! - (dy / d) * push * (aj / (ai + aj))
-        xs[j] = xs[j]! + (dx / d) * push * (ai / (ai + aj))
-        ys[j] = ys[j]! + (dy / d) * push * (ai / (ai + aj))
       }
     }
   }
+  const collide = n > GRID_MIN_ISLANDS ? collideGrid : collideAll
 
   const pairCount = pairs.length
   const pairA = Int32Array.from(pairs, (p) => p.a)
@@ -514,35 +550,66 @@ export function fitIsland(
   centre: Point,
   radius: number,
 ): Map<string, Point> {
+  const ids = [...positions.keys()]
+  const n = ids.length
+  const xs = new Float64Array(n)
+  const ys = new Float64Array(n)
+  ids.forEach((id, i) => {
+    const p = positions.get(id)!
+    xs[i] = p.x
+    ys[i] = p.y
+  })
+  const outX = new Float64Array(n)
+  const outY = new Float64Array(n)
+  fitIslandInto(xs, ys, 0, n, centre, radius, outX, outY, new Float64Array(n))
   const out = new Map<string, Point>()
-  if (positions.size === 0) return out
+  ids.forEach((id, i) => out.set(id, { x: outX[i]!, y: outY[i]! }))
+  return out
+}
+
+/** fitIsland over the index range [from, to) of flat coordinate arrays, for a
+ *  caller that reuses its buffers every frame; `dists` holds at least
+ *  `to - from` entries. */
+export function fitIslandInto(
+  xs: Float64Array,
+  ys: Float64Array,
+  from: number,
+  to: number,
+  centre: Point,
+  radius: number,
+  outX: Float64Array,
+  outY: Float64Array,
+  dists: Float64Array,
+): void {
+  const n = to - from
+  if (n <= 0) return
   let cx = 0
   let cy = 0
-  for (const p of positions.values()) {
-    cx += p.x
-    cy += p.y
+  for (let i = from; i < to; i++) {
+    cx += xs[i]!
+    cy += ys[i]!
   }
-  cx /= positions.size
-  cy /= positions.size
-  const dists: number[] = []
-  for (const p of positions.values()) dists.push(Math.hypot(p.x - cx, p.y - cy))
-  dists.sort((a, b) => a - b)
-  const p85 = dists[Math.ceil(0.85 * dists.length) - 1]!
+  cx /= n
+  cy /= n
+  const own = dists.subarray(0, n)
+  for (let i = from; i < to; i++) own[i - from] = Math.hypot(xs[i]! - cx, ys[i]! - cy)
+  own.sort()
+  const p85 = own[Math.ceil(0.85 * n) - 1]!
   const scale = p85 > 1e-9 ? (FIT_P85 * radius) / p85 : 0
   const knee = FIT_P85 * radius
   const tail = (SOFT_EDGE - FIT_P85) * radius
-  for (const [id, p] of positions) {
-    let x = (p.x - cx) * scale
-    let y = (p.y - cy) * scale
+  for (let i = from; i < to; i++) {
+    let x = (xs[i]! - cx) * scale
+    let y = (ys[i]! - cy) * scale
     const d = Math.hypot(x, y)
     if (d > knee) {
       const k = (knee + tail * Math.tanh((d - knee) / tail)) / d
       x *= k
       y *= k
     }
-    out.set(id, { x: centre.x + x, y: centre.y + y })
+    outX[i] = centre.x + x
+    outY[i] = centre.y + y
   }
-  return out
 }
 
 /**
@@ -567,26 +634,94 @@ export function spreadPoints(
     xs[i] = p.x + (o?.x ?? 0)
     ys[i] = p.y + (o?.y ?? 0)
   })
-  const dx = new Float64Array(n)
-  const dy = new Float64Array(n)
+  spreadInPlace(xs, ys, n, gap, iterations, (i) => ids[i]!, createSpreadScratch(n))
+  const out = new Map<string, Point>()
+  ids.forEach((id, i) => {
+    const p = fitted.get(id)!
+    offsets.set(id, { x: xs[i]! - p.x, y: ys[i]! - p.y })
+    out.set(id, { x: xs[i]!, y: ys[i]! })
+  })
+  return out
+}
+
+/** The grid and step buffers spreadInPlace works in, kept by a per-frame
+ *  caller so a frame allocates none. */
+export interface SpreadScratch {
+  readonly dx: Float64Array
+  readonly dy: Float64Array
+  readonly cellOf: Int32Array
+  readonly cellCount: Int32Array
+  readonly cellStart: Int32Array
+  readonly cellFill: Int32Array
+  readonly items: Int32Array
+  readonly cells: Map<number, number>
+}
+
+export function createSpreadScratch(n: number): SpreadScratch {
+  return {
+    dx: new Float64Array(n),
+    dy: new Float64Array(n),
+    cellOf: new Int32Array(n),
+    cellCount: new Int32Array(n),
+    cellStart: new Int32Array(n),
+    cellFill: new Int32Array(n),
+    items: new Int32Array(n),
+    cells: new Map(),
+  }
+}
+
+/** spreadPoints over the first `n` entries of flat coordinate arrays, moved
+ *  in place; `idOf` names a point for the tie-break of two coincident ones. */
+export function spreadInPlace(
+  xs: Float64Array,
+  ys: Float64Array,
+  n: number,
+  gap: number,
+  iterations: number,
+  idOf: (i: number) => string,
+  scratch: SpreadScratch,
+): void {
+  const { dx, dy, cellOf, cellCount, cellStart, cellFill, items, cells } = scratch
   const keyOf = (ix: number, iy: number) => ix * 1_000_003 + iy
   for (let it = 0; it < iterations && gap > 0 && n > 1; it++) {
-    const cells = new Map<number, number[]>()
+    // Each cell's members in ascending index order, laid out flat.
+    cells.clear()
+    let m = 0
     for (let i = 0; i < n; i++) {
       const k = keyOf(Math.floor(xs[i]! / gap), Math.floor(ys[i]! / gap))
-      const bucket = cells.get(k)
-      if (bucket) bucket.push(i)
-      else cells.set(k, [i])
+      let c = cells.get(k)
+      if (c === undefined) {
+        c = m++
+        cells.set(k, c)
+        cellCount[c] = 0
+      }
+      cellOf[i] = c
+      cellCount[c] = cellCount[c]! + 1
     }
-    dx.fill(0)
-    dy.fill(0)
+    let start = 0
+    for (let c = 0; c < m; c++) {
+      cellStart[c] = start
+      cellFill[c] = start
+      start += cellCount[c]!
+    }
+    for (let i = 0; i < n; i++) {
+      const c = cellOf[i]!
+      items[cellFill[c]!] = i
+      cellFill[c] = cellFill[c]! + 1
+    }
+    dx.fill(0, 0, n)
+    dy.fill(0, 0, n)
     let moved = false
     for (let i = 0; i < n; i++) {
       const ix = Math.floor(xs[i]! / gap)
       const iy = Math.floor(ys[i]! / gap)
       for (let a = -1; a <= 1; a++) {
         for (let b = -1; b <= 1; b++) {
-          for (const j of cells.get(keyOf(ix + a, iy + b)) ?? []) {
+          const c = cells.get(keyOf(ix + a, iy + b))
+          if (c === undefined) continue
+          const end = cellStart[c]! + cellCount[c]!
+          for (let q = cellStart[c]!; q < end; q++) {
+            const j = items[q]!
             if (j <= i) continue
             const ex = xs[j]! - xs[i]!
             const ey = ys[j]! - ys[i]!
@@ -595,7 +730,7 @@ export function spreadPoints(
             let ux: number
             let uy: number
             if (d < 1e-9) {
-              const t = seededUnit(`${ids[i]}|${ids[j]}`, 5) * Math.PI * 2
+              const t = seededUnit(`${idOf(i)}|${idOf(j)}`, 5) * Math.PI * 2
               ux = Math.cos(t)
               uy = Math.sin(t)
             } else {
@@ -619,11 +754,4 @@ export function spreadPoints(
       ys[i] = ys[i]! + dy[i]! * 0.5
     }
   }
-  const out = new Map<string, Point>()
-  ids.forEach((id, i) => {
-    const p = fitted.get(id)!
-    offsets.set(id, { x: xs[i]! - p.x, y: ys[i]! - p.y })
-    out.set(id, { x: xs[i]!, y: ys[i]! })
-  })
-  return out
 }

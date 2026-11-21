@@ -44,6 +44,7 @@ import {
 type ViewMode = "2d" | "3d"
 
 const EMPTY_3D: GraphData3D = { nodes: [], links: [] }
+const noop = () => {}
 
 /**
  * The real-backend counterpart of the demo `MemoryGraphExplorer` (Ruling 5's
@@ -60,7 +61,6 @@ export function RealMemoryGraphPage() {
   const { tokens, palette } = useMemoryGraphTheme()
   const [viewMode, setViewMode] = useState<ViewMode>("2d")
   const [large3DNoticeDismissed, setLarge3DNoticeDismissed] = useState(false)
-  const [, setGraphReady] = useState(false)
   const [colorMode, setColorMode] = useState<ColorMode>(DEFAULT_COLOR_MODE)
 
   const [similarityThreshold, setSimilarityThreshold] = useState(0.5)
@@ -162,12 +162,6 @@ export function RealMemoryGraphPage() {
     return () => observer.disconnect()
   }, [hasGraphData])
 
-  const handleGraphReady = useCallback(() => setGraphReady(true), [])
-
-  useEffect(() => {
-    setGraphReady(false)
-  }, [viewMode])
-
   function handleReset() {
     setSimilarityThreshold(0.5)
     setMinClusterSize(3)
@@ -268,7 +262,7 @@ export function RealMemoryGraphPage() {
                   filteredEdges={filters.filteredEdges}
                   selectedNodeId={selection.selectedNodeId}
                   onNodeSelect={selection.handleNodeSelect}
-                  onReady={handleGraphReady}
+                  onReady={noop}
                   sizeMode={layout.sizeMode}
                   colorMode={colorMode}
                   hullMode={layout.hullMode}
@@ -289,7 +283,7 @@ export function RealMemoryGraphPage() {
                   selectedNodeId={selection.selectedNodeId}
                   onNodeSelect={selection.handleNodeSelect}
                   onEntitySelect={selection.handleEntitySelect}
-                  onReady={handleGraphReady}
+                  onReady={noop}
                   spacing={layout.spacing3D}
                   colorMode={colorMode}
                   hullMode={layout.hullMode}
@@ -298,12 +292,6 @@ export function RealMemoryGraphPage() {
                 />
               )}
             </div>
-
-            {isLoading && (
-              <div className="bg-background absolute inset-0 z-30">
-                <GraphSkeleton />
-              </div>
-            )}
 
             {isRefetching && (
               <div

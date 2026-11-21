@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type RefObject } from "react"
-import { darkenHex, hslToHex } from "./graph-colors"
+import { useSyncExternalStore } from "react"
+import { hslToHex, stableHash } from "./graph-colors"
 
 export { hslToHex }
 
@@ -74,15 +74,6 @@ export function parseHsl(raw: string): Hsl {
   return parseHslTriplet(inner.replace(/,/g, " ").replace(/\s+/g, " ").trim())
 }
 
-// Mirrors lib/graph-colors.ts stableHash (Math.imul 31-step, abs).
-export function stableHash(str: string): number {
-  let hash = 0
-  for (let i = 0; i < str.length; i++) {
-    hash = (Math.imul(31, hash) + str.charCodeAt(i)) | 0
-  }
-  return Math.abs(hash)
-}
-
 // Deterministic [0,1) value derived from a string seed, replacing Math.random()
 // for layout jitter/curvature so rebuilds and theme switches reposition nodes
 // identically. `salt` distinguishes multiple draws for the same seed (e.g. x vs
@@ -143,141 +134,6 @@ export function resolveGraphTokens(rootEl: HTMLElement): GraphThemeTokens {
   }
 }
 
-const CURATED_NODE_KINDS: Record<string, number> = {
-  // structural containers
-  file: 0,
-  module: 0,
-  folder: 0,
-  namespace: 0,
-  package: 0,
-  // types
-  class: 1,
-  struct: 1,
-  interface: 1,
-  trait: 1,
-  enum: 1,
-  type: 1,
-  // callables
-  function: 2,
-  method: 2,
-  constructor: 2,
-  impl: 2,
-  // entrypoints
-  route: 3,
-  tool: 3,
-  process: 3,
-  // data
-  property: 4,
-  community: 4,
-  model: 4,
-}
-
-// Fixed ~30deg-spread offsets for the common long-tail kinds, so the generated
-// tier yields visually distinct hues that still rotate with the accent. Kinds
-// absent here fall back to stableHash(kind) % 360.
-export const NODE_HUE_OFFSET: Record<string, number> = {
-  variable: 30,
-  constant: 60,
-  field: 90,
-  parameter: 120,
-  decorator: 150,
-  annotation: 180,
-  macro: 210,
-  typedef: 240,
-  union: 270,
-  alias: 300,
-  generic: 330,
-  mixin: 45,
-  protocol: 75,
-  closure: 105,
-  lambda: 135,
-  getter: 165,
-  setter: 195,
-  event: 225,
-  signal: 255,
-  channel: 285,
-  test: 315,
-}
-
-const CURATED_EDGE_STRUCTURAL = new Set([
-  "defines",
-  "contains",
-  "imports",
-  "has_method",
-  "has_property",
-])
-const CURATED_EDGE_SEMANTIC = new Set([
-  "calls",
-  "extends",
-  "implements",
-  "method_overrides",
-  "method_implements",
-  "accesses",
-])
-const CURATED_EDGE_ROUTING = new Set([
-  "handles_route",
-  "handles_tool",
-  "entry_point_of",
-  "step_in_process",
-  "member_of",
-])
-
-function generatedNodeHue(kind: string, primaryHue: number): number {
-  const offset = NODE_HUE_OFFSET[kind] ?? stableHash(kind) % 360
-  return (((primaryHue + offset) % 360) + 360) % 360
-}
-
-export function nodeKindColor(kind: string, t: GraphThemeTokens): string {
-  const k = kind.toLowerCase()
-  const curated = CURATED_NODE_KINDS[k]
-  if (curated !== undefined) return t.chart[curated] ?? t.primary
-
-  const s = t.isDark ? 70 : 62
-  const l = t.isDark ? 62 : 45
-  return hslToHex(generatedNodeHue(k, t.primaryHue), s, l)
-}
-
-// Deterministic accent-anchored color for a community cluster, mirroring the
-// node long-tail tier: rotate the accent hue by a stable per-id offset so every
-// community keeps a fixed, distinct hue that still tracks the active accent.
-export function communityColor(
-  communityId: string | number,
-  t: GraphThemeTokens,
-): string {
-  const key = String(communityId)
-  const offset = stableHash(key) % 360
-  const hue = (((t.primaryHue + offset) % 360) + 360) % 360
-  const s = t.isDark ? 70 : 62
-  const l = t.isDark ? 62 : 45
-  return hslToHex(hue, s, l)
-}
-
-export function edgeTypeColor(type: string, t: GraphThemeTokens): string {
-  const e = type.toLowerCase()
-  let seed: string
-  if (CURATED_EDGE_STRUCTURAL.has(e)) seed = t.chart[0] ?? t.primary
-  else if (CURATED_EDGE_SEMANTIC.has(e)) seed = t.chart[2] ?? t.primary
-  else if (CURATED_EDGE_ROUTING.has(e)) seed = t.chart[3] ?? t.primary
-  else {
-    const s = t.isDark ? 70 : 62
-    const l = t.isDark ? 62 : 45
-    seed = hslToHex(generatedNodeHue(e, t.primaryHue), s, l)
-  }
-  return darkenHex(seed, t.isDark ? 0.25 : 0.15)
-}
-
-export function buildCodeGraphColorMaps(
-  kinds: string[],
-  edgeTypes: string[],
-  t: GraphThemeTokens,
-): { nodeColors: Record<string, string>; edgeColors: Record<string, string> } {
-  const nodeColors: Record<string, string> = {}
-  for (const kind of kinds) nodeColors[kind] = nodeKindColor(kind, t)
-  const edgeColors: Record<string, string> = {}
-  for (const type of edgeTypes) edgeColors[type] = edgeTypeColor(type, t)
-  return { nodeColors, edgeColors }
-}
-
 const FALLBACK_TOKENS: GraphThemeTokens = {
   background: hslToHex(FALLBACK.background.h, FALLBACK.background.s, FALLBACK.background.l),
   foreground: hslToHex(FALLBACK.foreground.h, FALLBACK.foreground.s, FALLBACK.foreground.l),
@@ -316,16 +172,40 @@ const FALLBACK_TOKENS: GraphThemeTokens = {
   fontMono: FALLBACK_FONT_MONO,
 }
 
-export interface CodeGraphTheme {
-  tokens: GraphThemeTokens
-  nodeColors: Record<string, string>
-  edgeColors: Record<string, string>
+// One observer and one token read per theme change for the whole page, not
+// one per consumer.
+let sharedTokens: GraphThemeTokens = FALLBACK_TOKENS
+let themeObserver: MutationObserver | null = null
+const themeListeners = new Set<() => void>()
+
+function resolveSharedTokens() {
+  sharedTokens = resolveGraphTokens(document.documentElement)
+  for (const listener of themeListeners) listener()
+}
+
+function subscribeTheme(listener: () => void): () => void {
+  themeListeners.add(listener)
+  if (!themeObserver) {
+    sharedTokens = resolveGraphTokens(document.documentElement)
+    themeObserver = new MutationObserver(resolveSharedTokens)
+    themeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["style"],
+    })
+  }
+  return () => {
+    themeListeners.delete(listener)
+    if (themeListeners.size === 0) {
+      themeObserver?.disconnect()
+      themeObserver = null
+    }
+  }
 }
 
 /**
- * Resolve graph theme tokens from the page root and re-resolve whenever the
- * active darkraise-ui theme changes (accent, surface, mode, preset, gradient,
- * and any preset-specific axis values).
+ * Graph theme tokens from the page root, re-resolved whenever the active
+ * darkraise-ui theme changes (accent, surface, mode, preset, gradient, and
+ * any preset-specific axis values).
  *
  * The provider commits the CSS custom properties to documentElement inside its
  * own passive effect. React flushes passive effects child-before-parent, so a
@@ -333,43 +213,7 @@ export interface CodeGraphTheme {
  * provider has written the new variables and would read the stale values. To
  * stay correct regardless of effect ordering we observe the documentElement
  * `style` attribute and re-resolve once the provider actually mutates the DOM.
- *
- * @param rootRef - element to resolve tokens from; defaults to documentElement.
  */
-export function useGraphThemeTokens(
-  rootRef?: RefObject<HTMLElement | null>,
-): GraphThemeTokens {
-  const [tokens, setTokens] = useState<GraphThemeTokens>(FALLBACK_TOKENS)
-
-  useEffect(() => {
-    const el = rootRef?.current ?? document.documentElement
-    const resolve = () => setTokens(resolveGraphTokens(el))
-    resolve()
-
-    const observer = new MutationObserver(resolve)
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["style"],
-    })
-    return () => observer.disconnect()
-  }, [rootRef])
-
-  return tokens
-}
-
-export function useCodeGraphTheme(
-  rootRef: RefObject<HTMLElement | null>,
-  nodeTypes: readonly string[],
-  edgeTypes: readonly string[],
-): CodeGraphTheme {
-  const tokens = useGraphThemeTokens(rootRef)
-
-  return useMemo(() => {
-    const { nodeColors, edgeColors } = buildCodeGraphColorMaps(
-      [...nodeTypes],
-      [...edgeTypes],
-      tokens,
-    )
-    return { tokens, nodeColors, edgeColors }
-  }, [tokens, nodeTypes, edgeTypes])
+export function useGraphThemeTokens(): GraphThemeTokens {
+  return useSyncExternalStore(subscribeTheme, () => sharedTokens)
 }

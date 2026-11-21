@@ -7,9 +7,7 @@ import {
   ISLAND_REACH,
   clusterKey,
   fitIsland,
-  groupMemories,
   layoutIslands,
-  placeIslands,
   seedIsland,
   simulationCentres,
   spreadPoints,
@@ -44,7 +42,7 @@ function expectNoOverlap(groups: readonly IslandGroup[], centres: Map<string, Po
   }
 }
 
-describe("groupMemories", () => {
+describe("island grouping", () => {
   it("A1: a clustered memory is on its cluster's island; an unclustered one joins its highest-scored clustered neighbour's island, else the loose island", () => {
     const memories = [
       ...ids("a", 4).map((id) => mem(id, 1)),
@@ -64,7 +62,7 @@ describe("groupMemories", () => {
       // Linked only to another unclustered memory: no island to ride.
       { source: "u2", target: "u3", score: 0.9 },
     ]
-    const { groups, groupOf, role } = groupMemories(memories, edges)
+    const { groups, groupOf, role } = layoutIslands(memories, edges)
     expect(groupOf.get("a0")).toBe(clusterKey(1))
     expect(groupOf.get("b0")).toBe(clusterKey(2))
     expect(groupOf.get("u0")).toBe(clusterKey(2))
@@ -78,12 +76,12 @@ describe("groupMemories", () => {
   })
 
   it("A1: with no loose memory there is no loose island", () => {
-    const { groups } = groupMemories(ids("a", 3).map((id) => mem(id, 0)), [])
+    const { groups } = layoutIslands(ids("a", 3).map((id) => mem(id, 0)), [])
     expect(groups.map((g) => g.key)).toEqual([clusterKey(0)])
   })
 })
 
-describe("placeIslands", () => {
+describe("island placement", () => {
   for (const size of [200, 1000, "all"] as RealCorpusSize[]) {
     it(`A2: on the ${size} fixture no two islands come closer than their summed radii`, () => {
       const c = loadRealCorpus(size)
@@ -104,12 +102,21 @@ describe("placeIslands", () => {
     expectNoOverlap(layout.groups, layout.centres)
   })
 
+  it("A2: two hundred islands and a loose island still never overlap", () => {
+    const memories = [
+      ...Array.from({ length: 4000 }, (_, i) => mem(`m${i}`, i % 200)),
+      ...ids("u", 200).map((id) => mem(id, -1)),
+    ]
+    const layout = layoutIslands(memories, [])
+    expect(layout.groups.length).toBe(201)
+    expectNoOverlap(layout.groups, layout.centres)
+  })
+
   it("A3: an island sharing many edges with another touches it, closer than the islands sharing none on average", () => {
     // Twelve equal islands, so most pairs cannot touch; 0 and 7 share edges.
     const memories = Array.from({ length: 12 }, (_, k) => ids(`c${k}-`, 30).map((id) => mem(id, k))).flat()
     const edges: ScoredEdge[] = ids("x", 25).map((_x, i) => ({ source: `c0-${i}`, target: `c7-${i}`, score: 0.8 }))
-    const { groups, groupOf } = groupMemories(memories, edges)
-    const centres = placeIslands(groups, groupOf, edges)
+    const { groups, centres } = layoutIslands(memories, edges)
     const d = (p: number, q: number) => {
       const a = centres.get(clusterKey(p))!
       const b = centres.get(clusterKey(q))!

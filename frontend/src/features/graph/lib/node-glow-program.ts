@@ -3,6 +3,7 @@ import type { NodeProgramType, ProgramInfo } from "sigma/rendering"
 import { floatColor } from "sigma/utils"
 import type { NodeDisplayData, RenderParams } from "sigma/types"
 import type Sigma from "sigma"
+import Graph from "graphology"
 import { CLUMP_R0, CORE_K, type Classification, type OuterLayout } from "./constellation-layout"
 
 export const GLOW_SPREAD = 3
@@ -71,26 +72,33 @@ interface SizedGraph {
  */
 export function localSpacing(graph: SizedGraph, ids: readonly string[], cell: number): number {
   if (ids.length === 0 || !(cell > 0)) return CORE_K
-  const xs = new Float64Array(ids.length)
-  const ys = new Float64Array(ids.length)
-  ids.forEach((id, i) => {
-    xs[i] = graph.getNodeAttribute(id, "x") as number
-    ys[i] = graph.getNodeAttribute(id, "y") as number
-  })
+  const n = ids.length
+  const xs = new Float64Array(n)
+  const ys = new Float64Array(n)
+  for (let i = 0; i < n; i++) {
+    xs[i] = graph.getNodeAttribute(ids[i]!, "x") as number
+    ys[i] = graph.getNodeAttribute(ids[i]!, "y") as number
+  }
+  const keys = new Float64Array(n)
+  const target = 0.02 * n
   let dense = 1
   for (const shift of [0, cell / 2]) {
-    const cells = new Map<string, number>()
-    for (let i = 0; i < ids.length; i++) {
-      const key = `${Math.floor((xs[i]! + shift) / cell)},${Math.floor((ys[i]! + shift) / cell)}`
-      cells.set(key, (cells.get(key) ?? 0) + 1)
+    for (let i = 0; i < n; i++) {
+      keys[i] = cellKey(Math.floor((xs[i]! + shift) / cell), Math.floor((ys[i]! + shift) / cell))
     }
-    // Nodes per occupancy, read from the top until 2% of nodes are covered.
-    const byCount = new Map<number, number>()
-    for (const c of cells.values()) byCount.set(c, (byCount.get(c) ?? 0) + c)
-    const target = 0.02 * ids.length
+    keys.sort()
+    // Cell occupancies, read from the fullest until 2% of nodes are covered.
+    const counts: number[] = []
+    for (let i = 0; i < n; ) {
+      let j = i + 1
+      while (j < n && keys[j] === keys[i]) j++
+      counts.push(j - i)
+      i = j
+    }
+    counts.sort((a, b) => b - a)
     let seen = 0
-    for (const c of [...byCount.keys()].sort((a, b) => b - a)) {
-      seen += byCount.get(c)!
+    for (const c of counts) {
+      seen += c
       if (seen >= target) {
         dense = Math.max(dense, c)
         break
@@ -98,6 +106,51 @@ export function localSpacing(graph: SizedGraph, ids: readonly string[], cell: nu
     }
   }
   return dense <= 1 ? CORE_K : Math.min(CORE_K, cell / Math.sqrt(dense))
+}
+
+/** One number per grid cell; distinct for any index below 2^31 in magnitude,
+ *  far past any graph extent over a disc-sized cell. */
+function cellKey(ix: number, iy: number): number {
+  return ix * 4294967296 + iy
+}
+
+/**
+ * A counter that moves whenever a node of `graph` moves, is added or is
+ * dropped, so a per-frame reader can cache what it derives from positions.
+ * A graph that emits no events (a test stub) never moves.
+ */
+function watchLayout(graph: SizedGraph): { version: () => number; detach: () => void } {
+  let version = 0
+  if (!(graph instanceof Graph)) return { version: () => version, detach: () => {} }
+  const moves = (name: unknown) => name === "x" || name === "y"
+  const onNode = (p: { type: string; name?: PropertyKey; data?: object }) => {
+    if ((p.type === "set" || p.type === "remove") && !moves(p.name)) return
+    if (p.type === "merge" && p.data && !("x" in p.data || "y" in p.data)) return
+    version++
+  }
+  const onEach = (p: { hints: { attributes?: readonly PropertyKey[] } | null }) => {
+    const touched = p.hints?.attributes
+    if (touched && !touched.some(moves)) return
+    version++
+  }
+  const bump = () => {
+    version++
+  }
+  graph.on("nodeAttributesUpdated", onNode)
+  graph.on("eachNodeAttributesUpdated", onEach)
+  graph.on("nodeAdded", bump)
+  graph.on("nodeDropped", bump)
+  graph.on("cleared", bump)
+  return {
+    version: () => version,
+    detach: () => {
+      graph.removeListener("nodeAttributesUpdated", onNode)
+      graph.removeListener("eachNodeAttributesUpdated", onEach)
+      graph.removeListener("nodeAdded", bump)
+      graph.removeListener("nodeDropped", bump)
+      graph.removeListener("cleared", bump)
+    },
+  }
 }
 
 function meanSize(graph: SizedGraph, ids: readonly string[]): number {
@@ -154,14 +207,25 @@ export function trackDensityGain(
     outer && haloCount > 0
       ? Math.sqrt((Math.PI * (outer.haloOuter ** 2 - outer.haloInner ** 2)) / haloCount)
       : 0
+  // Ambient motion redraws an idle canvas many times a second and a pan
+  // keeps the cell size, so the grid is rebuilt only when the zoom or a node
+  // moves.
+  const layout = memoryCanvas ? watchLayout(graph) : null
+  if (layout && graph instanceof Graph) sigma.on("kill", layout.detach)
+  let measured: { cell: number; version: number; spacing: number } | null = null
+  const coreSpacingFor = (cell: number) => {
+    const version = layout!.version()
+    if (measured?.cell !== cell || measured.version !== version) {
+      measured = { cell, version, spacing: localSpacing(graph, classification.core, cell) }
+    }
+    return measured.spacing
+  }
   sigma.on("beforeRender", () => {
     const o = sigma.graphToViewport({ x: 0, y: 0 })
     const e = sigma.graphToViewport({ x: 1000, y: 0 })
     const pxPerUnit = Math.hypot(e.x - o.x, e.y - o.y) / 1000
     const coreRadiusPx = sigma.scaleSize(coreSize)
-    const coreSpacing = memoryCanvas
-      ? localSpacing(graph, classification.core, (2 * coreRadiusPx) / pxPerUnit)
-      : CORE_K
+    const coreSpacing = memoryCanvas ? coreSpacingFor((2 * coreRadiusPx) / pxPerUnit) : CORE_K
     const style = memoryCanvas ? crispStyle : densityStyle
     const core = style(
       coreRadiusPx,

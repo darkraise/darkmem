@@ -11,6 +11,7 @@ import {
   type MemoryPalette,
 } from "./graph-colors"
 import { seededUnit } from "./code-graph-theme"
+import { sizeWeight } from "./memory-size"
 export type { ColorMode }
 
 export type SizeMode = "connections" | "importance" | "uniform"
@@ -73,8 +74,9 @@ export function computeNodeVal(
   importance: number,
 ): number {
   if (mode === "uniform") return 2
-  if (mode === "importance") return 1 + importance * 5
-  return 1 + Math.min(5, Math.log1p(connectionCount) * 1.5)
+  const weight = sizeWeight(mode, importance, connectionCount)
+  if (mode === "importance") return 1 + weight * 5
+  return 1 + Math.min(5, Math.log1p(weight) * 1.5)
 }
 
 /** The node carries only a preview of its content, so the text filter reads

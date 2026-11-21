@@ -47,6 +47,7 @@ import {
 } from "@/features/graph/lib/graph-backdrop"
 import { startAmbientMotion } from "@/features/graph/lib/ambient-motion"
 import { memorySizes } from "@/features/graph/lib/memory-size"
+import { forgetUndrawn, rememberPositions } from "@/features/graph/lib/remembered-positions"
 import {
   islandLabelAlpha,
   islandLabelInputs,
@@ -460,6 +461,7 @@ export function Graph2DRenderer({
       memoryDegrees.set(e.target, memoryDegrees.get(e.target)! + 1)
     }
     hubsRef.current = topHubs(memoryDegrees, 0.02, HUB_DEGREE)
+    forgetUndrawn(settled, graph)
 
     const scale = scaleSettings(graph.order, graph.size)
     const runner = createClusterRunner(graph, {
@@ -1047,14 +1049,7 @@ export function Graph2DRenderer({
       // Before anything is torn down: React runs this cleanup ahead of the
       // next buildGraph, so this is the last moment the settled coordinates
       // exist.
-      if (graphRef.current) {
-        const settled = positionsRef.current
-        graphRef.current.forEachNode((id, attrs) => {
-          const x = attrs.x as number
-          const y = attrs.y as number
-          if (Number.isFinite(x) && Number.isFinite(y)) settled.set(id, { x, y })
-        })
-      }
+      if (graphRef.current) rememberPositions(positionsRef.current, graphRef.current)
       stopMotionRef.current?.()
       stopMotionRef.current = null
       if (runnerRef.current) {

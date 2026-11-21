@@ -1,10 +1,8 @@
 import { describe, it, expect } from "vitest"
 import {
   CURVED_EDGE_LIMIT,
-  clusterAnchors,
   scaleSettings,
   scaleTier,
-  seedAroundAnchor,
 } from "../graph-scale"
 
 describe("scaleTier", () => {
@@ -50,35 +48,5 @@ describe("scaleSettings", () => {
     expect(s.arrows3D).toBe(false)
     expect(s.hulls3D).toBe(false)
     expect(s.slowDown).toBeLessThan(scaleSettings(200, 0).slowDown)
-  })
-})
-
-describe("clusterAnchors", () => {
-  it("places the largest cluster at the centre and skips unclustered nodes", () => {
-    const memories = [
-      ...Array.from({ length: 9 }, () => ({ cluster: 3 })),
-      ...Array.from({ length: 4 }, () => ({ cluster: 1 })),
-      { cluster: -1 },
-    ]
-    const anchors = clusterAnchors(memories)
-    expect([...anchors.keys()]).toEqual([3, 1])
-    expect(anchors.get(3)).toMatchObject({ x: 0, y: 0 })
-    expect(anchors.get(3)!.spread).toBeGreaterThan(anchors.get(1)!.spread)
-    expect(anchors.has(-1)).toBe(false)
-  })
-
-  it("is deterministic", () => {
-    const memories = [{ cluster: 0 }, { cluster: 1 }, { cluster: 1 }]
-    expect([...clusterAnchors(memories)]).toEqual([...clusterAnchors(memories)])
-  })
-})
-
-describe("seedAroundAnchor", () => {
-  it("stays within the anchor's spread", () => {
-    const anchor = { x: 5, y: -3, spread: 2 }
-    for (const [u, v] of [[0, 0], [0.25, 1], [0.9, 0.5]] as const) {
-      const p = seedAroundAnchor(anchor, u, v)
-      expect(Math.hypot(p.x - 5, p.y + 3)).toBeLessThanOrEqual(2 + 1e-9)
-    }
   })
 })

@@ -1,12 +1,6 @@
 import type Sigma from "sigma"
 import { hexToRgba } from "./graph-colors"
 
-// vis-network is not a dependency of the new frontend; drawHullForGroup
-// is only used by MiniGraph (which has been adapted to a list view).
-type Network = {
-  getPosition: (id: string) => { x: number; y: number } | null
-}
-
 /** The Regions switch: off, or one region per cluster. */
 export type HullMode = "none" | "cluster"
 
@@ -48,100 +42,6 @@ export function convexHull(
   lower.pop()
   return lower.concat(upper)
 }
-
-export function expandHull(
-  hull: { x: number; y: number }[],
-  padding: number,
-): { x: number; y: number }[] {
-  if (hull.length === 0) return hull
-  const cx = hull.reduce((s, p) => s + p.x, 0) / hull.length
-  const cy = hull.reduce((s, p) => s + p.y, 0) / hull.length
-  return hull.map((p) => {
-    const dx = p.x - cx
-    const dy = p.y - cy
-    const dist = Math.sqrt(dx * dx + dy * dy) || 1
-    return { x: p.x + (dx / dist) * padding, y: p.y + (dy / dist) * padding }
-  })
-}
-
-export function drawSmoothClosed(
-  ctx: CanvasRenderingContext2D,
-  hull: { x: number; y: number }[],
-) {
-  const n = hull.length
-  if (n < 3) return
-  ctx.beginPath()
-  for (let i = 0; i < n; i++) {
-    // all indices are mod n with n >= 3, so every lookup is defined
-    const p0 = hull[(i - 1 + n) % n]!
-    const p1 = hull[i]!
-    const p2 = hull[(i + 1) % n]!
-    const p3 = hull[(i + 2) % n]!
-    const tension = 6
-    const cp1x = p1.x + (p2.x - p0.x) / tension
-    const cp1y = p1.y + (p2.y - p0.y) / tension
-    const cp2x = p2.x - (p3.x - p1.x) / tension
-    const cp2y = p2.y - (p3.y - p1.y) / tension
-    if (i === 0) ctx.moveTo(p1.x, p1.y)
-    ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y)
-  }
-  ctx.closePath()
-}
-
-export function drawHullForGroup(
-  ctx: CanvasRenderingContext2D,
-  network: Network,
-  memberIds: string[],
-  color: string,
-  fillAlpha: number,
-  strokeAlpha: number,
-  _label?: string,
-) {
-  const positions: { x: number; y: number }[] = []
-  for (const id of memberIds) {
-    try {
-      const pos = network.getPosition(id)
-      if (pos) positions.push(pos)
-    } catch {
-      // node not yet rendered
-    }
-  }
-  if (positions.length < 2) return
-
-  if (positions.length === 2) {
-    const [a, b] = positions as [
-      { x: number; y: number },
-      { x: number; y: number },
-    ]
-    const cx = (a.x + b.x) / 2
-    const cy = (a.y + b.y) / 2
-    const dx = b.x - a.x
-    const dy = b.y - a.y
-    const dist = Math.sqrt(dx * dx + dy * dy) / 2 + 50
-    ctx.save()
-    ctx.beginPath()
-    ctx.ellipse(cx, cy, dist, dist * 0.6, Math.atan2(dy, dx), 0, Math.PI * 2)
-    ctx.fillStyle = hexToRgba(color, fillAlpha)
-    ctx.fill()
-    ctx.strokeStyle = hexToRgba(color, strokeAlpha)
-    ctx.lineWidth = 1.5
-    ctx.stroke()
-    ctx.restore()
-    return
-  }
-
-  const hull = expandHull(convexHull(positions), 45)
-  ctx.save()
-  drawSmoothClosed(ctx, hull)
-  ctx.fillStyle = hexToRgba(color, fillAlpha)
-  ctx.fill()
-  ctx.strokeStyle = hexToRgba(color, strokeAlpha)
-  ctx.lineWidth = 2
-  ctx.stroke()
-
-  ctx.restore()
-}
-
 
 export interface Point {
   x: number

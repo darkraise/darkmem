@@ -1,17 +1,11 @@
 import { describe, it, expect, vi, afterEach } from "vitest"
 import { renderHook, act, waitFor } from "@testing-library/react"
-import { createRef } from "react"
 import {
   hslToHex,
   parseHsl,
   parseHslTriplet,
   resolveGraphTokens,
-  nodeKindColor,
-  edgeTypeColor,
-  communityColor,
-  buildCodeGraphColorMaps,
-  useCodeGraphTheme,
-  type GraphThemeTokens,
+  useGraphThemeTokens,
 } from "../code-graph-theme"
 
 const HEX = /^#[0-9a-f]{6}$/
@@ -130,76 +124,7 @@ describe("resolveGraphTokens", () => {
   })
 })
 
-function darkT(overrides: Partial<GraphThemeTokens> = {}): GraphThemeTokens {
-  const root = stubRoot(DARK_TOKENS)
-  return { ...resolveGraphTokens(root), ...overrides }
-}
-
-describe("nodeKindColor", () => {
-  it("maps curated kinds to the matching chart entry", () => {
-    const t = darkT()
-    expect(nodeKindColor("file", t)).toBe(t.chart[0])
-    expect(nodeKindColor("module", t)).toBe(t.chart[0])
-    expect(nodeKindColor("class", t)).toBe(t.chart[1])
-    expect(nodeKindColor("interface", t)).toBe(t.chart[1])
-    expect(nodeKindColor("function", t)).toBe(t.chart[2])
-    expect(nodeKindColor("method", t)).toBe(t.chart[2])
-    expect(nodeKindColor("route", t)).toBe(t.chart[3])
-    expect(nodeKindColor("process", t)).toBe(t.chart[3])
-    expect(nodeKindColor("property", t)).toBe(t.chart[4])
-    expect(nodeKindColor("community", t)).toBe(t.chart[4])
-  })
-
-  it("returns valid hex for a generated long-tail kind", () => {
-    const t = darkT()
-    expect(nodeKindColor("variable", t)).toMatch(HEX)
-  })
-
-  it("is deterministic for the same kind across calls", () => {
-    const t = darkT()
-    expect(nodeKindColor("variable", t)).toBe(nodeKindColor("variable", t))
-    expect(nodeKindColor("zzz_unknown", t)).toBe(
-      nodeKindColor("zzz_unknown", t),
-    )
-  })
-
-  it("tracks the accent: changing primaryHue changes a generated kind", () => {
-    const a = darkT({ primaryHue: 217 })
-    const b = darkT({ primaryHue: 30 })
-    expect(nodeKindColor("variable", a)).not.toBe(nodeKindColor("variable", b))
-  })
-
-  it("keeps an unknown kind stable", () => {
-    const t = darkT()
-    const first = nodeKindColor("totally_unknown_kind", t)
-    const second = nodeKindColor("totally_unknown_kind", t)
-    expect(first).toBe(second)
-    expect(first).toMatch(HEX)
-  })
-})
-
-describe("edgeTypeColor", () => {
-  it("distinguishes structural from semantic families", () => {
-    const t = darkT()
-    expect(edgeTypeColor("contains", t)).not.toBe(edgeTypeColor("calls", t))
-  })
-
-  it("returns a valid #rrggbb", () => {
-    const t = darkT()
-    expect(edgeTypeColor("contains", t)).toMatch(HEX)
-    expect(edgeTypeColor("calls", t)).toMatch(HEX)
-    expect(edgeTypeColor("handles_route", t)).toMatch(HEX)
-    expect(edgeTypeColor("some_unknown_edge", t)).toMatch(HEX)
-  })
-
-  it("darkens edges relative to the node family seed", () => {
-    const t = darkT()
-    // structural edges seed from chart[0]; the darkened edge must differ.
-    expect(edgeTypeColor("contains", t)).not.toBe(t.chart[0])
-  })
-})
-
-describe("useCodeGraphTheme", () => {
+describe("useGraphThemeTokens", () => {
   // Drives getComputedStyle from a mutable map so the test can flip the
   // "committed" CSS variables after mount, the way ThemeProvider does in its
   // own passive effect. Exercises the MutationObserver path: keying off React
@@ -218,16 +143,9 @@ describe("useCodeGraphTheme", () => {
     const computed: Record<string, string> = { ...DARK_TOKENS }
     mockComputed(computed)
 
-    const root = createRef<HTMLElement>()
-    root.current = document.createElement("div")
+    const { result } = renderHook(() => useGraphThemeTokens())
 
-    const { result } = renderHook(() =>
-      useCodeGraphTheme(root, ["file"], ["calls"]),
-    )
-
-    await waitFor(() =>
-      expect(result.current.tokens.primary).toBe(hslToHex(217, 91, 60)),
-    )
+    await waitFor(() => expect(result.current.primary).toBe(hslToHex(217, 91, 60)))
 
     // Simulate the provider committing a new accent in its passive effect:
     // first the computed values change, then the inline style attribute is
@@ -237,58 +155,7 @@ describe("useCodeGraphTheme", () => {
       document.documentElement.style.setProperty("--primary", "30 91% 60%")
     })
 
-    await waitFor(() =>
-      expect(result.current.tokens.primary).toBe(hslToHex(30, 91, 60)),
-    )
-    expect(result.current.tokens.primaryHue).toBe(30)
-  })
-})
-
-describe("communityColor", () => {
-  it("returns a valid #rrggbb", () => {
-    const t = darkT()
-    expect(communityColor(0, t)).toMatch(HEX)
-    expect(communityColor("7", t)).toMatch(HEX)
-  })
-
-  it("is deterministic for the same id across calls", () => {
-    const t = darkT()
-    expect(communityColor(3, t)).toBe(communityColor(3, t))
-    expect(communityColor("abc", t)).toBe(communityColor("abc", t))
-  })
-
-  it("treats a numeric id and its string form identically", () => {
-    const t = darkT()
-    expect(communityColor(12, t)).toBe(communityColor("12", t))
-  })
-
-  it("distinguishes different community ids", () => {
-    const t = darkT()
-    expect(communityColor(1, t)).not.toBe(communityColor(2, t))
-  })
-
-  it("tracks the accent: changing primaryHue changes the color", () => {
-    const a = darkT({ primaryHue: 217 })
-    const b = darkT({ primaryHue: 30 })
-    expect(communityColor(5, a)).not.toBe(communityColor(5, b))
-  })
-})
-
-describe("buildCodeGraphColorMaps", () => {
-  it("maps every kind and edge type through the color functions", () => {
-    const t = darkT()
-    const kinds = ["file", "class", "function", "variable"]
-    const edgeTypes = ["contains", "calls", "weird_edge"]
-    const { nodeColors, edgeColors } = buildCodeGraphColorMaps(
-      kinds,
-      edgeTypes,
-      t,
-    )
-    expect(Object.keys(nodeColors)).toEqual(kinds)
-    expect(Object.keys(edgeColors)).toEqual(edgeTypes)
-    expect(nodeColors.file).toBe(nodeKindColor("file", t))
-    expect(edgeColors.calls).toBe(edgeTypeColor("calls", t))
-    Object.values(nodeColors).forEach((c) => expect(c).toMatch(HEX))
-    Object.values(edgeColors).forEach((c) => expect(c).toMatch(HEX))
+    await waitFor(() => expect(result.current.primary).toBe(hslToHex(30, 91, 60)))
+    expect(result.current.primaryHue).toBe(30)
   })
 })

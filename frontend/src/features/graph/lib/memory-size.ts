@@ -6,6 +6,17 @@ export const UNIFORM_MEMORY_SIZE = 18
 /** Above 1 most memories stay small and the heaviest few stand out. */
 const SIZE_CURVE = 1.6
 
+/** What a memory's size stands for in a weighted mode: its importance, or
+ *  how many links it has. Both renderers size from it, each in its own
+ *  units. */
+export function sizeWeight(
+  mode: Exclude<SizeMode, "uniform">,
+  importance: number,
+  connections: number,
+): number {
+  return mode === "importance" ? importance : connections
+}
+
 /**
  * Each memory's size from its rank among the memories the filters keep, not
  * from its raw weight. Importances cluster in a narrow band (0.5 to 0.7 for
@@ -24,7 +35,7 @@ export function memorySizes(
     return sizes
   }
   const weight = (m: { id: string; importance: number }) =>
-    mode === "importance" ? m.importance : (connections.get(m.id) ?? 0)
+    sizeWeight(mode, m.importance, connections.get(m.id) ?? 0)
   const sorted = memories.map(weight).sort((a, b) => a - b)
   const n = sorted.length
   const percentile = new Map<number, number>()
