@@ -1182,3 +1182,129 @@ async def test_a15_two_concurrent_supersessions_of_one_candidate_leave_one_point
                 {"ids": [str(candidate.id), str(first.id), str(second.id)]},
             )
             await cleanup.commit()
+
+
+# ------------------------------------------------------------------ A30
+
+
+@pytest.fixture
+def _qa30_cleanup():
+    yield
+
+
+async def _qa30_registry(factory, key, *, min_interval, runner):
+    from app.services.job_registry import Job, JobRegistry
+
+    registry = JobRegistry(factory)
+    registry.register(
+        Job(key=key, display_name=key, description="", default_cron="0 3 * * *", min_interval_seconds=min_interval, runner=runner)
+    )
+    return registry
+
+
+@pytest.mark.asyncio
+async def test_a30_a_raised_min_interval_in_code_applies_to_an_existing_install(setup_database):
+    from sqlalchemy import delete
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from app.models.config import Config
+    from tests.conftest import test_engine
+
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    key = f"qa30-floor-{uuid.uuid4().hex[:6]}"
+    async with factory() as s:
+        s.add(Config(key=f"job:{key}", value={"enabled": True, "cron": "* * * * *", "min_interval_seconds": 30, "config": {}}))
+        await s.commit()
+    try:
+        async def runner():
+            return None
+
+        registry = await _qa30_registry(factory, key, min_interval=600, runner=runner)
+        cfg = await registry.load_config(key)
+        assert cfg.min_interval_seconds == 600
+        assert cfg.cron == "* * * * *"
+    finally:
+        async with factory() as s:
+            await s.execute(delete(Config).where(Config.key == f"job:{key}"))
+            await s.commit()
+
+
+@pytest.mark.asyncio
+async def test_a30_disabling_a_job_answers_while_the_job_runs(setup_database):
+    from sqlalchemy import delete
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from app.models.config import Config
+    from app.models.job_run import JobRun
+    from tests.conftest import test_engine
+
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    key = f"qa30-run-{uuid.uuid4().hex[:6]}"
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def runner():
+        started.set()
+        await release.wait()
+
+    registry = await _qa30_registry(factory, key, min_interval=60, runner=runner)
+    task = asyncio.create_task(registry.trigger(key))
+    try:
+        await asyncio.wait_for(started.wait(), 5)
+        cfg = await asyncio.wait_for(registry.update_config(key, enabled=False), 5)
+        assert cfg.enabled is False
+        again = await asyncio.wait_for(registry.load_config(key), 5)
+        assert again.enabled is False
+    finally:
+        release.set()
+        await asyncio.wait_for(task, 10)
+        async with factory() as s:
+            await s.execute(delete(Config).where(Config.key == f"job:{key}"))
+            await s.execute(delete(JobRun).where(JobRun.job_key == key))
+            await s.commit()
+
+
+@pytest.mark.asyncio
+async def test_a30_a_job_whose_only_run_is_older_than_5000_newer_runs_still_shows_its_last_run(setup_database):
+    from sqlalchemy import delete, text
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from app.models.job_run import JobRun
+    from tests.conftest import test_engine
+
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    old_key = f"qa30-old-{uuid.uuid4().hex[:6]}"
+    other = f"qa30-busy-{uuid.uuid4().hex[:6]}"
+
+    async def runner():
+        return None
+
+    registry = await _qa30_registry(factory, old_key, min_interval=60, runner=runner)
+    async with factory() as s:
+        await s.execute(
+            text(
+                "INSERT INTO job_runs (job_key, outcome, started_at, duration_seconds) "
+                "VALUES (:k, 'ok', now() - interval '30 days', 1.0)"
+            ),
+            {"k": old_key},
+        )
+        await s.execute(
+            text(
+                "INSERT INTO job_runs (job_key, outcome, started_at, duration_seconds) "
+                "SELECT :o, 'ok', now() - make_interval(secs => g), 1.0 FROM generate_series(1, 5200) g"
+            ),
+            {"o": other},
+        )
+        await s.commit()
+    try:
+        cfg = await registry.load_config(old_key)
+        assert cfg.last_status == "ok"
+        assert cfg.last_run_at is not None
+        listed = {r["key"]: r for r in await registry.list_with_config()}
+        row = listed[old_key]
+        assert row["last_status"] == "ok"
+        assert row["last_run_at"] is not None
+    finally:
+        async with factory() as s:
+            await s.execute(delete(JobRun).where(JobRun.job_key.in_([old_key, other])))
+            await s.commit()
