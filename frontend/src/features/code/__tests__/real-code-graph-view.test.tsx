@@ -371,7 +371,9 @@ describe("RealCodeGraphView", () => {
       )
       await screen.findByRole("region", { name: "Graph level of detail" })
       fireEvent.click(screen.getByRole("button", { name: "pkg/a.py (file)" }))
-      await user.click(screen.getByRole("button", { name: "Run Blast Radius" }))
+      const run = screen.getByRole("button", { name: "Run Blast Radius" })
+      expect(run).toBeDisabled()
+      await user.click(run)
 
       expect(
         screen.getByText("Select a symbol to see its blast radius"),

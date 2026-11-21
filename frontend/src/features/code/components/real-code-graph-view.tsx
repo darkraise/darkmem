@@ -564,7 +564,7 @@ export function RealCodeGraphView({
               <Button
                 variant="outline"
                 className="border-primary/50 text-primary-text bg-primary/8 rounded-full"
-                disabled={!selectedId || blastRadius.isPending}
+                disabled={!selectedId || fileSelected || blastRadius.isPending}
                 onClick={() => {
                   if (selectedId && !fileSelected) runBlastRadius(selectedId)
                 }}
