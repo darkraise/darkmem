@@ -18,15 +18,18 @@ const prune = vi.fn()
 const update = vi.fn()
 const insert = vi.fn()
 const remove = vi.fn()
+// The editor awaits each write; the spy keeps its (variables, { onSuccess, onError }) shape.
+const asAsync = (fn: (value: unknown, options: { onSuccess: (v: unknown) => void; onError: (e: unknown) => void }) => void) =>
+  (value: unknown) => new Promise((onSuccess, onError) => fn(value, { onSuccess, onError }))
 vi.mock("@/hooks/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/api")>()),
   useBulkPrune: () => ({ mutate: prune }),
   useBulkSupersede: () => ({ mutate: vi.fn() }),
   useBulkConfirmDedup: () => ({ mutate: vi.fn() }),
   useUndoDreamCycle: () => ({ mutate: vi.fn() }),
-  useBlockUpdate: () => ({ mutate: update }),
-  useBlockInsert: () => ({ mutate: insert }),
-  useBlockDelete: () => ({ mutate: remove }),
+  useBlockUpdate: () => ({ mutate: update, mutateAsync: asAsync(update) }),
+  useBlockInsert: () => ({ mutate: insert, mutateAsync: asAsync(insert) }),
+  useBlockDelete: () => ({ mutate: remove, mutateAsync: asAsync(remove) }),
   useBlockWriteRecovery: () => ({ retry: vi.fn(), discard: vi.fn() }),
 }))
 
@@ -121,7 +124,7 @@ describe("A39: a refused block write", () => {
     await user.type(screen.getByRole("textbox"), " typed")
     await user.tab()
     expect(screen.getByRole("textbox")).toHaveValue("body typed")
-    expect(screen.getByRole("alert")).toHaveTextContent("block type not allowed here")
+    expect(await screen.findByRole("alert")).toHaveTextContent("block type not allowed here")
     expect(update).toHaveBeenCalledTimes(1)
   })
 
