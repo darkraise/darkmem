@@ -128,11 +128,7 @@ def source_files(sources_dir: Path) -> list[Path]:
     return sorted(found, key=lambda p: p.relative_to(sources_dir).as_posix())
 
 
-def _read(path: Path) -> str | bytes:
-    # PDFs are bytes; everything else the parsers take as text. Mirrors the
-    # route's own read, so the parser sees what production would hand it.
-    if path.suffix.lower() == ".pdf":
-        return path.read_bytes()
+def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 

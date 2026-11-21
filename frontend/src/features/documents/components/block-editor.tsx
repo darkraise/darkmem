@@ -39,9 +39,9 @@ function stripAncestorPrefix(source: string, prefix: string): string {
  *  `stored` is the block's own type, and it decides the fallback for the one
  *  type that has no marker to read back: an `html` block's source IS its
  *  text, so every marker rule misses it and the fallback would demote it to
- *  paragraph on its first edit. That is not cosmetic -- `blocks.search_vector`
- *  blanks `type IN ('code','html')` because that text is source, so a demoted
- *  block is indexed as prose and stops rendering through `CodeBlock`.
+ *  paragraph on its first edit. That is not cosmetic -- a demoted block
+ *  stops rendering through `CodeBlock` and its raw markup is stored and
+ *  served as prose.
  *  The type is PRESERVED, never inferred: CommonMark's type-7 rule makes
  *  `<b>bold</b> text` a paragraph, so a leading-`<` test would start
  *  misclassifying ordinary prose.

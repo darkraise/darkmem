@@ -72,7 +72,6 @@ from app.services.document_ingest import (
 from app.services.document_parsers import (
     SOURCE_TYPE_MARKDOWN,
     SOURCE_TYPE_NOTE,
-    SOURCE_TYPE_PDF,
     DocumentParseError,
 )
 
@@ -81,9 +80,6 @@ from ._reachability_scan import (
     parse_source,
 )
 from .conftest import test_engine
-# TH1.03's minimal-PDF writer, reused rather than copied: a second generator
-# would be a second set of bytes to keep agreeing with pdfplumber's reader.
-from .test_document_parsers import _make_pdf
 
 BACKEND = pathlib.Path(__file__).resolve().parent.parent
 
@@ -264,27 +260,6 @@ async def test_reading_order_is_strictly_increasing_across_the_whole_tree(sessio
     assert len(set(order)) == len(order)
 
 
-@pytest.mark.asyncio
-async def test_pdf_page_provenance_reaches_the_stored_properties(session):
-    """Doc 16 §2 puts page and bbox on `blocks.properties`; the jsonb bind is
-    the shape asyncpg cannot infer, so this is also the CAST's proof."""
-    pdf = _make_pdf([
-        [("Report", 72, 720, 20), ("First page body.", 72, 690, 12)],
-        [("Second page body.", 72, 720, 12)],
-    ])
-    result = await bp.ingest_document(
-        session, project="default", uri=f"file:///{uuid4()}.pdf", content=pdf,
-    )
-    await session.flush()
-
-    blocks = await _blocks(session, result.document_id)
-    pages = [block["properties"]["page"] for block in blocks]
-    assert pages == sorted(pages)
-    assert set(pages) == {1, 2}
-    for block in blocks:
-        assert set(block["properties"]["bbox"]) == {"x0", "top", "x1", "bottom"}
-
-
 # ── the block tree preserves char spans ─────────────────────────────
 
 
@@ -368,10 +343,6 @@ async def test_no_parser_stores_an_empty_span(session):
     sources = [
         dict(source_type=SOURCE_TYPE_MARKDOWN, content=MARKDOWN),
         dict(source_type=SOURCE_TYPE_NOTE, content="Weekly log\n\n- one item\n- two\n"),
-        dict(
-            source_type=SOURCE_TYPE_PDF,
-            content=_make_pdf([[("Report", 72, 720, 20), ("Body text.", 72, 690, 12)]]),
-        ),
     ]
     ids = []
     for source in sources:
@@ -650,14 +621,12 @@ async def test_a_failed_strip_fails_the_write_rather_than_being_written_over(
 
 def test_the_suffix_table_routes_every_parser_it_names():
     assert set(bp.URI_SUFFIX_SOURCE_TYPES.values()) <= set(bp.PARSERS)
-    assert set(bp.PARSERS) == {SOURCE_TYPE_PDF, SOURCE_TYPE_MARKDOWN, SOURCE_TYPE_NOTE}
+    assert set(bp.PARSERS) == {SOURCE_TYPE_MARKDOWN, SOURCE_TYPE_NOTE}
 
 
 @pytest.mark.parametrize(
     "uri,expected",
     [
-        ("file:///corpus/report.pdf", SOURCE_TYPE_PDF),
-        ("file:///corpus/REPORT.PDF", SOURCE_TYPE_PDF),
         ("https://example.test/a/notes.md?v=2", SOURCE_TYPE_MARKDOWN),
         ("https://example.test/a/notes.markdown#top", SOURCE_TYPE_MARKDOWN),
         ("file:///corpus/scratch.txt", SOURCE_TYPE_NOTE),
@@ -677,7 +646,9 @@ def test_an_explicit_source_type_wins_over_the_suffix():
     "kwargs",
     [
         {"source_type": "docx"},
+        {"source_type": "pdf"},
         {"uri": "file:///corpus/report.docx"},
+        {"uri": "file:///corpus/REPORT.PDF"},
         {"uri": "file:///corpus/README"},
         {},
     ],

@@ -139,8 +139,7 @@ describe("promote — mirrors the serialiser's emit rules", () => {
 
   it("keeps a stored html block html at the fallback", () => {
     // An html block's source IS its text, so no marker rule matches it and
-    // the fallback would demote it. `search_vector` blanks source types, so a
-    // demotion indexes raw markup as prose.
+    // the fallback would demote it, storing raw markup as prose.
     expect(promote("<div>x</div>", "html")).toEqual({
       type: "html",
       text: "<div>x</div>",

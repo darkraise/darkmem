@@ -124,10 +124,8 @@ async def test_delete_unknown_document_is_404(client, auth_headers):
 async def test_a_pdf_uri_with_string_content_is_refused_with_422(
     client, auth_headers, stub_llm
 ):
-    """`parse_pdf` takes bytes; `DocumentPutRequest.content` is always `str`,
-    so a `.pdf` uri (source_type inferred from the suffix) routes to a
-    parser that cannot accept what this door can carry. This door is
-    text-only by design, and the door must say so rather than 500.
+    """No PDF parser ships and this door is text-only, so a `.pdf` uri
+    infers no source type: the door says so rather than filing bytes as prose.
     """
     response = await client.post(
         f"{V1}/documents",
@@ -135,10 +133,7 @@ async def test_a_pdf_uri_with_string_content_is_refused_with_422(
         headers=auth_headers,
     )
     assert response.status_code == 422
-    # Pinned to the parse failure specifically, not merely to "422 somehow":
-    # UnsupportedSource also answers 422, and its message never says "pdf
-    # parse failed" -- only DocumentParseError's does.
-    assert "pdf parse failed" in response.text
+    assert "cannot infer a source_type" in response.text
 
 
 @pytest.mark.asyncio

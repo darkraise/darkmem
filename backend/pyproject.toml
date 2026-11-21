@@ -62,11 +62,9 @@ dependencies = [
     # lock, every wheel), not this dependency's worth of change. app/utils/ids.py
     # is the single call site, so a later floor raise is a one-line swap.
     "uuid6>=2024.7.10",
-    # Document parser stack (doc 16 §3 ADR, TH1.03). pdfplumber over PyMuPDF
-    # (AGPL) and over the ML-layout parsers (unstructured/marker/Docling,
-    # doc 03 §3.3 no-heavy-ML floor); markdown-it-py for markdown. Both pure
-    # Python, permissively licensed.
-    "pdfplumber>=0.11.0",
+    # Document parser stack (doc 16 §3 ADR, TH1.03): markdown-it-py for
+    # markdown, pure Python and permissively licensed. No PDF parser ships;
+    # both doors carry text.
     "markdown-it-py>=3.0.0",
     # The S3 backup destination (spec §9.2). One client covers AWS, R2, B2 and
     # MinIO through `endpoint_url`, which is why a hand-rolled SigV4 signer is

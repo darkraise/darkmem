@@ -34,8 +34,6 @@ certifi==2026.5.20
     #   httpx
 cffi==2.0.0 ; platform_python_implementation != 'PyPy'
     # via cryptography
-charset-normalizer==3.5.1
-    # via pdfminer-six
 click==8.4.1
     # via uvicorn
 colorama==0.4.6 ; sys_platform == 'win32'
@@ -45,9 +43,7 @@ colorama==0.4.6 ; sys_platform == 'win32'
 croniter==6.2.2
     # via darkmem (pyproject.toml)
 cryptography==48.0.0
-    # via
-    #   pdfminer-six
-    #   pyjwt
+    # via pyjwt
 fastapi==0.136.3
     # via darkmem (pyproject.toml)
 greenlet==3.5.1
@@ -113,14 +109,8 @@ nvidia-ml-py==13.610.43
     # via pynvml
 opentelemetry-api==1.44.0
     # via mcp
-pdfminer-six==20260107
-    # via pdfplumber
-pdfplumber==0.11.10
-    # via darkmem (pyproject.toml)
 pgvector==0.4.2
     # via darkmem (pyproject.toml)
-pillow==12.3.0
-    # via pdfplumber
 psutil==7.2.2
     # via darkmem (pyproject.toml)
 pycparser==3.0 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
@@ -142,8 +132,6 @@ pyjwt==2.13.0
     #   mcp
 pynvml==13.0.1
     # via darkmem (pyproject.toml)
-pypdfium2==5.13.0
-    # via pdfplumber
 python-dateutil==2.9.0.post0
     # via
     #   botocore

@@ -1206,8 +1206,9 @@ fetch-then-index.
 A document is filed markdown or plain text parsed into a `blocks` tree
 (headings, paragraphs, lists, code, quotes, tables and rows, dividers, raw
 `html`). It is **never** run through the memory pipeline and never extracted
-into memories or facts; it is parsed, embedded and retrievable. PDF parsing
-exists but `content` is `str` on both doors, so a PDF is a designed 422.
+into memories or facts; it is parsed, embedded and retrievable. No PDF parser
+ships and `content` is `str` on both doors, so a PDF is a designed 422 (an
+`unsupported_source` envelope from the MCP tool).
 `tests/test_block_pipeline.py` fails the build if `app.services.pipeline` is
 reachable from this module or `block_pipeline`.
 

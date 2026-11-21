@@ -57,9 +57,9 @@ async def test_a_page_parent_must_be_in_the_same_project(session):
 
 
 async def test_the_document_block_indexes_survive(session):
-    """An earlier draft of the spec showed the CREATE TABLE without these two,
-    which would have seq-scanned every subtree delete and dropped keyword
-    search's index."""
+    """An earlier draft of the spec showed the CREATE TABLE without these,
+    which would have seq-scanned every subtree delete. The keyword index is
+    gone with the column it indexed."""
     rows = (await session.execute(text(
         "SELECT indexname FROM pg_indexes WHERE tablename = 'blocks'"
     ))).scalars().all()
@@ -67,9 +67,9 @@ async def test_the_document_block_indexes_survive(session):
         "ix_blocks_document_order",
         "ix_blocks_page_order",
         "ix_blocks_parent",
-        "ix_blocks_search_vector",
     ):
         assert name in rows, f"{name} is missing"
+    assert "ix_blocks_search_vector" not in rows
 
 
 async def test_the_two_owner_order_indexes_are_partial(session):

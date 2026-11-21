@@ -123,27 +123,6 @@ async def test_document_revisions_record_who_filed_and_page_newest_first(session
 
 
 @pytest.mark.asyncio
-async def test_blocks_carry_a_search_vector_that_blanks_source_types(session):
-    """The keyword arm indexes prose. Code and html text is source, and
-    indexing it makes every note that mentions a function name a hit for it."""
-    doc = await session.scalar(text(
-        "INSERT INTO documents (id, project, uri) "
-        "VALUES (gen_random_uuid(), 'notes', 'd.md') RETURNING id"
-    ))
-    for block_type in ("paragraph", "code", "html"):
-        await session.execute(
-            text("INSERT INTO blocks (id, document_id, type, text) "
-                 "VALUES (gen_random_uuid(), :d, :t, 'alpha beta')"),
-            {"d": doc, "t": block_type},
-        )
-    hits = await session.scalar(text(
-        "SELECT count(*) FROM blocks "
-        "WHERE search_vector @@ plainto_tsquery('english', 'alpha')"
-    ))
-    assert hits == 1
-
-
-@pytest.mark.asyncio
 async def test_documents_can_be_pinned_and_ordered_by_recency(session):
     await session.execute(text(
         "INSERT INTO documents (id, project, uri, pinned_at) "
@@ -161,88 +140,16 @@ async def test_documents_can_be_pinned_and_ordered_by_recency(session):
     )) == 1
 
 
-# The generated column's blanking set is a taxonomy slice living inside a DDL
-# string. Nothing sweeps it: `app.taxonomy` is Python, the expression is text
-# inside `op.execute`, and a vocabulary change that renames or adds a block
-# type cannot reach it. Nor is the drift loud -- a stale set does not error, it
-# quietly indexes source as prose (or stops indexing prose at all), and the
-# only symptom is worse search.
-#
-# It is also the most expensive object here to change late: Postgres cannot
-# ALTER a stored generated column's expression, so a correction after the
-# schema freeze is DROP COLUMN + ADD COLUMN, rewriting every `blocks` row and
-# rebuilding the GIN index on a table whose embedding partition is already
-# most of the database.
-#
-# So the partition below is pinned rather than the blanked set alone. Adding a
-# block type fails this test until someone puts it in one bucket, which is the
-# moment to decide whether it is prose or source.
-SOURCE_BLOCK_TYPES = frozenset({"code", "html"})
-"""Types whose text is source, not prose. Blanked from the search vector:
-indexing them makes every note mentioning a function name a hit for it."""
-
-PROSE_BLOCK_TYPES = frozenset({
-    "paragraph", "heading", "list", "quote", "table", "table_row", "divider",
-    "todo", "toggle", "callout",
-})
-"""Types whose text is prose. Indexed."""
-
-
-def _blanked_types_in_the_generation_expression(expression: str) -> frozenset[str]:
-    """The block types the stored expression actually blanks.
-
-    Postgres normalises the DDL's `type IN ('code', 'html')` to
-    `type = ANY (ARRAY['code'::text, 'html'::text])`, so the literals are read
-    out of the CASE's WHEN clause rather than matched against the SQL we wrote
-    -- what is asserted is what the database stored, not what the file says.
-    """
-    import re
-
-    whens = re.findall(r"WHEN(.*?)THEN", expression, re.DOTALL | re.IGNORECASE)
-    assert len(whens) == 1, (
-        f"expected a single-branch CASE, found {len(whens)} WHEN clauses: "
-        f"{expression}"
-    )
-    return frozenset(re.findall(r"'([^']*)'", whens[0]))
-
-
-def test_the_block_type_vocabulary_is_partitioned_into_prose_and_source():
-    """Every block type is classified, so adding one cannot skip the decision."""
-    from app.taxonomy import BLOCK_TYPES, PAGE_BLOCK_TYPES
-
-    assert not (SOURCE_BLOCK_TYPES & PROSE_BLOCK_TYPES), (
-        "a block type cannot be both prose and source"
-    )
-    assert SOURCE_BLOCK_TYPES | PROSE_BLOCK_TYPES == set(BLOCK_TYPES) | set(PAGE_BLOCK_TYPES), (
-        "the block-type vocabulary moved without the search-vector partition "
-        "moving with it. Put each new or renamed type in SOURCE_BLOCK_TYPES "
-        "or PROSE_BLOCK_TYPES, and if it lands in the source bucket, change "
-        "the generated column in 0001_baseline.py too -- which, after the "
-        "schema freeze, is a DROP COLUMN and a full table rewrite."
-    )
-
-
 @pytest.mark.asyncio
-async def test_the_search_vector_blanks_exactly_the_source_types(session):
-    """Read the blanking set out of the catalogue and pin it to the taxonomy."""
-    from app.taxonomy import BLOCK_TYPES
-
-    expression = await session.scalar(text(
-        "SELECT generation_expression FROM information_schema.columns "
+async def test_blocks_carry_no_search_vector(session):
+    """Nothing read the keyword column or its GIN index; block retrieval is
+    cosine-only, so both are dropped rather than kept current on every write."""
+    column = await session.scalar(text(
+        "SELECT count(*) FROM information_schema.columns "
         "WHERE table_schema = 'public' AND table_name = 'blocks' "
         "AND column_name = 'search_vector'"
     ))
-    assert expression, "blocks.search_vector is not a generated column"
-
-    blanked = _blanked_types_in_the_generation_expression(expression)
-
-    unknown = blanked - set(BLOCK_TYPES)
-    assert not unknown, (
-        f"the generated column blanks {sorted(unknown)}, which are not in "
-        "app.taxonomy.BLOCK_TYPES -- a renamed block type left the DDL string "
-        "behind, so those blocks are now indexed as prose"
-    )
-    assert blanked == SOURCE_BLOCK_TYPES, (
-        f"the generated column blanks {sorted(blanked)} but the design blanks "
-        f"{sorted(SOURCE_BLOCK_TYPES)}"
-    )
+    index = await session.scalar(text(
+        "SELECT count(*) FROM pg_indexes WHERE indexname = 'ix_blocks_search_vector'"
+    ))
+    assert (column, index) == (0, 0)

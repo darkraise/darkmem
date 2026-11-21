@@ -10,7 +10,7 @@ module is accountable for actually live.
 **It is emphatically not the five-phase memory pipeline, and that is a
 structural claim rather than a promise.** Doc 16 §3's decision is that filing
 a document must not run extraction over its content — a raw document is
-candidate signal, and extracting every filed PDF would flood the L1 graph with
+candidate signal, and extracting every filed document would flood the L1 graph with
 assertions nobody vouched for. So this path reaches blocks and stops; the
 graph is reached only through the on-demand lift in §5.
 ``tests/test_block_pipeline.py`` proves it by walking the transitive
@@ -48,10 +48,8 @@ from app.services.document_ingest import BlockDraft, DocumentIngest, file_docume
 from app.services.document_parsers import (
     SOURCE_TYPE_MARKDOWN,
     SOURCE_TYPE_NOTE,
-    SOURCE_TYPE_PDF,
     parse_markdown,
     parse_note,
-    parse_pdf,
     split_frontmatter,
 )
 
@@ -69,13 +67,14 @@ class UnsupportedSource(Exception):
     """No parser serves this source, so no block tree can be produced.
 
     Deliberately not ``DocumentParseError``: nothing was parsed. The two are
-    different failures for the caller — an unparseable PDF is a property of
+    different failures for the caller — unparseable content is a property of
     the content, an unroutable ``source_type`` is a property of the request.
+    A PDF is the designed case: no PDF parser ships, and both doors carry
+    ``content`` as text.
     """
 
 
 PARSERS: dict[str, Callable[..., Sequence[BlockDraft]]] = {
-    SOURCE_TYPE_PDF: parse_pdf,
     SOURCE_TYPE_MARKDOWN: parse_markdown,
     SOURCE_TYPE_NOTE: parse_note,
 }
@@ -86,7 +85,6 @@ PARSERS: dict[str, Callable[..., Sequence[BlockDraft]]] = {
 # `UnsupportedSource`, never a silent fall back to the note parser, which
 # would file a PDF's compressed bytes as prose.
 URI_SUFFIX_SOURCE_TYPES: dict[str, str] = {
-    ".pdf": SOURCE_TYPE_PDF,
     ".md": SOURCE_TYPE_MARKDOWN,
     ".markdown": SOURCE_TYPE_MARKDOWN,
     ".txt": SOURCE_TYPE_NOTE,

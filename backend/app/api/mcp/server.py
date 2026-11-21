@@ -853,13 +853,16 @@ async def document_put(
         uri: Repo-relative path, e.g. "docs/plans/2026-08-23-thing.md".
         content: The file's text. The server never reads your filesystem.
         title: Optional; falls back to the document's first heading.
-        source_type: Optional; inferred from the uri suffix.
+        source_type: Optional; inferred from the uri suffix. A source no
+            parser serves, a PDF included, answers an `unsupported_source`
+            envelope.
         expected_hash: Optional compare-and-set -- file only if the document
             still holds this content_hash (the value a previous put or
             document_get echoed). Omit for last-writer-wins. A mismatch
             answers a `hash_conflict` envelope naming both hashes, never an
             error: the caller made no mistake, it lost a race.
     """
+    from app.services.block_pipeline import UnsupportedSource
     from app.services.document_ingest import DocumentHashConflict
     from app.services.document_door import DocumentIsBlockFirst, put_document
 
@@ -902,6 +905,16 @@ async def document_put(
                     "project": project,
                     "expected_hash": exc.expected_hash,
                     "current_hash": exc.current_hash,
+                })
+            except UnsupportedSource as exc:
+                # The REST twin's 422: no parser serves this source (a PDF,
+                # or a suffix the closed map does not name).
+                await session.rollback()
+                return json.dumps({
+                    "status": "unsupported_source",
+                    "document_uri": uri,
+                    "project": project,
+                    "reason": str(exc),
                 })
             except Exception:
                 await session.rollback()

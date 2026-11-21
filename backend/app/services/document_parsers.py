@@ -1,11 +1,8 @@
-"""The parser stack — PDF, markdown, notes (TH1.03, doc 16 §3).
+"""The parser stack — markdown and notes (TH1.03, doc 16 §3).
 
-The ADR is decided, not open (doc 16 §3, doc 09's amendment log): ``pdfplumber``
-for PDF, ``markdown-it-py`` for markdown, native segmentation for plain-text
-notes. ``PyMuPDF`` is rejected (AGPL) and every ML-layout parser
-(``unstructured``/``marker``/Docling) is rejected — they pull a native-ML stack
-back in, the exact dependency floor doc 03 §3.3's consolidation removed. Both
-shipped libraries are pure Python and permissively licensed.
+``markdown-it-py`` parses markdown and native segmentation splits plain-text
+notes. No PDF parser ships: both doors carry ``content`` as text, so a PDF
+filing is refused before any parse (``block_pipeline.UnsupportedSource``).
 
 Each parser returns a ``Sequence[BlockDraft]`` — exactly the shape
 ``file_document`` (TH1.02) takes as its ``parse`` callable's result — and
@@ -34,8 +31,8 @@ byte-exact mirror of ``blocks.text``.
 annotates the column ``"pdf|md|note|import"``, but the column itself is
 free-form ``TEXT`` with no ``CHECK`` and no normaliser — unlike ``blocks.type``,
 nothing closes it, and this module is the first real emitter into it. The
-decision: :data:`SOURCE_TYPE_PDF`, :data:`SOURCE_TYPE_MARKDOWN` and
-:data:`SOURCE_TYPE_NOTE` below spell the ERD's own values as a **naming
+decision: :data:`SOURCE_TYPE_MARKDOWN` and :data:`SOURCE_TYPE_NOTE` below
+spell the ERD's own values as a **naming
 convention** for this parser stack's callers, not an enforced taxonomy.
 Closing the column — a ``CHECK`` constraint, or a ``normalize_source_type``
 alongside ``normalize_block_type`` — is deliberately **not** done here: that
@@ -49,11 +46,6 @@ forcing it.
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
-from io import BytesIO
-from statistics import median
-
-import pdfplumber
 from markdown_it import MarkdownIt
 
 from app.services.block_serializer import DEFAULT_LIST_MARKER
@@ -62,15 +54,12 @@ from app.services.document_ingest import BlockDraft
 __all__ = [
     "SOURCE_TYPE_MARKDOWN",
     "SOURCE_TYPE_NOTE",
-    "SOURCE_TYPE_PDF",
     "DocumentParseError",
     "parse_markdown",
     "parse_note",
-    "parse_pdf",
 ]
 
 # Naming convention only (see module docstring) — not enforced anywhere.
-SOURCE_TYPE_PDF = "pdf"
 SOURCE_TYPE_MARKDOWN = "md"
 SOURCE_TYPE_NOTE = "note"
 
@@ -571,126 +560,3 @@ def _iter_lines(text: str, start: int, end: int):
         content = raw_line.rstrip("\n")
         yield pos, pos + len(content), content
         pos += len(raw_line)
-
-
-# ── PDF ───────────────────────────────────────────────────────────────
-
-
-def parse_pdf(data: bytes) -> list[BlockDraft]:
-    """Parse PDF bytes into a block tree via `pdfplumber`'s character-level text.
-
-    Lines are grouped into paragraphs by vertical gap (a gap over 1.5x the
-    page's median line height starts a new paragraph); a single-line group
-    set in a font larger than the page's own median size is classified a
-    heading, everything else a paragraph. Page number and the union bounding
-    box ride ``properties`` (doc 16 §2's PDF provenance), and ``char_span``
-    indexes into the concatenation of every extracted paragraph across the
-    document, in reading order. PDF blocks are flat — this parser does not
-    attempt heading-owns-content nesting from font size alone, unlike the
-    markdown parser's structural nesting.
-
-    No separate type check on `data`: `BytesIO()` itself refuses anything
-    that is not bytes-like, and that `TypeError` is caught below with every
-    other pdfplumber-side failure — a second explicit check here would raise
-    the identical wrapped error one line earlier and prove nothing a test
-    could tell apart from not having it.
-    """
-    try:
-        with pdfplumber.open(BytesIO(data)) as pdf:
-            return _parse_pdf_pages(pdf)
-    except DocumentParseError:
-        raise
-    except Exception as exc:
-        raise DocumentParseError(f"pdf parse failed: {exc}") from exc
-
-
-def _parse_pdf_pages(pdf) -> list[BlockDraft]:
-    drafts: list[BlockDraft] = []
-    offset = 0
-    for page_number, page in enumerate(pdf.pages, start=1):
-        try:
-            lines = page.extract_text_lines() or []
-        except Exception as exc:
-            raise DocumentParseError(
-                f"pdf page {page_number} extraction failed: {exc}"
-            ) from exc
-        if not lines:
-            continue
-
-        median_height = _median_line_height(lines)
-        common_size = _common_font_size(lines)
-        gap_threshold = median_height * 1.5 if median_height else 6.0
-
-        for group in _group_lines(lines, gap_threshold):
-            text = " ".join(line["text"].strip() for line in group if line["text"].strip())
-            if not text:
-                continue
-            size = _line_size(group[0])
-            block_type = "heading" if len(group) == 1 and size > common_size + 1.0 else "paragraph"
-            start = offset
-            end = start + len(text)
-            offset = end + 1
-            drafts.append(BlockDraft(
-                text=text,
-                type=block_type,
-                properties={"page": page_number, "bbox": _bbox_union(group)},
-                char_span=(start, end),
-            ))
-    return drafts
-
-
-def _line_height(line: dict) -> float:
-    return line["bottom"] - line["top"]
-
-
-def _median_line_height(lines: Sequence[dict]) -> float:
-    heights = [_line_height(line) for line in lines if _line_height(line) > 0]
-    return median(heights) if heights else 0.0
-
-
-def _line_size(line: dict) -> float:
-    sizes = [char["size"] for char in line.get("chars") or [] if char.get("size")]
-    return max(sizes) if sizes else 0.0
-
-
-def _common_font_size(lines: Sequence[dict]) -> float:
-    sizes = [_line_size(line) for line in lines]
-    sizes = [s for s in sizes if s > 0]
-    return median(sizes) if sizes else 0.0
-
-
-def _group_lines(lines: Sequence[dict], gap_threshold: float) -> list[list[dict]]:
-    """Split into paragraph groups on a vertical gap OR a font-size change.
-
-    The gap alone under-splits a heading immediately followed by body text —
-    single-spaced layouts often leave less vertical room than the heading's
-    own larger line height would suggest, so the gap can read as "close
-    together" even across a real heading/paragraph boundary. A size jump is
-    a second, independent signal for the same boundary.
-    """
-    groups: list[list[dict]] = []
-    current: list[dict] = []
-    prev_bottom: float | None = None
-    prev_size: float | None = None
-    for line in lines:
-        size = _line_size(line)
-        gap_broke = prev_bottom is not None and (line["top"] - prev_bottom) > gap_threshold
-        size_broke = prev_size is not None and size > 0 and prev_size > 0 and abs(size - prev_size) > 1.0
-        if (gap_broke or size_broke) and current:
-            groups.append(current)
-            current = []
-        current.append(line)
-        prev_bottom = line["bottom"]
-        prev_size = size
-    if current:
-        groups.append(current)
-    return groups
-
-
-def _bbox_union(group: Sequence[dict]) -> dict:
-    return {
-        "x0": round(min(line["x0"] for line in group), 2),
-        "top": round(min(line["top"] for line in group), 2),
-        "x1": round(max(line["x1"] for line in group), 2),
-        "bottom": round(max(line["bottom"] for line in group), 2),
-    }

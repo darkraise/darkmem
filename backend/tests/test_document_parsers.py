@@ -1,11 +1,8 @@
-"""The parser stack — PDF, markdown, notes (TH1.03, doc 16 §3).
+"""The parser stack — markdown and notes (TH1.03, doc 16 §3).
 
 **The parsers are exercised on real input, not stubs.** Markdown goes through
-`markdown-it-py`'s actual tokenizer; PDF goes through `pdfplumber` against a
-hand-built, syntactically real PDF (a ~40-line minimal-PDF writer below —
-deliberately not a new test dependency, since the only thing it needs to prove
-is that pdfplumber's own extraction round-trips through this module's grouping
-logic). Every assertion about a char_span is checked by slicing the actual
+`markdown-it-py`'s actual tokenizer. A PDF has no parser: filing one is a
+designed 422 (the last section). Every assertion about a char_span is checked by slicing the actual
 source with it, never by trusting the number the parser reports.
 """
 from __future__ import annotations
@@ -25,61 +22,11 @@ from app.services.document_parsers import (
     split_frontmatter,
     SOURCE_TYPE_MARKDOWN,
     SOURCE_TYPE_NOTE,
-    SOURCE_TYPE_PDF,
     DocumentParseError,
     parse_markdown,
     parse_note,
-    parse_pdf,
 )
 from app.taxonomy import BLOCK_TYPES
-
-# ── a real, minimal PDF — no new test dependency ─────────────────────
-
-
-def _make_pdf(pages: list[list[tuple[str, int, int, int]]]) -> bytes:
-    """A syntactically real single-content-stream-per-page PDF.
-
-    Each page is a list of `(text, x, y, font_size)` text-showing operations
-    in PDF user space (origin bottom-left). No compression, no cross-ref
-    stream, no font metrics beyond Helvetica's built-in name — the minimum
-    pdfplumber's own reader (pdfminer.six-backed) accepts.
-    """
-    objects: list[bytes] = []
-    objects.append(b"<< /Type /Catalog /Pages 2 0 R >>")
-    kids = " ".join(f"{3 + i} 0 R" for i in range(len(pages)))
-    objects.append(f"<< /Type /Pages /Kids [{kids}] /Count {len(pages)} >>".encode())
-    content_obj_start = 3 + len(pages)
-    font_obj = content_obj_start + len(pages)
-    for i in range(len(pages)):
-        objects.append(
-            (
-                f"<< /Type /Page /Parent 2 0 R "
-                f"/Resources << /Font << /F1 {font_obj} 0 R >> >> "
-                f"/MediaBox [0 0 612 792] /Contents {content_obj_start + i} 0 R >>"
-            ).encode()
-        )
-    for lines in pages:
-        parts = []
-        for line_text, x, y, size in lines:
-            escaped = line_text.replace("\\", r"\\").replace("(", r"\(").replace(")", r"\)")
-            parts.append(f"BT /F1 {size} Tf {x} {y} Td ({escaped}) Tj ET")
-        stream = "\n".join(parts).encode()
-        objects.append(f"<< /Length {len(stream)} >>\nstream\n".encode() + stream + b"\nendstream")
-    objects.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
-
-    buf = bytearray(b"%PDF-1.4\n")
-    offsets = [0]
-    for i, obj in enumerate(objects, start=1):
-        offsets.append(len(buf))
-        buf += f"{i} 0 obj\n".encode() + obj + b"\nendobj\n"
-    xref_offset = len(buf)
-    n = len(objects) + 1
-    buf += f"xref\n0 {n}\n".encode() + b"0000000000 65535 f \n"
-    for off in offsets[1:]:
-        buf += f"{off:010d} 00000 n \n".encode()
-    buf += f"trailer\n<< /Size {n} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF".encode()
-    return bytes(buf)
-
 
 # ── markdown ──────────────────────────────────────────────────────────
 
@@ -286,72 +233,6 @@ def test_note_blank_input_is_empty():
     assert parse_note("   \n\n  ") == []
 
 
-# ── PDF ───────────────────────────────────────────────────────────────
-
-
-def test_pdf_heading_vs_paragraph_by_font_size():
-    pdf = _make_pdf([[
-        ("Big Heading", 72, 720, 24),
-        ("A paragraph of body text that follows.", 72, 690, 12),
-        ("Second line of the same paragraph continues here.", 72, 678, 12),
-    ]])
-    drafts = parse_pdf(pdf)
-    assert [d.type for d in drafts] == ["heading", "paragraph"]
-    assert drafts[0].text == "Big Heading"
-    assert "Second line of the same paragraph" in drafts[1].text
-
-
-def test_pdf_multi_page_provenance_carries_page_and_bbox():
-    pdf = _make_pdf([
-        [("Page One Heading", 72, 720, 20), ("Body on page one.", 72, 690, 12)],
-        [("Page Two Heading", 72, 720, 20), ("Body on page two.", 72, 690, 12)],
-    ])
-    drafts = parse_pdf(pdf)
-    pages = [d.properties["page"] for d in drafts]
-    assert pages == [1, 1, 2, 2]
-    for draft in drafts:
-        bbox = draft.properties["bbox"]
-        assert set(bbox) == {"x0", "top", "x1", "bottom"}
-        assert bbox["x1"] > bbox["x0"]
-        assert bbox["bottom"] > bbox["top"]
-
-
-def test_pdf_char_spans_are_sequential_and_nonoverlapping():
-    pdf = _make_pdf([[
-        ("Heading", 72, 720, 20),
-        ("First paragraph.", 72, 690, 12),
-        ("Another heading", 72, 660, 20),
-        ("Second paragraph.", 72, 630, 12),
-    ]])
-    drafts = parse_pdf(pdf)
-    prev_end = -1
-    for draft in drafts:
-        lo, hi = draft.char_span
-        assert lo >= prev_end
-        assert hi - lo == len(draft.text)
-        prev_end = hi
-
-
-def test_pdf_garbage_bytes_raise_parse_error():
-    with pytest.raises(DocumentParseError):
-        parse_pdf(b"this is not a pdf at all")
-
-
-def test_pdf_rejects_non_bytes_content():
-    with pytest.raises(DocumentParseError, match="bytes"):
-        parse_pdf("not bytes")
-
-
-def test_pdf_with_no_pages_is_empty():
-    assert parse_pdf(_make_pdf([])) == []
-
-
-def test_pdf_only_emits_closed_vocabulary_types():
-    pdf = _make_pdf([[("Heading", 72, 720, 20), ("Body text.", 72, 690, 12)]])
-    drafts = parse_pdf(pdf)
-    assert {d.type for d in drafts} <= set(BLOCK_TYPES)
-
-
 def test_the_event_and_object_types_are_still_closed():
     from app.services.events import EVENT_TYPES, OBJECT_TYPES
 
@@ -366,7 +247,6 @@ def test_source_type_constants_match_the_erd_spelling():
     """Doc 16 §2's ERD literal, pinned so it stays a decision rather than
     drifting one string literal at a time. `source_type` itself takes any
     string — this only pins what *this module's own callers* agree to write."""
-    assert SOURCE_TYPE_PDF == "pdf"
     assert SOURCE_TYPE_MARKDOWN == "md"
     assert SOURCE_TYPE_NOTE == "note"
 
@@ -400,22 +280,13 @@ async def test_each_parser_files_end_to_end_through_file_document(session):
     await session.flush()
     assert len(await _block_ids(session, result_note.document_id)) == 2
 
-    pdf_bytes = _make_pdf([[("Report", 72, 720, 20), ("Body of the report.", 72, 690, 12)]])
-    result_pdf = await file_document(
-        session, project="default", uri=f"file:///{uuid4()}.pdf", content=pdf_bytes,
-        parse=lambda: parse_pdf(pdf_bytes), source_type=SOURCE_TYPE_PDF,
-    )
-    await session.flush()
-    assert len(await _block_ids(session, result_pdf.document_id)) == 2
-
     rows = (await session.execute(
         text("SELECT id, source_type FROM documents WHERE id = ANY(CAST(:ids AS uuid[]))"),
-        {"ids": [str(result_md.document_id), str(result_note.document_id), str(result_pdf.document_id)]},
+        {"ids": [str(result_md.document_id), str(result_note.document_id)]},
     )).mappings().all()
     by_id = {str(r["id"]): r["source_type"] for r in rows}
     assert by_id[str(result_md.document_id)] == "md"
     assert by_id[str(result_note.document_id)] == "note"
-    assert by_id[str(result_pdf.document_id)] == "pdf"
 
 
 # ── Tables (2026-08-31 spec §4.1) ────────────────────────────────────
@@ -750,3 +621,60 @@ def test_an_html_block_containing_markdown_characters_stays_opaque():
     drafts = parse_markdown("<div>\n# not a heading\n- not a list\n</div>\n")
     assert [d.type for d in drafts] == ["html"]
     assert drafts[0].text == "<div>\n# not a heading\n- not a list\n</div>"
+
+
+# ── PDF: a designed 422, no parser ──────────────────────────────────────
+
+from tests.test_document_routes import stub_llm  # noqa: E402,F401 — fixture
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("declared", [
+    {"uri": "docs/report.pdf"},
+    {"uri": "docs/report.md", "source_type": "pdf"},
+], ids=["suffix", "source_type"])
+async def test_pdf_filing_is_a_designed_422(
+    client, auth_headers, stub_llm, session, monkeypatch, declared
+):
+    import json
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+
+    import app.api.mcp.server as mcp_server
+
+    response = await client.post(
+        "/api/v1/documents",
+        json={"project": "pdf-422", "content": "%PDF-1.4 not parsed", **declared},
+        headers=auth_headers,
+    )
+    assert response.status_code == 422
+    assert "no parser serves" in response.text or "cannot infer a source_type" in response.text
+
+    @asynccontextmanager
+    async def _on_the_test_session():
+        yield session
+
+    monkeypatch.setattr(mcp_server, "async_session_factory", lambda: _on_the_test_session())
+    monkeypatch.setattr(mcp_server, "_pipeline", SimpleNamespace(llm=object()))
+    envelope = json.loads(await mcp_server.document_put(
+        project="pdf-422", content="%PDF-1.4 not parsed", **declared,
+    ))
+    assert envelope["status"] == "unsupported_source"
+    assert envelope["document_uri"] == declared["uri"]
+    assert envelope["reason"]
+
+
+def test_lock_holds_no_pdf_dependency():
+    import re
+    from pathlib import Path
+
+    from app.services import document_parsers
+
+    backend = Path(__file__).resolve().parents[1]
+    for name in ("requirements.lock", "pyproject.toml"):
+        manifest = (backend / name).read_text(encoding="utf-8").lower()
+        for package in ("pdfplumber", "pdfminer-six", "pdfminer.six", "pypdfium2"):
+            assert not re.search(rf"(?<![\w.-]){re.escape(package)}(?![\w-])", manifest), (
+                f"{name} still names {package}"
+            )
+    assert not hasattr(document_parsers, "parse_pdf")
