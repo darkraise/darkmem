@@ -164,14 +164,14 @@
 | 157 | F2-2: the Maintenance re-embed count goes stale (private cache name) | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 58 contracts | doing | - |
 | 158 | F2-3: the WebSocket ignores the server's session-expired close and retries forever | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 57 contracts | doing | - |
 | 159 | F2-4: demo mode still calls the API from Settings LLM | docs/dforge/plans/2026-11-20-audit-remaining.md | A43 (Task 58) | doing | - |
-| 160 | F2-5: Settings has five save models, three ways of showing a load failure, and three confirmation styles | docs/dforge/plans/2026-11-20-audit-remaining.md | A37 (Task 55) | doing | - |
+| 160 | F2-5: Settings has five save models, three ways of showing a load failure, and three confirmation styles | docs/dforge/plans/2026-11-20-audit-remaining.md | A37 (Task 55) | done | fef8eb1 |
 | 161 | F2-6: the LLM tab shows blank models and a fixture judge as if real on load failure | docs/dforge/plans/2026-11-20-audit-remaining.md | A41 (Task 50) | done | ff88573 |
-| 162 | F2-7: Flags dialogs close on Save before the write lands; edits are lost | docs/dforge/plans/2026-11-20-audit-remaining.md | A37 (Task 55) | doing | - |
-| 163 | F2-8: number fields in the Flags dialogs commit only on blur while Save is disabled; one field type clamps silently, the other shows an error | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 55 contracts | doing | - |
+| 162 | F2-7: Flags dialogs close on Save before the write lands; edits are lost | docs/dforge/plans/2026-11-20-audit-remaining.md | A37 (Task 55) | done | fef8eb1 |
+| 163 | F2-8: number fields in the Flags dialogs commit only on blur while Save is disabled; one field type clamps silently, the other shows an error | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 55 contracts | done | fef8eb1 |
 | 164 | F2-9 and F3-4: the app never calls /auth/refresh, so every session ends hard after 24h and both editors lose in-memory drafts | docs/dforge/plans/2026-11-20-audit-remaining.md | A38 (Task 56/57) | doing | - |
 | 165 | F2-10: about 18 exported hooks in hooks/api have no production importer, plus WebSocket cache writes nothing reads | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 59 contracts | doing | - |
 | 166 | F2-11: unused auth code: useSession, useLogout, LogoutButton, authAdapter.me, lib/api.ts login() | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 59 contracts | doing | - |
-| 167 | F2-12 remainder: keepDialogOpenOnListEscape (7 call sites) is retirable by its own comment | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 55 contracts | doing | - |
+| 167 | F2-12 remainder: keepDialogOpenOnListEscape (7 call sites) is retirable by its own comment | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 55 contracts | done | fef8eb1 |
 | 168 | F2-13: formatDateTime is defined four times; both formatDuration copies print 1m 60s for 119.6 seconds | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 58 contracts | doing | - |
 | 169 | F2-14: checkSetupStatus ignores the HTTP status, so a server error shows the setup wizard | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 58 contracts | doing | - |
 | 170 | F2-15: the setup wizard keeps vendor API keys in localStorage until setup finishes | docs/dforge/plans/2026-11-20-audit-remaining.md | A43 (Task 58) | doing | - |
