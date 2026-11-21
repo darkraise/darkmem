@@ -377,8 +377,11 @@ UPDATE SKIP LOCKED` claim as the scheduled job and returns the processed
 memory (201) only when that row's replay finished `done` within
 `BUFFER_WAIT_TIMEOUT_SECONDS` (10 s, `app/services/memory.py`); otherwise it
 answers the plain ack, and a flush still running at the deadline finishes as a
-tracked background task on its own session (`wait_process.drive`), drained at
-shutdown with any row it still holds returned to `pending`. Every capture runs through `capture_lint` (a
+tracked background task on its own session (`wait_process.drive`), cut at the
+scheduled flush's own deadline and drained at shutdown, either way with any row
+it still holds returned to `pending`. While eight such flushes are running, a
+`wait_process` capture is not driven at all and answers the plain ack at once.
+Every capture runs through `capture_lint` (a
 pure function: named signals, two or more of them or over 1,500 characters
 flags). **A flag never refuses**: the ack carries `warnings`, the 201 path
 answers `CapturedMemoryResponse` (`MemoryResponse` plus `warnings`, served

@@ -337,9 +337,9 @@ the tree before the doc was changed rather than the code:
   A control run of the same statement *without* the filter returns the foreign-project and
   superseded rows that the scoped run does not, which is the point: those rows are never
   fetched, so counting them would mean re-fetching exactly what the pushdown exists to avoid.
-- **`by_context_conflict` has a counting primitive that nothing calls yet.**
-  `rank_fusion.partition_by_context` computes it and is tested, but a grep of `app/` finds
-  **zero production call sites** — the four-layer composition that would wire it is E2's.
+- **`by_context_conflict` has no counting primitive.** The declared-context matcher and
+  `rank_fusion.partition_by_context` were removed: a declared context is echoed and ranks
+  nothing, so no row is ever excluded for a context conflict. The name stays reserved.
 - **An always-zero honesty counter is worse than an absent one**, because it reads as evidence
   that a check ran. That is invariant 14 applied to the counter itself.
 
