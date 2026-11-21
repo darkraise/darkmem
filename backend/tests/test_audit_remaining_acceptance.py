@@ -1882,3 +1882,74 @@ async def test_a34_a_subclass_of_a_base_in_an_unchanged_file_keeps_its_extends_e
         ).scalars().all()
     )
     assert targets == {"Parent::parent.py"}
+
+
+# ------------------------------------------------------------------ A26
+
+
+@pytest.mark.asyncio
+async def test_a26_an_upload_in_progress_does_not_block_a_page_write_in_another_project(setup_database, monkeypatch, tmp_path):
+    from httpx import ASGITransport, AsyncClient
+    from sqlalchemy import delete, select
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from app.api.auth import create_access_token, hash_password
+    from app.config import settings
+    from app.main import app
+    from app.models.config import Config
+    from tests.conftest import test_engine
+
+    monkeypatch.setattr(settings, "attachments_dir", str(tmp_path / "att"))
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    async with factory() as s:
+        had = (await s.execute(select(Config).where(Config.key == "admin_password_hash"))).scalar_one_or_none()
+        saved = dict(had.value) if had else None
+        if had is None:
+            s.add(Config(key="admin_password_hash", value={"hash": hash_password("qa26-pass-123456")}))
+        await s.commit()
+    headers = {"Authorization": f"Bearer {create_access_token({'sub': 'admin'})}"}
+    proj_a, proj_b = f"qa26a-{uuid.uuid4().hex[:6]}", f"qa26b-{uuid.uuid4().hex[:6]}"
+    previous_llm = getattr(app.state, "llm", None)
+    from tests.test_document_door import StubEmbedder
+
+    app.state.llm = StubEmbedder()
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            page_a = (await c.post("/api/v1/pages", json={"project": proj_a, "title": "A"}, headers=headers)).json()["id"]
+
+            release = asyncio.Event()
+            first_chunk_sent = asyncio.Event()
+
+            async def slow_body():
+                yield b"\x89PNG\r\n\x1a\n" + b"0" * (1024 * 1024)
+                first_chunk_sent.set()
+                await release.wait()
+                yield b"0" * 1024
+
+            upload = asyncio.create_task(
+                c.post(
+                    f"/api/v1/pages/{page_a}/attachments",
+                    content=slow_body(),
+                    headers={**headers, "X-Filename": "big.png", "Content-Type": "application/octet-stream"},
+                )
+            )
+            await asyncio.wait_for(first_chunk_sent.wait(), 10)
+            await asyncio.sleep(0.3)
+            assert not upload.done()
+            write = await asyncio.wait_for(
+                c.post("/api/v1/pages", json={"project": proj_b, "title": "B"}, headers=headers), 10
+            )
+            assert write.status_code == 201, write.text
+            assert not upload.done(), "the upload finished before the page write: the test proved nothing"
+            release.set()
+            done = await asyncio.wait_for(upload, 30)
+            assert done.status_code in (200, 201), done.text
+    finally:
+        app.state.llm = previous_llm
+        async with factory() as s:
+            from sqlalchemy import text
+
+            await s.execute(text("DELETE FROM pages WHERE project IN (:a, :b)"), {"a": proj_a, "b": proj_b})
+            if saved is None:
+                await s.execute(delete(Config).where(Config.key == "admin_password_hash"))
+            await s.commit()
