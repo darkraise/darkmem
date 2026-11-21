@@ -1,7 +1,4 @@
-import {
-  useQuery,
-  useMutation,
-} from "@tanstack/react-query"
+import { useQuery } from "@tanstack/react-query"
 import { apiFetch } from "@/lib/api"
 import { useProjectScopedKey } from "@/lib/query-keys"
 import { ALL_PROJECTS, useProjectStore } from "@/stores/project-store"
@@ -132,66 +129,4 @@ export function useMemoryContext(memoryId: string | null) {
   })
 }
 
-export function useFullGraph() {
-  return useQuery({
-    queryKey: ["fullGraph"],
-    queryFn: ({ signal }) =>
-      apiFetch<{ entities: unknown[]; relations: unknown[] }>("/graph/full", { signal }),
-  })
-}
-
-export function useGraphEntities(type?: string) {
-  return useQuery({
-    queryKey: ["graphEntities", type],
-    queryFn: ({ signal }) =>
-      apiFetch(`/graph/entities${type ? `?entity_type=${type}` : ""}`, { signal }),
-  })
-}
-
-export function useReason() {
-  return useMutation({
-    mutationFn: (data: { question: string; limit?: number }) =>
-      apiFetch<{ answer: string; sources: unknown[] }>("/memories/reason", {
-        method: "POST",
-        body: JSON.stringify(data),
-      }),
-  })
-}
-
 // ── Knowledge Timeline ────────────────────────────────────────
-
-export interface KnowledgeEntity {
-  name: string
-  entity_type: string
-}
-
-export interface KnowledgeTriple {
-  id: string
-  subject: string
-  predicate: string
-  object: string
-  valid_from: string | null
-  valid_to: string | null
-  confidence: number
-}
-
-// TODO: wire up once GET /api/v1/graph/knowledge/entities is implemented in the backend
-export function useKnowledgeEntities() {
-  return useQuery<KnowledgeEntity[]>({
-    queryKey: ["knowledgeEntities"],
-    queryFn: () => Promise.resolve([] as KnowledgeEntity[]),
-    staleTime: 30_000,
-  })
-}
-
-// TODO: wire up once GET /api/v1/graph/knowledge/timeline is implemented in the backend.
-// Key on (entity, asOf) so distinct selections don't collide on one cache entry
-// once the queryFn returns real data.
-export function useKnowledgeTimeline(entity: string | null, asOf?: string) {
-  return useQuery<KnowledgeTriple[]>({
-    queryKey: ["knowledgeTimeline", entity, asOf ?? null],
-    queryFn: () => Promise.resolve([] as KnowledgeTriple[]),
-    enabled: false,
-    staleTime: 30_000,
-  })
-}

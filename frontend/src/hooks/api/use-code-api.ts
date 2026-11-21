@@ -1,14 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { apiFetch } from "@/lib/api"
 
-export interface RepoStats {
-  total_repos: number
-  total_files: number
-  total_symbols: number
-  enrichment_pending: number
-  enrichment_completed: number
-}
-
 export interface IndexDebtRecord {
   at: string
   count: number
@@ -134,32 +126,6 @@ export interface CodeGraphOptions {
   scope?: string | null
 }
 
-export interface CodeSearchResult {
-  chunk_content: string
-  file_path: string
-  repo_id: string
-  language: string | null
-  symbol_name: string | null
-  line_start: number
-  line_end: number
-  score: number
-}
-
-export interface CodeSymbolResponse {
-  id: string
-  name: string
-  kind: string
-  file_path: string
-  line_start: number
-  line_end: number
-  signature: string | null
-  docstring: string | null
-  visibility: string | null
-  source_code: string
-  summary: string | null
-  enrichment_status: string
-}
-
 export interface CodeSymbolDetail {
   id: string
   name: string
@@ -175,20 +141,6 @@ export interface CodeSymbolDetail {
   enrichment_status: string
 }
 
-export interface CodeSymbolListResult {
-  items: CodeSymbolResponse[]
-  total: number
-}
-
-export interface CodeSymbolsParams {
-  repoId: string | null
-  q?: string
-  kind?: string
-  filePath?: string
-  offset?: number
-  limit?: number
-}
-
 export interface BlastRadiusResult {
   symbol: { id: string; name: string; file_path: string | null }
   affected: Array<{
@@ -201,13 +153,6 @@ export interface BlastRadiusResult {
   by_depth: { "1": Array<unknown>; "2": Array<unknown>; "3+": Array<unknown> }
   risk: string
   total: number
-}
-
-export function useRepoStats() {
-  return useQuery<RepoStats>({
-    queryKey: ["repoStats"],
-    queryFn: ({ signal }) => apiFetch("/repos/stats", { signal }),
-  })
 }
 
 export function useRepos() {
@@ -345,45 +290,6 @@ export function useCodeFiles(repoId: string | null) {
     queryKey: ["codeFiles", repoId],
     queryFn: ({ signal }) => apiFetch(`/code/files/${repoId}`, { signal }),
     enabled: !!repoId,
-  })
-}
-
-export function useCodeSymbols({
-  repoId,
-  q,
-  kind,
-  filePath,
-  offset = 0,
-  limit = 50,
-}: CodeSymbolsParams) {
-  return useQuery<CodeSymbolListResult>({
-    queryKey: ["codeSymbols", repoId, q, kind, filePath, offset, limit],
-    queryFn: () => {
-      const params = new URLSearchParams()
-      if (repoId) params.set("repo_id", repoId)
-      if (q) params.set("q", q)
-      if (kind) params.set("kind", kind)
-      if (filePath) params.set("file_path", filePath)
-      params.set("offset", String(offset))
-      params.set("limit", String(limit))
-      return apiFetch(`/code/symbols?${params.toString()}`)
-    },
-    enabled: !!repoId,
-  })
-}
-
-export function useCodeSearch() {
-  return useMutation({
-    mutationFn: (params: {
-      query: string
-      repo_id?: string
-      language?: string
-      limit?: number
-    }) =>
-      apiFetch<CodeSearchResult[]>("/code/search", {
-        method: "POST",
-        body: JSON.stringify(params),
-      }),
   })
 }
 

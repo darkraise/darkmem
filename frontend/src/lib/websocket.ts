@@ -25,20 +25,15 @@ const RECONCILE_QUERY_KEYS: string[] = [
   "memoryContext",
   "codeGraph",
   "codeFiles",
-  "codeSymbols",
   "codeSymbol",
-  "memories",
   "memory",
   "memoriesPaginated",
   "stats",
-  "overview",
-  "tags",
   "pipelineLogs",
   "pipelineFailures",
   "pipelineFailureCounts",
   "repos",
   "repoTasks",
-  "repoStats",
 ]
 
 function showPipelineToast(event: string, data: PipelineStatus) {
@@ -125,7 +120,7 @@ export function useWebSocket() {
         }
       }
       if (["repo.indexing_completed", "repo.indexing_failed"].includes(msg.event)) {
-        for (const key of ["codeGraph", "codeFiles", "codeSymbols", "codeSymbol"]) {
+        for (const key of ["codeGraph", "codeFiles", "codeSymbol"]) {
           void qc.invalidateQueries({ queryKey: [key] })
         }
       }
@@ -133,9 +128,7 @@ export function useWebSocket() {
       // list carry none, and on a large repo the graph is tens of megabytes,
       // so refetching them on every batch kept the Code Graph page busy.
       if (msg.event === "enrichment.batch_completed") {
-        for (const key of ["codeSymbols", "codeSymbol"]) {
-          void qc.invalidateQueries({ queryKey: [key] })
-        }
+        void qc.invalidateQueries({ queryKey: ["codeSymbol"] })
       }
 
       if (
@@ -144,12 +137,9 @@ export function useWebSocket() {
         msg.event === "pipeline.failed"
       ) {
         showPipelineToast(msg.event, msg.data as PipelineStatus)
-        void qc.invalidateQueries({ queryKey: ["memories"] })
         void qc.invalidateQueries({ queryKey: ["memory"] })
         void qc.invalidateQueries({ queryKey: ["memoriesPaginated"] })
         void qc.invalidateQueries({ queryKey: ["stats"] })
-        void qc.invalidateQueries({ queryKey: ["overview"] })
-        void qc.invalidateQueries({ queryKey: ["tags"] })
         void qc.invalidateQueries({ queryKey: ["pipelineLogs"] })
       } else if (
         msg.event === "memory.deleted" ||
@@ -157,12 +147,9 @@ export function useWebSocket() {
       ) {
         // A bulk delete emits one terminal memory.bulk_deleted instead of N
         // per-row memory.deleted events, so the cache invalidates once.
-        void qc.invalidateQueries({ queryKey: ["memories"] })
         void qc.invalidateQueries({ queryKey: ["memory"] })
         void qc.invalidateQueries({ queryKey: ["memoriesPaginated"] })
         void qc.invalidateQueries({ queryKey: ["stats"] })
-        void qc.invalidateQueries({ queryKey: ["overview"] })
-        void qc.invalidateQueries({ queryKey: ["tags"] })
       }
 
       if (msg.event === "pipeline.failure.updated") {
@@ -178,7 +165,6 @@ export function useWebSocket() {
 
       if (msg.event === "pipeline.retry_batch.progress") {
         const d = msg.data as WebSocketEventMap["pipeline.retry_batch.progress"]
-        qc.setQueryData(["retryBatchProgress", d.batch_id], d)
         if (d.state === "done") {
           void qc.invalidateQueries({ queryKey: ["pipelineFailures"] })
           void qc.invalidateQueries({ queryKey: ["pipelineFailureCounts"] })
@@ -190,7 +176,6 @@ export function useWebSocket() {
       if (msg.event === "pipeline.reembed_batch.progress") {
         const d =
           msg.data as WebSocketEventMap["pipeline.reembed_batch.progress"]
-        qc.setQueryData(["reembedBatchProgress", d.batch_id, d.category], d)
         if (d.state === "done") {
           void qc.invalidateQueries({ queryKey: ["obsoleteCounts"] })
           if (d.errors > 0) {
@@ -243,7 +228,6 @@ export function useWebSocket() {
         }
         if (msg.event !== "repo.indexing_progress") {
           void qc.invalidateQueries({ queryKey: ["repoTasks"] })
-          void qc.invalidateQueries({ queryKey: ["repoStats"] })
         }
 
         if (msg.event === "repo.clone_completed") {
@@ -277,10 +261,6 @@ export function useWebSocket() {
           const d = msg.data as WebSocketEventMap["repo.indexing_failed"]
           toast.error(`Indexing failed: ${d.error}`)
         }
-      }
-
-      if (msg.event === "enrichment.batch_completed") {
-        void qc.invalidateQueries({ queryKey: ["repoStats"] })
       }
     }
 

@@ -87,21 +87,6 @@ export interface QaResponse {
   horizon: boolean
 }
 
-/** Demo mode carries no document fixtures and no backend, so this read 401s
- *  there — and `handleUnauthorized` answers a 401 with a hard navigation to
- *  /login, which takes the page down rather than leaving the list empty. The
- *  guard is the same one `useProjects` and the usage reads carry, and
- *  `tests/demo-makes-no-api-calls.spec.ts` is what keeps the next hook from
- *  shipping without it. */
-export function useDocuments(project?: string) {
-  const qs = project ? `?project=${encodeURIComponent(project)}` : ""
-  return useQuery<DocumentListResponse>({
-    queryKey: ["documents", project ?? null],
-    queryFn: ({ signal }) => apiFetch<DocumentListResponse>(`/documents${qs}`, { signal }),
-    enabled: !DEMO,
-  })
-}
-
 /** `null` when no summary has been generated — the door answers 404 for that,
  *  and it is an ordinary state rather than a fault: generating one is an
  *  explicit act nobody has performed yet. Every other status still throws.
@@ -258,38 +243,6 @@ export interface BlockRow {
   /** The block's own markdown source, marker included. This is what an
    *  editor edits -- `text` is a different string from the stored one. */
   source: string | null
-}
-
-/**
- * A document's stored source, for a caller that needs the markdown itself
- * rather than the parsed block tree.
- *
- * `include_content` is off by default on this route because the column can be
- * megabytes, so no existing reader pays for it; the Progress board is the
- * first caller that does, because it re-parses the ledger's own table.
- *
- * Takes a LIST of ids and issues one request each: the board reads nine
- * documents (the ledger plus eight epic files) and a hook per document would
- * mean a variable number of hooks, which React forbids.
- */
-export function useDocumentContents(documentIds: string[]) {
-  const key = [...documentIds].sort().join(",")
-  return useQuery<Map<string, string>>({
-    queryKey: ["documentContents", key],
-    enabled: !DEMO && documentIds.length > 0,
-    queryFn: async () => {
-      const out = new Map<string, string>()
-      await Promise.all(
-        documentIds.map(async (id) => {
-          const res = await apiFetch<{ content: string | null }>(
-            `/documents/${id}?include_content=true`,
-          )
-          if (res.content) out.set(id, res.content)
-        }),
-      )
-      return out
-    },
-  })
 }
 
 export interface RelatedMemory {

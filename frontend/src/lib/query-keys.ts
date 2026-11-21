@@ -148,11 +148,6 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
     reason:
       "Addressed by document id and revision id; the same shape as documentRevisions",
   },
-  documentContents: {
-    kind: "global",
-    reason:
-      "Addressed by document ids and carrying no project param, the same shape as documentBlocks. The key is the sorted id list rather than one id: the Progress board reads nine documents at once, and a hook per document would mean a variable number of hooks",
-  },
   documentRelatedMemories: {
     kind: "global",
     reason:
@@ -201,12 +196,6 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
       "The research loop's arm switch and budgets are per-installation, not per-project: the loop files evidence a caller gathered, and arming it for one project while another stays disarmed is not a distinction the config row can express (T3.28, doc 09 §6)",
   },
 
-  // ── deferred: named gaps ──
-  tags: {
-    kind: "deferred",
-    reason: "GET /tags has no project filter on the backend at all yet",
-  },
-
   // ── global: addressed by id (already unique) or genuinely project-free ──
   memory: { kind: "global", reason: "addressed by id, which already determines the row" },
   memoryContext: {
@@ -218,10 +207,6 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
     reason:
       "GET /api/v1/projects IS the scope catalog the switcher reads — scoping it by the active project would leave the switcher able to offer only the scope you are already in",
   },
-  fullGraph: { kind: "global" },
-  graphEntities: { kind: "global" },
-  knowledgeEntities: { kind: "global" },
-  knowledgeTimeline: { kind: "global" },
   jobs: { kind: "global" },
   llmConfig: { kind: "global" },
   llmProviders: {
@@ -239,13 +224,11 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
   classificationAreas: { kind: "global" },
   systemPrompts: { kind: "global" },
   notifications: { kind: "global" },
-  auditLog: { kind: "global" },
   conversations: { kind: "global" },
   conversation: { kind: "global" },
   stats: { kind: "global" },
   health: { kind: "global" },
   pipeline: { kind: "global" },
-  overview: { kind: "global" },
   pipelineFailures: { kind: "global" },
   pipelineFailureCounts: { kind: "global" },
   memoryBuffer: {
@@ -253,9 +236,7 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
     reason:
       "the failed-capture triage queue spans every project, and each row names its own",
   },
-  retryBatchProgress: { kind: "global" },
   obsoleteCounts: { kind: "global" },
-  reembedBatchProgress: { kind: "global" },
   repoStats: { kind: "global" },
   repos: { kind: "global" },
   repoTasks: { kind: "global" },
@@ -264,7 +245,6 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
   codeSymbols: { kind: "global" },
   codeSymbol: { kind: "global" },
   fs: { kind: "global" },
-  reposPath: { kind: "global" },
   setupProbe: { kind: "global" },
   usage: {
     kind: "global",

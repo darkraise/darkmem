@@ -246,22 +246,6 @@ export async function checkAuth(): Promise<boolean | null> {
   }
 }
 
-export async function login(password: string): Promise<void> {
-  const response = await fetch(`${API_BASE}/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ password }),
-    credentials: "include",
-  })
-  if (!response.ok) {
-    const error = await response
-      .json()
-      .catch(() => ({ detail: response.statusText }))
-    throw new Error((error as { detail?: string }).detail || "Login failed")
-  }
-  useAuthStore.getState().setAuthenticated(true)
-}
-
 export async function logout(): Promise<void> {
   try {
     await fetch(`${API_BASE}/auth/logout`, {

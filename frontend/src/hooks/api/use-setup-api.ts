@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQuery } from "@tanstack/react-query"
 import { apiFetch } from "@/lib/api"
 import { useAuthStore } from "@/features/auth"
 
@@ -180,24 +180,5 @@ export function useFinalizeSetup() {
       useAuthStore.getState().setAuthenticated(true)
       return result
     },
-  })
-}
-
-export function useReposPath() {
-  return useQuery<{ path: string | null }>({
-    queryKey: ["reposPath"],
-    queryFn: ({ signal }) => apiFetch<{ path: string | null }>("/config/repos-path", { signal }),
-  })
-}
-
-export function useUpdateReposPath() {
-  const qc = useQueryClient()
-  return useMutation<{ path: string | null }, Error, { path: string }>({
-    mutationFn: (body) =>
-      apiFetch<{ path: string | null }>("/config/repos-path", {
-        method: "PUT",
-        body: JSON.stringify(body),
-      }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["reposPath"] }),
   })
 }

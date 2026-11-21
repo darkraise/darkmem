@@ -108,57 +108,6 @@ describe("useReviewFactRows (DEMO off — real /review-queue/facts)", () => {
     expect(result.current.rows[0]!.verification_status).toBe("candidate")
   })
 
-  it("composes rank_note from the consequence breakdown and carries the breakdown itself", async () => {
-    vi.mocked(apiFetch).mockResolvedValue({
-      items: [factItem()],
-      total: 1,
-      limit: 10,
-      offset: 0,
-    })
-    const { result } = renderHook(() => useReviewFactRows(QUERY), { wrapper })
-    await waitFor(() => expect(result.current.loading).toBe(false))
-
-    const row = result.current.rows[0]!
-    expect(row.rank_note).toContain("score 0.42")
-    expect(row.rank_note).toContain("tier 1")
-    expect(row.consequence).toEqual(CONSEQUENCE)
-  })
-
-  it("uses the same word for staleness as the component's own breakdown — 'stale', never 'decayed' (F8)", async () => {
-    vi.mocked(apiFetch).mockResolvedValue({
-      items: [
-        factItem({
-          consequence: {
-            ...CONSEQUENCE,
-            staleness: { ...CONSEQUENCE.staleness, stale: true, label: "past threshold" },
-          },
-        }),
-      ],
-      total: 1,
-      limit: 10,
-      offset: 0,
-    })
-    const { result } = renderHook(() => useReviewFactRows(QUERY), { wrapper })
-    await waitFor(() => expect(result.current.loading).toBe(false))
-
-    expect(result.current.rows[0]!.rank_note).toContain("stale (past threshold)")
-    expect(result.current.rows[0]!.rank_note).not.toContain("decayed")
-  })
-
-  it("names the absence of a ranking signal honestly rather than inventing a score", async () => {
-    vi.mocked(apiFetch).mockResolvedValue({
-      items: [factItem({ consequence: null })],
-      total: 1,
-      limit: 10,
-      offset: 0,
-    })
-    const { result } = renderHook(() => useReviewFactRows(QUERY), { wrapper })
-    await waitFor(() => expect(result.current.loading).toBe(false))
-
-    expect(result.current.rows[0]!.rank_note).toMatch(/arrival order/)
-    expect(result.current.rows[0]!.consequence).toBeNull()
-  })
-
   it("carries the contradiction evidence block verbatim when present", async () => {
     const evidence = {
       payload: {

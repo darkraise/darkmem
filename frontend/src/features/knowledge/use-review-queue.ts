@@ -5,7 +5,6 @@ import type { VerificationStatus } from "@/components/darkmem"
 import {
   useReviewQueueArticles,
   useReviewQueueFacts,
-  type ConsequenceExplanation,
   type ReviewQueueArticleItem,
   type ReviewQueueFactItem,
   type SuspectedContradiction,
@@ -70,14 +69,6 @@ export interface ReviewFactRowData {
    *  they cannot see, and the fact keeps its rung while flagged, so this is
    *  a prompt to look rather than a demotion. */
   suspected_contradiction: SuspectedContradiction | null
-  /** One-line ranking readout, always present — composed from
-   *  `consequence`'s numeric fields (there is no competing backend prose
-   *  string for ranking rationale to duplicate, unlike a verification
-   *  claim). Demo carries its own hand-authored equivalent. */
-  rank_note: string
-  /** The full per-arm breakdown backing `rank_note`. Null under demo and
-   *  whenever the backend computed no ranking for the row. */
-  consequence: ConsequenceExplanation | null
   evidence: VerifiedEvidence | null
   created_at: string
 }
@@ -122,21 +113,6 @@ export interface ReviewArticlesResult {
   error: boolean
 }
 
-function rankNoteOf(c: ConsequenceExplanation): string {
-  const parts = [
-    `score ${c.score.toFixed(2)}`,
-    `tier ${c.tier}`,
-    `frequency ${c.retrieval_frequency.component.toFixed(2)}`,
-    `salience ${c.subject_salience.component.toFixed(2)}`,
-  ]
-  // Matches `ConsequenceBreakdown` in review-queue.tsx, which renders the
-  // same boolean as "stale" — one frontend word for one backend field,
-  // never two (F8). The backend's own `label` still rides verbatim either
-  // way.
-  if (c.staleness.stale) parts.push(`stale (${c.staleness.label})`)
-  return parts.join(" · ")
-}
-
 function factFromApi(item: ReviewQueueFactItem): ReviewFactRowData {
   return {
     id: item.id,
@@ -151,10 +127,6 @@ function factFromApi(item: ReviewQueueFactItem): ReviewFactRowData {
     under_sourced: item.demotion_pending_since !== null,
     label_suppressed: item.label_suppressed,
     suspected_contradiction: item.suspected_contradiction,
-    rank_note: item.consequence
-      ? rankNoteOf(item.consequence)
-      : "arrival order — no consequence signal computed for this row",
-    consequence: item.consequence,
     evidence: item.evidence,
     created_at: item.created_at,
   }
@@ -210,8 +182,6 @@ function factFromDemo(
     // prevent.
     label_suppressed: null,
     suspected_contradiction: null,
-    rank_note: item.rank_note,
-    consequence: null,
     evidence: null,
     created_at: item.decayed ? "2026-01-01T00:00:00Z" : "2026-08-01T00:00:00Z",
   }

@@ -1,7 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { apiFetch } from "@/lib/api"
-import { useProjectScopedKey } from "@/lib/query-keys"
-import { useProjectStore } from "@/stores/project-store"
 
 // Mirrors backend MEMORY_STATUS_VALUES (app/models/memory.py). Archival is a
 // separate `is_archived` boolean, not a status.
@@ -85,27 +83,6 @@ export interface Tag {
   name: string
   category: string | null
   memory_count: number
-}
-
-// Project-scoped via the query-key layer (src/lib/query-keys.ts, Ruling 1):
-// the active project rides both the query key and the request body, so
-// switching projects addresses a fresh cache entry instead of continuing
-// to show the previous project's rows while the new project's fetch is
-// in flight.
-export function useMemories() {
-  const queryKey = useProjectScopedKey("memories")
-  const project = useProjectStore((s) => s.activeProject)
-  return useQuery<Memory[]>({
-    queryKey,
-    queryFn: () =>
-      apiFetch("/memories/search", {
-        method: "POST",
-        // `project: null` is the wire spelling of every project —
-        // `MemorySearchRequest.project` is `str | None` and None applies no
-        // scope filter, so this needs no special case.
-        body: JSON.stringify({ limit: 50, project }),
-      }),
-  })
 }
 
 export function useMemory(id: string, options?: { enabled?: boolean }) {
@@ -197,50 +174,6 @@ export function useDeleteMemory() {
       qc.invalidateQueries({ queryKey: ["memories"] })
       qc.invalidateQueries({ queryKey: ["memoriesPaginated"] })
     },
-  })
-}
-
-export interface BulkDeleteResult {
-  deleted: number
-  not_found: string[]
-}
-
-// Deletes many memories in ONE request. The server processes them in series so
-// concurrent graph cleanups don't deadlock on shared entity rows — which is why
-// looping the single-delete endpoint client-side failed.
-export function useBulkDeleteMemory() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (ids: string[]) =>
-      apiFetch<BulkDeleteResult>("/memories/delete", {
-        method: "POST",
-        body: JSON.stringify({ ids }),
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["memories"] })
-      qc.invalidateQueries({ queryKey: ["memoriesPaginated"] })
-    },
-  })
-}
-
-export function useSearchMemories() {
-  return useMutation({
-    mutationFn: (params: {
-      query?: string
-      tags_any?: string[]
-      limit?: number
-    }) =>
-      apiFetch<Memory[]>("/memories/search", {
-        method: "POST",
-        body: JSON.stringify(params),
-      }),
-  })
-}
-
-export function useTags() {
-  return useQuery<Tag[]>({
-    queryKey: ["tags"],
-    queryFn: ({ signal }) => apiFetch("/tags", { signal }),
   })
 }
 

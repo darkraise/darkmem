@@ -1409,8 +1409,6 @@ export const CURATED_REVIEW_ITEMS: DemoReviewItem[] = [
     claim_line:
       "disputed: 2 origins assert the reranker is enabled by default in production, 1 origin asserts the reranker is opt-in per profile and disabled by default, as of 2026-07-21",
     badge: "disputed",
-    rank_note:
-      "retrieval frequency — hit 47×/7d; subject salience — core ranking config",
     dispute_sides: [
       {
         assertion: "asserts X — the reranker is enabled by default in production",
@@ -1433,8 +1431,6 @@ export const CURATED_REVIEW_ITEMS: DemoReviewItem[] = [
     state_tag: "review_state: open",
     coverage_pct: 33,
     note: "6 of 9 inline claim citations have no matching confirmed-or-corroborated fact behind them — flagged ungrounded by article_synthesis; the article still renders, coverage is labelled not hidden.",
-    rank_note:
-      "retrieval frequency — hit 31×/7d; subject salience — high-traffic settings page",
     decayed: false,
   },
   {
@@ -1447,8 +1443,6 @@ export const CURATED_REVIEW_ITEMS: DemoReviewItem[] = [
     claim_line:
       "disputed: 2 origins assert extraction purpose uses glm-4.5-flash, 1 origin asserts extraction purpose uses gpt-5.4-mini, as of 2026-07-15",
     badge: "disputed",
-    rank_note:
-      "retrieval frequency — hit 19×/7d; subject salience — pipeline configuration",
     dispute_sides: [
       {
         assertion: "asserts X — the extraction purpose is served by glm-4.5-flash",
@@ -1471,8 +1465,6 @@ export const CURATED_REVIEW_ITEMS: DemoReviewItem[] = [
     badge: "corroborated",
     under_sourced: true,
     note: "origin count dropped to 1 after a duplicate memory was pruned by dreaming; will demote to candidate after verification_demote_grace_cycles consecutive recompute cycles unless re-corroborated — the label keeps retrieval honest now, the grace period absorbs transient churn.",
-    rank_note:
-      "retrieval frequency — hit 12×/7d; subject salience — referenced by CLAUDE.md test setup",
     decayed: false,
   },
   {
@@ -1483,7 +1475,6 @@ export const CURATED_REVIEW_ITEMS: DemoReviewItem[] = [
     title: "MCP_ALLOWED_HOSTS' default",
     state_tag: "review_state: open · stale_labelled",
     badge: "disputed",
-    rank_note: "priority decayed off the active queue — status unchanged",
     note: "Unreviewed 34 days (past dispute_stale_days=30) — 1 origin asserts “MCP_ALLOWED_HOSTS defaults to * (open)” vs 1 origin asserting “empty default — localhost-only.” Still disputed, still served labelled with both sides.",
     dispute_sides: [
       {

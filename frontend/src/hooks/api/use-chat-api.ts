@@ -55,30 +55,6 @@ export function useConversation(id: string | null) {
   })
 }
 
-export function useUpdateConversation() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: ({
-      id,
-      ...data
-    }: {
-      id: string
-      title?: string
-      is_archived?: boolean
-    }) =>
-      apiFetch<ChatConversation>(`/chat/conversations/${id}`, {
-        method: "PATCH",
-        body: JSON.stringify(data),
-      }),
-    onSuccess: (_data, variables) => {
-      qc.invalidateQueries({ queryKey: ["conversations"] })
-      // The open detail pane is keyed ['conversation', id]; without this a
-      // rename/archive leaves the open view stale.
-      qc.invalidateQueries({ queryKey: ["conversation", variables.id] })
-    },
-  })
-}
-
 export function useDeleteConversation() {
   const qc = useQueryClient()
   return useMutation({

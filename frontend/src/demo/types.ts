@@ -241,7 +241,6 @@ export interface DemoReviewItem {
   under_sourced?: boolean
   coverage_pct?: number
   note?: string
-  rank_note: string
   dispute_sides?: [ReviewDisputeSideSummary, ReviewDisputeSideSummary]
   decayed: boolean
   decayed_note?: string

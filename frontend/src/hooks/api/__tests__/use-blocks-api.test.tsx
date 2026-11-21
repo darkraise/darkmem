@@ -10,7 +10,6 @@ import { apiFetch } from "@/lib/api"
 import {
   useBlockDelete,
   useBlockInsert,
-  useBlockMove,
   useBlockUpdate,
 } from "../use-blocks-api"
 import { useDocumentBlocks } from "../use-documents-api"
@@ -102,7 +101,6 @@ function useEditorHooks(documentId: string) {
     blocks: useDocumentBlocks(documentId),
     update: useBlockUpdate(documentId),
     insert: useBlockInsert(documentId),
-    move: useBlockMove(documentId),
     remove: useBlockDelete(documentId),
   }
 }
@@ -147,31 +145,6 @@ describe("the block hooks share one chain per document", () => {
     expect(post!.method).toBe("POST")
     expect(patch!.body!.expected_hash).toBe("h0")
     expect(post!.body!.expected_hash).toBe("w1")
-  })
-
-  it("sends a move with the hash the queue is carrying", async () => {
-    const qc = makeClient()
-    const { result } = renderHook(() => useEditorHooks(DOC), {
-      wrapper: wrapperFor(qc),
-    })
-    await waitFor(() => expect(result.current.blocks.isSuccess).toBe(true))
-    seen = []
-
-    act(() => {
-      result.current.update.mutate({ blockId: "b1", text: "one" })
-      result.current.move.mutate({ blockId: "b1", newParentId: "b2" })
-    })
-    await waitFor(() => {
-      expect(result.current.update.isSuccess).toBe(true)
-      expect(result.current.move.isSuccess).toBe(true)
-    })
-
-    const move = writes()[1]!
-    expect(move.path).toContain("/move")
-    // A move rewrites content_hash exactly as an update does, so it carries
-    // the precondition too -- and only the queue can supply this value, since
-    // it is the update's answer and no read ran between the two.
-    expect(move.body!.expected_hash).toBe("w1")
   })
 
   it("survives a delete's own invalidation and still sends the next write", async () => {

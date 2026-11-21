@@ -64,12 +64,9 @@ const PIPELINE_STATUS = {
 const CORE_PIPELINE_KEYS = [
   "unifiedGraph",
   "memoryContext",
-  "memories",
   "memory",
   "memoriesPaginated",
   "stats",
-  "overview",
-  "tags",
   "pipelineLogs",
 ]
 
@@ -115,17 +112,17 @@ describe("useWebSocket", () => {
     for (const event of ["repo.indexing_completed", "repo.indexing_failed"]) {
       invalidateSpy.mockClear()
       socket.emitMessage({ event, data: { files_changed: 1, symbols_indexed: 2, error: "failed" } })
-      expect(invalidatedKeys(invalidateSpy)).toEqual(expect.arrayContaining(["codeGraph", "codeFiles", "codeSymbols", "codeSymbol"]))
+      expect(invalidatedKeys(invalidateSpy)).toEqual(expect.arrayContaining(["codeGraph", "codeFiles", "codeSymbol"]))
     }
     invalidateSpy.mockClear()
     socket.emitMessage({ event: "enrichment.batch_completed", data: { processed: 5, pending_remaining: 9 } })
     // Summaries live on symbols; the graph and file list are not refetched.
-    expect(invalidatedKeys(invalidateSpy).sort()).toEqual(["codeSymbol", "codeSymbols", "repoStats"])
+    expect(invalidatedKeys(invalidateSpy).sort()).toEqual(["codeSymbol"])
     invalidateSpy.mockClear()
     socket.emitClose()
     vi.advanceTimersByTime(1000)
     MockWebSocket.latest().emitOpen()
-    expect(invalidatedKeys(invalidateSpy)).toEqual(expect.arrayContaining(["unifiedGraph", "codeGraph", "codeFiles", "codeSymbols", "codeSymbol"]))
+    expect(invalidatedKeys(invalidateSpy)).toEqual(expect.arrayContaining(["unifiedGraph", "codeGraph", "codeFiles", "codeSymbol"]))
   })
   let originalWebSocket: typeof WebSocket
 
@@ -237,18 +234,14 @@ describe("useWebSocket", () => {
 
     const keys = invalidatedKeys(invalidateSpy)
     for (const expected of [
-      "memories",
       "memory",
       "memoriesPaginated",
       "stats",
-      "overview",
-      "tags",
       "pipelineLogs",
       "pipelineFailures",
       "pipelineFailureCounts",
       "repos",
       "repoTasks",
-      "repoStats",
     ]) {
       expect(keys, `reconnect must reconcile ${expected}`).toContain(expected)
     }

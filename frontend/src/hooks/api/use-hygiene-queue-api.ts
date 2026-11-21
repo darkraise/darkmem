@@ -47,13 +47,6 @@ export interface HygieneMemoryListResponse {
   offset: number
 }
 
-export interface HygieneCountsResponse {
-  duplicates: number
-  low_confidence: number
-  expiring_soon: number
-  superseded: number
-}
-
 export interface HygieneActionItemResult {
   id: string
   applied: boolean
@@ -148,20 +141,6 @@ export function useHygieneSuperseded(
         `/hygiene-queue/superseded${query ? `?${query}` : ""}`, { signal }),
     enabled: options?.enabled ?? true,
     placeholderData: keepPreviousData,
-  })
-}
-
-export function useHygieneCounts(
-  params: { project?: string; threshold?: number; within_days?: number } = {},
-  options?: { enabled?: boolean },
-) {
-  const query = hygieneQueryString(params)
-  return useQuery<HygieneCountsResponse>({
-    queryKey: ["hygieneQueue", "counts", query],
-    queryFn: ({ signal }) =>
-      apiFetch<HygieneCountsResponse>(
-        `/hygiene-queue/counts${query ? `?${query}` : ""}`, { signal }),
-    enabled: options?.enabled ?? true,
   })
 }
 

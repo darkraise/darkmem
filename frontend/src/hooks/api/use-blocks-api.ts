@@ -185,28 +185,6 @@ export function useBlockInsert(documentId: string) {
   )
 }
 
-export function useBlockMove(documentId: string) {
-  return useBlockMutation<{
-    blockId: string
-    newParentId?: string | null
-    afterBlockId?: string | null
-  }>(
-    ({ blockId, newParentId, afterBlockId }, expectedHash) =>
-      apiFetch<BlockWriteResponse>(
-        `/documents/${documentId}/blocks/${blockId}/move`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            new_parent_id: newParentId ?? null,
-            after_block_id: afterBlockId ?? null,
-            expected_hash: precondition(expectedHash),
-          }),
-        },
-      ),
-    documentId,
-  )
-}
-
 export function useBlockDelete(documentId: string) {
   return useBlockMutation<{ blockId: string }>(({ blockId }, expectedHash) => {
     // The hash rides the query string here: DELETE carries no body.
