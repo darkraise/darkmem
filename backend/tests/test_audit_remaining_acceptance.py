@@ -1953,3 +1953,54 @@ async def test_a26_an_upload_in_progress_does_not_block_a_page_write_in_another_
             if saved is None:
                 await s.execute(delete(Config).where(Config.key == "admin_password_hash"))
             await s.commit()
+
+
+# ------------------------------------------------------------------ A16
+
+
+@pytest.mark.asyncio
+async def test_a16_two_concurrent_phase5_writes_sharing_entities_both_commit_without_a_deadlock(setup_database, monkeypatch):
+    import contextlib
+
+    from app.repositories.graph import PostgresGraphRepository
+    from tests.test_pipeline_savepoints import VECTOR, savepoint_bed
+
+    names = ("qa16-red", "qa16-blue", "qa16-green")
+
+    def extraction(order):
+        return {
+            "entities": [{"name": n, "type": "tool"} for n in order],
+            "relationships": [
+                {"source": names[0], "target": names[1], "type": "USES", "weight": 0.5},
+                {"source": names[1], "target": names[2], "type": "USES", "weight": 0.5},
+            ],
+            "memory_type": "fact",
+        }
+
+    async with savepoint_bed(["writer one", "writer two"], "qa16|4", entity_names=names) as bed:
+        first = {m: asyncio.Event() for m in bed.memory_ids}
+        real = PostgresGraphRepository.create_entity
+
+        async def create_then_wait(self, name, entity_type, properties, memory_id):
+            created = await real(self, name, entity_type, properties, memory_id)
+            mine = first[memory_id]
+            if not mine.is_set():
+                mine.set()
+                other = next(e for m, e in first.items() if m != memory_id)
+                with contextlib.suppress(asyncio.TimeoutError):
+                    await asyncio.wait_for(other.wait(), 3)
+            return created
+
+        monkeypatch.setattr(PostgresGraphRepository, "create_entity", create_then_wait)
+        statuses = await asyncio.wait_for(
+            asyncio.gather(
+                *[
+                    bed.pipe._write_memory(bed.entry(i), VECTOR, bed.fingerprint, bed.fingerprint, extraction(order), None, {}, {})
+                    for i, order in enumerate((names, tuple(reversed(names))))
+                ]
+            ),
+            60,
+        )
+        assert [s["graph"] for s in statuses] == ["ok", "ok"], statuses
+        for i in range(2):
+            assert await bed.entity_names(i) == set(names)
