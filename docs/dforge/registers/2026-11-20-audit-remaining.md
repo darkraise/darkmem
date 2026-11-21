@@ -144,7 +144,7 @@
 | 137 | F1-1 (high): the Edit Repository dialog cannot save URL-cloned repositories | docs/dforge/plans/2026-11-20-audit-remaining.md | A3 (Task 49) | done | fd9b5c7 |
 | 138 | F1-2 (high): the 3D graph data is rebuilt in 2D view, in O(n squared) | docs/dforge/plans/2026-11-20-audit-remaining.md | A4 (Task 53) | doing | - |
 | 139 | F1-4: Blast Radius silently fails on the folded graph; no onError handler | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 49 contracts | done | fd9b5c7 |
-| 140 | F1-5: Code Graph and Wiki show No repositories indexed yet while loading or after an error | docs/dforge/plans/2026-11-20-audit-remaining.md | A41 (Task 50) | doing | - |
+| 140 | F1-5: Code Graph and Wiki show No repositories indexed yet while loading or after an error | docs/dforge/plans/2026-11-20-audit-remaining.md | A41 (Task 50) | done | ff88573 |
 | 141 | F1-6: the code canvas rebuilds Sigma and restarts the layout on every keystroke | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 51 contracts | doing | - |
 | 142 | F1-7: per-frame string-keyed density grid on the memory canvas | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 54 contracts | doing | - |
 | 143 | F1-9: dead or test-only exports in live modules (graph-geometry hull helpers, lightenHex, clusterAnchors, code-graph-theme colour functions, groupMemories, placeIslands, zoomLevel, setGraphReady, inner GraphSkeleton, duplicate stableHash) | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 54 contracts | doing | - |
@@ -153,7 +153,7 @@
 | 146 | F1-12: clicking an entity in 3D shows the graph summary | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 53 contracts | doing | - |
 | 147 | F1-13: colour-mode changes rebuild what is already recoloured in place | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 53 contracts | doing | - |
 | 148 | F1-14: the detail panel's close button has no accessible name | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 53 contracts | doing | - |
-| 149 | F1-15: graph and code loading and error states are inconsistent | docs/dforge/plans/2026-11-20-audit-remaining.md | A41 (Task 50) | doing | - |
+| 149 | F1-15: graph and code loading and error states are inconsistent | docs/dforge/plans/2026-11-20-audit-remaining.md | A41 (Task 50) | done | ff88573 |
 | 150 | F1-16: KIND_CHART defined three times; node sizing differs between 2D and 3D | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 54 contracts | doing | - |
 | 151 | F1-17: duplicated runner boilerplate and per-frame allocation during layout; collide() is O(k squared) | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 54 contracts | doing | - |
 | 152 | F1-18: symbolsByFile copies each file's array on every insert | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 54 contracts | doing | - |
@@ -165,7 +165,7 @@
 | 158 | F2-3: the WebSocket ignores the server's session-expired close and retries forever | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 57 contracts | doing | - |
 | 159 | F2-4: demo mode still calls the API from Settings LLM | docs/dforge/plans/2026-11-20-audit-remaining.md | A43 (Task 58) | doing | - |
 | 160 | F2-5: Settings has five save models, three ways of showing a load failure, and three confirmation styles | docs/dforge/plans/2026-11-20-audit-remaining.md | A37 (Task 55) | doing | - |
-| 161 | F2-6: the LLM tab shows blank models and a fixture judge as if real on load failure | docs/dforge/plans/2026-11-20-audit-remaining.md | A41 (Task 50) | doing | - |
+| 161 | F2-6: the LLM tab shows blank models and a fixture judge as if real on load failure | docs/dforge/plans/2026-11-20-audit-remaining.md | A41 (Task 50) | done | ff88573 |
 | 162 | F2-7: Flags dialogs close on Save before the write lands; edits are lost | docs/dforge/plans/2026-11-20-audit-remaining.md | A37 (Task 55) | doing | - |
 | 163 | F2-8: number fields in the Flags dialogs commit only on blur while Save is disabled; one field type clamps silently, the other shows an error | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 55 contracts | doing | - |
 | 164 | F2-9 and F3-4: the app never calls /auth/refresh, so every session ends hard after 24h and both editors lose in-memory drafts | docs/dforge/plans/2026-11-20-audit-remaining.md | A38 (Task 56/57) | doing | - |
