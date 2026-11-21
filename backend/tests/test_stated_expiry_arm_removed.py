@@ -9,11 +9,12 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import text
 
-from tests.test_repo_entity_merge import _entity, _fact, _pair
+from tests.test_repo_entity_merge import _entity, _fact
 
 APP = Path(__file__).resolve().parents[1] / "app"
 
@@ -103,18 +104,28 @@ async def test_memory_expiry_is_still_derived_from_a_stated_expiry(setup_databas
 async def test_merge_fold_keeps_the_earlier_reference_and_valid_times(session):
     from app.services.entity_merge import merge_entities
 
-    survivor, loser = await _pair(session)
-    other = await _entity(session, "our-app", "project")
+    # Names of their own: a committed `postgresql` row another file leaves in
+    # this worker would collide with the merge module's calibration pair.
+    tag = uuid4().hex[:8]
+    survivor = await _entity(
+        session, f"pg-{tag}", "database", repo_ids=[uuid4()],
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    loser = await _entity(
+        session, f"pgsql-{tag}", "database", memory_ids=[uuid4()],
+        created_at=datetime(2025, 1, 1, tzinfo=UTC),
+    )
+    other = await _entity(session, f"app-{tag}", "project")
     early = datetime(2025, 6, 1, tzinfo=UTC)
     kept = await _fact(
         session, subject_id=other, object_id=survivor,
-        subject_name="our-app", object_name="postgres",
+        subject_name=f"app-{tag}", object_name=f"pg-{tag}",
         reference_time=datetime(2026, 3, 1, tzinfo=UTC),
         created_at=datetime(2026, 1, 1, tzinfo=UTC),
     )
     folded = await _fact(
         session, subject_id=other, object_id=loser,
-        subject_name="our-app", object_name="postgresql",
+        subject_name=f"app-{tag}", object_name=f"pgsql-{tag}",
         reference_time=early, created_at=datetime(2026, 2, 1, tzinfo=UTC),
     )
     for fact_id, valid_at in ((kept, datetime(2026, 3, 1, tzinfo=UTC)), (folded, early)):
