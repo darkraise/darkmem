@@ -507,6 +507,10 @@ _CLEAR_STATS_SNAPSHOT = text("SELECT pg_stat_clear_snapshot()")
 
 _MICROSECOND = timedelta(microseconds=1)
 
+# A cap from a transaction this old is reported: request, flush and stream
+# transactions end well inside it, so one that binds this long is a real hold.
+_HOLD_REPORT_AFTER = timedelta(minutes=5)
+
 _DRAIN_EVENTS = text("""
     SELECT id, created_at, payload
     FROM events
@@ -531,6 +535,8 @@ class DrainOutcome:
     # Which facts this arm recomputed, so the slow arm can decline to recompute
     # them again inside the same tick. See `run_recompute`.
     recomputed_ids: frozenset[str] = frozenset()
+    # The start of a long-open transaction the drain was held behind, if any.
+    held_since: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -554,7 +560,13 @@ async def _drain_sources_changed(
     safe_until = moment - _COMMIT_SKEW_MARGIN
     await session.execute(_CLEAR_STATS_SNAPSHOT)
     oldest_open = (await session.execute(_OLDEST_OPEN_TRANSACTION)).scalar_one()
+    held_since = None
     if oldest_open is not None:
+        if (
+            oldest_open - _MICROSECOND < safe_until
+            and moment - oldest_open >= _HOLD_REPORT_AFTER
+        ):
+            held_since = oldest_open
         safe_until = min(safe_until, oldest_open - _MICROSECOND)
     result = await session.execute(
         _DRAIN_EVENTS,
@@ -580,7 +592,7 @@ async def _drain_sources_changed(
     else:
         idle_state = None
     if not rows:
-        return DrainOutcome(), idle_state or state
+        return DrainOutcome(held_since=held_since), idle_state or state
 
     fact_ids: list[str] = []
     seen: set[str] = set()
@@ -629,6 +641,7 @@ async def _drain_sources_changed(
         facts_skipped_expired=skipped_expired,
         transitions=transitions,
         recomputed_ids=frozenset(recomputed_ids),
+        held_since=held_since,
     )
     return outcome, new_state
 

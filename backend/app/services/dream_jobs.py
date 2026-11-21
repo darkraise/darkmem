@@ -276,7 +276,7 @@ def _make_recompute_runner(registry: JobRegistry, key: str) -> JobRunner:
             "Verification recompute drained %d sources_changed event(s) "
             "touching %d fact(s): %d recomputed (%d failed, %d skipped dead), "
             "%d transition(s). Slow arm %s: scanned %d fact(s), healed %d "
-            "(%d skipped dead)%s",
+            "(%d skipped dead)%s%s",
             outcome.drain.events_scanned, outcome.drain.facts_touched,
             outcome.drain.facts_recomputed, outcome.drain.facts_failed,
             outcome.drain.facts_skipped_expired, outcome.drain.transitions,
@@ -284,7 +284,15 @@ def _make_recompute_runner(registry: JobRegistry, key: str) -> JobRunner:
             outcome.reconcile.facts_scanned, outcome.reconcile.facts_healed,
             outcome.reconcile.facts_skipped_expired,
             " (wrapped to start)" if outcome.reconcile.wrapped else "",
+            f"; fast arm held by a transaction open since {outcome.drain.held_since}"
+            if outcome.drain.held_since else "",
         )
+        if outcome.drain.held_since:
+            logger.warning(
+                "Verification recompute: the fast arm is held behind a database "
+                "transaction open since %s; events after it wait until it ends",
+                outcome.drain.held_since,
+            )
 
     return run
 

@@ -600,6 +600,22 @@ class TestCommitSkewMargin:
         assert await _status_of(session, fact_id) == "corroborated"
 
 
+    async def test_a_drain_held_back_by_a_long_transaction_says_since_when(
+        self, session,
+    ):
+        await _prime_slow_arm(session)
+        engine = create_async_engine(settings.test_database_url)
+        try:
+            async with async_sessionmaker(engine, expire_on_commit=False)() as producer:
+                opened = (await producer.execute(text("SELECT now()"))).scalar_one()
+                tick = await run_recompute(session, now=opened + timedelta(minutes=6))
+                await session.commit()
+                assert tick.drain.held_since == opened
+                await producer.rollback()
+        finally:
+            await engine.dispose()
+
+
 class TestLockTimeoutAndLivenessAreActuallyWired:
     """N-3: `TestLockWaitIsBounded` proves `_set_local_lock_timeout` itself
     works, but calls it directly through its own savepoint -- it never
