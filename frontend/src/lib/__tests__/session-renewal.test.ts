@@ -81,6 +81,27 @@ describe("session renewal", () => {
     expect(net.count("/auth/refresh")).toBe(1)
   })
 
+  it("a failed first expiry read is read again by the next check", async () => {
+    const net = routeFetch({
+      "/auth/me": [
+        json({ detail: "unavailable" }, 503),
+        json({ detail: "unavailable" }, 503),
+        json({ authenticated: true, expires_at: minutesAhead(30) }),
+      ],
+      "/auth/refresh": [json({ ok: true, expires_at: minutesAhead(24 * 60) })],
+    })
+    startSessionRenewal(signIn)
+    await settle()
+    expect(sessionExpiresAt()).toBeNull()
+    expect(net.count("/auth/refresh")).toBe(0)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000)
+    })
+    expect(net.count("/auth/me")).toBe(3)
+    expect(net.count("/auth/refresh")).toBe(1)
+  })
+
   it("a second tab adopts the renewal", async () => {
     const net = routeFetch({
       "/auth/me": [

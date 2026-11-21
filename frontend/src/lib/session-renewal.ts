@@ -131,7 +131,13 @@ async function renew(): Promise<void> {
 }
 
 export async function checkSession(): Promise<void> {
-  if (!started || ended || rotation || expiresAt === null) return
+  if (!started || ended || rotation) return
+  if (expiresAt === null) {
+    // An earlier read failed or has not answered: read again, or this tab
+    // would never renew.
+    await readExpiry()
+    if (expiresAt === null || ended || rotation) return
+  }
   const left = expiresAt - Date.now()
   if (left <= 0) {
     endSession()
