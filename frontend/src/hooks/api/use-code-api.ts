@@ -409,9 +409,29 @@ export function useCodeSymbolDetail(symbolId: string | null) {
   })
 }
 
+export interface SymbolCandidate {
+  id: string
+  key: string
+  name: string
+  kind: string
+  file_path: string
+  repo_id: string
+}
+
+/** The symbols a 409 `symbol_ambiguous` names, or null for any other error. */
+export function symbolCandidates(err: unknown): SymbolCandidate[] | null {
+  const e = err as { code?: unknown; candidates?: unknown } | null
+  if (e?.code !== "symbol_ambiguous" || !Array.isArray(e.candidates)) return null
+  return e.candidates as SymbolCandidate[]
+}
+
 export function useBlastRadius() {
   return useMutation({
-    mutationFn: (params: { symbol_id: string; max_depth?: number }) =>
+    mutationFn: (params: {
+      symbol_id: string
+      repo_id: string
+      max_depth?: number
+    }) =>
       apiFetch<BlastRadiusResult>("/code/blast-radius", {
         method: "POST",
         body: JSON.stringify(params),

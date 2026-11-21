@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { CodeGlowCanvasStub } from "@/test/code-glow-canvas-stub"
 import type { CodeGlowCanvasProps } from "@/features/code/components/code-glow-canvas"
-import { render, screen, fireEvent } from "@testing-library/react"
+import { render, screen, fireEvent, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
@@ -14,6 +14,10 @@ vi.hoisted(() => {
 
 vi.mock("@/lib/demo-flag", () => ({ DEMO: false }))
 vi.mock("@/lib/api", () => ({ apiFetch: vi.fn() }))
+vi.mock("darkraise-ui/components/sonner", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("darkraise-ui/components/sonner")>()),
+  toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
+}))
 // The stub imports drawnGraph from the mocked module, so the factory must not
 // import the stub itself (it would wait on its own mock); the component looks
 // the stub up at render time instead.
@@ -23,6 +27,7 @@ vi.mock("@/features/code/components/code-glow-canvas", async (importOriginal) =>
 }))
 
 import { apiFetch } from "@/lib/api"
+import { toast } from "darkraise-ui/components/sonner"
 import { RealCodeGraphView } from "../components/real-code-graph-view"
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -357,6 +362,25 @@ describe("RealCodeGraphView", () => {
       expect(screen.getByRole("button", { name: "pkg/a.py (file)" })).toBeInTheDocument()
     })
 
+    it("asks for a symbol on a file-level node", async () => {
+      mockFolded()
+      const user = userEvent.setup()
+      render(
+        <RealCodeGraphView repoId="r1" onRepoChange={vi.fn()} onOpenRepositories={vi.fn()} />,
+        { wrapper },
+      )
+      await screen.findByRole("region", { name: "Graph level of detail" })
+      fireEvent.click(screen.getByRole("button", { name: "pkg/a.py (file)" }))
+      await user.click(screen.getByRole("button", { name: "Run Blast Radius" }))
+
+      expect(
+        screen.getByText("Select a symbol to see its blast radius"),
+      ).toBeInTheDocument()
+      expect(
+        vi.mocked(apiFetch).mock.calls.some(([path]) => path === "/code/blast-radius"),
+      ).toBe(false)
+    })
+
     it("drills into a folder the server is asked to scope to", async () => {
       mockFolded()
       const user = userEvent.setup()
@@ -427,5 +451,131 @@ describe("RealCodeGraphView", () => {
       "zzznomatch",
     )
     expect(screen.getByText("0 of 3 nodes · 0 of 2 edges")).toBeInTheDocument()
+  })
+
+  it("sends the repository and toasts a failure", async () => {
+    mockApi()
+    const user = userEvent.setup()
+    render(
+      <RealCodeGraphView repoId="r1" onRepoChange={vi.fn()} onOpenRepositories={vi.fn()} />,
+      { wrapper },
+    )
+    await screen.findByText("ingestion")
+    fireEvent.click(screen.getByLabelText("process_batch (function)"))
+    const run = screen.getByRole("button", { name: "Run Blast Radius" })
+    const blastBodies = () =>
+      vi
+        .mocked(apiFetch)
+        .mock.calls.filter(([path]) => path === "/code/blast-radius")
+        .map(([, init]) => JSON.parse(String(init?.body)))
+
+    await user.click(run)
+    await vi.waitFor(() => expect(blastBodies()).toHaveLength(1))
+    expect(blastBodies()[0]).toEqual({
+      symbol_id: "process_batch::main.py",
+      repo_id: "r1",
+    })
+
+    const answer = vi.fn<(path: string) => Promise<unknown>>()
+    const fallback = vi.mocked(apiFetch).getMockImplementation()!
+    vi.mocked(apiFetch).mockImplementation((path: string, init?: RequestInit) =>
+      path === "/code/blast-radius" ? answer(path) : fallback(path, init),
+    )
+
+    answer.mockRejectedValueOnce(
+      Object.assign(new Error("boom"), { status: 500 }),
+    )
+    await user.click(run)
+    await vi.waitFor(() =>
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
+        expect.stringContaining("boom"),
+      ),
+    )
+
+    answer.mockRejectedValueOnce(
+      Object.assign(new Error("run matches 2 symbols"), {
+        status: 409,
+        code: "symbol_ambiguous",
+        candidates: [
+          { id: "u-worker", key: "run::main.py::Worker", name: "run", kind: "method", file_path: "main.py", repo_id: "r1" },
+          { id: "u-sched", key: "run::main.py::Scheduler", name: "run", kind: "method", file_path: "main.py", repo_id: "r1" },
+        ],
+      }),
+    )
+    await user.click(run)
+    const pick = await screen.findByRole("button", { name: /Scheduler\.run/ })
+    expect(
+      screen.getByRole("button", { name: /Worker\.run/ }),
+    ).toBeInTheDocument()
+
+    answer.mockResolvedValueOnce({
+      symbol: { id: "u-sched", name: "run", file_path: "main.py" },
+      affected: [],
+      by_depth: { "1": [], "2": [], "3+": [] },
+      risk: "low",
+      total: 0,
+    })
+    await user.click(pick)
+    await vi.waitFor(() => expect(answer).toHaveBeenCalledTimes(3))
+    const bodies = blastBodies()
+    expect(bodies[bodies.length - 1]).toEqual({ symbol_id: "u-sched", repo_id: "r1" })
+  })
+
+  describe("copy mermaid", () => {
+    const original = Object.getOwnPropertyDescriptor(navigator, "clipboard")
+    afterEach(() => {
+      if (original) Object.defineProperty(navigator, "clipboard", original)
+      else delete (navigator as { clipboard?: unknown }).clipboard
+      delete (document as { execCommand?: unknown }).execCommand
+    })
+
+    async function openMermaid() {
+      const user = userEvent.setup()
+      // setup() installs its own clipboard stub; the plain-HTTP deploy has none.
+      Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true })
+      const view = render(
+        <RealCodeGraphView repoId="r1" onRepoChange={vi.fn()} onOpenRepositories={vi.fn()} />,
+        { wrapper },
+      )
+      await screen.findByText("ingest")
+      await user.click(screen.getByRole("button", { name: "mermaid" }))
+      const dialog = await screen.findByRole("dialog")
+      const button = within(dialog).getByRole("button", { name: /copy mermaid/i })
+      await user.click(button)
+      return { button, view }
+    }
+
+    it("copy mermaid reports failure and works without navigator.clipboard", async () => {
+      mockApi()
+      const execCommand = vi.fn(() => true)
+      Object.defineProperty(document, "execCommand", { value: execCommand, configurable: true })
+
+      const copied = await openMermaid()
+      await vi.waitFor(() => expect(copied.button.textContent).toContain("Copied"))
+      expect(execCommand).toHaveBeenCalledWith("copy")
+      copied.view.unmount()
+
+      execCommand.mockReturnValue(false)
+      const failed = await openMermaid()
+      await vi.waitFor(() => expect(failed.button.textContent).toContain("Copy failed"))
+      expect(failed.button.textContent).not.toContain("Copied")
+    })
+  })
+})
+
+const SOURCES = import.meta.glob<string>("/src/**/*.{ts,tsx}", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+})
+
+describe("clipboard writes", () => {
+  it("no screen writes the clipboard directly", () => {
+    const screens = Object.keys(SOURCES).filter(
+      (file) => !/(__tests__|\.test\.|\.stories\.)/.test(file),
+    )
+    expect(screens.length).toBeGreaterThan(100)
+    const direct = ["navigator", "clipboard"].join(".")
+    expect(screens.filter((file) => SOURCES[file]!.includes(direct))).toEqual([])
   })
 })

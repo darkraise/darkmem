@@ -98,6 +98,24 @@ describe("ApiError from an error envelope", () => {
     })
   })
 
+  it("carries a 409's symbol candidates", async () => {
+    const candidates = [{ id: "u1", key: "run::a.py::Worker" }]
+    vi.mocked(fetch).mockResolvedValue(
+      respond({
+        status: 409,
+        body: {
+          detail: "run matches 2 symbols",
+          error: { code: "symbol_ambiguous", message: "run matches 2 symbols", candidates },
+        },
+      }),
+    )
+    await expect(apiFetch("/code/blast-radius")).rejects.toMatchObject({
+      status: 409,
+      code: "symbol_ambiguous",
+      candidates,
+    })
+  })
+
   it("leaves the code undefined when the body is not an envelope", async () => {
     vi.mocked(fetch).mockResolvedValue(respond({ status: 500, body: { detail: "boom" } }))
     await expect(apiFetch("/x")).rejects.toMatchObject({ status: 500, code: undefined })

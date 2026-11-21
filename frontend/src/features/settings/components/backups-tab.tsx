@@ -8,6 +8,11 @@ import {
 } from "lucide-react"
 import { Badge } from "darkraise-ui/components/badge"
 import { Button } from "darkraise-ui/components/button"
+import {
+  Clipboard,
+  ClipboardIndicator,
+  ClipboardTrigger,
+} from "darkraise-ui/components/clipboard"
 import { Input } from "darkraise-ui/components/input"
 import { Label } from "darkraise-ui/components/label"
 import {
@@ -375,17 +380,14 @@ function InventorySection({
             <code className="bg-muted rounded px-1.5 py-0.5 font-mono text-xs">
               {`./scripts/restore.sh --from ${row.name} --latest`}
             </code>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() =>
-                navigator.clipboard?.writeText(
-                  `./scripts/restore.sh --from ${row.name} --latest`,
-                )
-              }
+            <Clipboard
+              value={`./scripts/restore.sh --from ${row.name} --latest`}
+              toast
             >
-              Copy
-            </Button>
+              <ClipboardTrigger>
+                <ClipboardIndicator copied="Copied" fallback="Copy" />
+              </ClipboardTrigger>
+            </Clipboard>
           </div>
         </div>
       ))}

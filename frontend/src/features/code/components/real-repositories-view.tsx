@@ -6,6 +6,12 @@ import { Progress } from "darkraise-ui/components/progress"
 import { EmptyState, listItemClass } from "@/components/darkmem"
 import { Button } from "darkraise-ui/components/button"
 import { TextField } from "darkraise-ui/forms"
+import { Alert, AlertDescription } from "darkraise-ui/components/alert"
+import {
+  Field,
+  FieldDescription,
+  FieldTitle,
+} from "darkraise-ui/components/field"
 import {
   Dialog,
   DialogContent,
@@ -211,6 +217,10 @@ function RepoTaskList({ repo }: { repo: Repo }) {
   )
 }
 
+function errorMessage(err: unknown) {
+  return err instanceof Error ? err.message : String(err)
+}
+
 function EditRepoDialog({
   repo,
   open,
@@ -221,10 +231,10 @@ function EditRepoDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const updateRepo = useUpdateRepo()
+  const [saveError, setSaveError] = useState<string | null>(null)
   const form = useForm({
     defaultValues: {
       name: repo?.name ?? "",
-      path: repo?.local_path ?? "",
       branch: repo?.default_branch ?? "main",
       fetch_enabled: repo?.fetch_enabled ?? false,
       fetch_interval_seconds: repo?.fetch_interval_seconds ?? 300,
@@ -277,13 +287,14 @@ function EditRepoDialog({
         onOpenChange(false)
         return
       }
-      await updateRepo.mutateAsync(
-        { id: repo.id, data },
-        {
-          onSuccess: () => toast.success("Repository updated"),
-          onError: (err) => toast.error(`Failed to update: ${err.message}`),
-        },
-      )
+      setSaveError(null)
+      try {
+        await updateRepo.mutateAsync({ id: repo.id, data })
+      } catch (err) {
+        setSaveError(`Failed to update: ${errorMessage(err)}`)
+        return
+      }
+      toast.success("Repository updated")
       onOpenChange(false)
     },
   })
@@ -314,21 +325,15 @@ function EditRepoDialog({
               />
             )}
           </form.Field>
-          <form.Field name="path">
-            {(field) => (
-              // Read-only: RepoUpdateParams carries no local_path, so an
-              // editable field here could never be saved.
-              <TextField
-                name={field.name}
-                label="Path"
-                description="Set when the repository is added; it can't be changed here."
-                value={field.state.value}
-                onChange={(v) => field.handleChange(v)}
-                onBlur={field.handleBlur}
-                readOnly
-              />
-            )}
-          </form.Field>
+          <Field>
+            <FieldTitle>{repo.local_path ? "Path" : "Cloned from"}</FieldTitle>
+            <p className="font-mono text-sm break-all">
+              {repo.local_path ?? repo.url ?? "—"}
+            </p>
+            <FieldDescription>
+              Set when the repository is added; it can't be changed here.
+            </FieldDescription>
+          </Field>
           <form.Field name="branch">
             {(field) => (
               <TextField
@@ -407,6 +412,11 @@ function EditRepoDialog({
               />
             )}
           </form.Subscribe>
+          {saveError && (
+            <Alert variant="destructive" role="alert">
+              <AlertDescription>{saveError}</AlertDescription>
+            </Alert>
+          )}
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" variant="ghost">
@@ -565,13 +575,12 @@ export function RealRepositoriesView() {
         onOpenChange={(o) => !o && setReindexingRepo(null)}
         onConfirm={async (v: ReindexInput) => {
           if (!reindexingRepo) return
-          await reindexRepo.mutateAsync(
-            { id: reindexingRepo.id, options: v },
-            {
-              onSuccess: () => toast.success("Reindex triggered"),
-              onError: (err) => toast.error(`Reindex failed: ${err.message}`),
-            },
-          )
+          try {
+            await reindexRepo.mutateAsync({ id: reindexingRepo.id, options: v })
+            toast.success("Reindex triggered")
+          } catch (err) {
+            toast.error(`Reindex failed: ${errorMessage(err)}`)
+          }
         }}
       />
 

@@ -6,8 +6,13 @@ import type { ReactNode } from "react"
 
 vi.mock("@/lib/demo-flag", () => ({ DEMO: false }))
 vi.mock("@/lib/api", () => ({ apiFetch: vi.fn() }))
+vi.mock("darkraise-ui/components/sonner", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("darkraise-ui/components/sonner")>()),
+  toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
+}))
 
 import { apiFetch } from "@/lib/api"
+import { toast } from "darkraise-ui/components/sonner"
 import { RealWikiView } from "../components/real-wiki-view"
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -151,5 +156,29 @@ describe("RealWikiView", () => {
       .mock.calls.find(([path]) => path === "/repos/r1/reindex")
     expect(reindexCall).toBeTruthy()
     expect(reindexCall![1]?.method).toBe("POST")
+  })
+
+  it("reports a failed generate", async () => {
+    vi.mocked(apiFetch).mockImplementation((path: string) => {
+      if (path === "/repos") return Promise.resolve([REPO])
+      if (path === "/code/wiki/r1") return Promise.resolve(null)
+      if (path === "/repos/r1/reindex")
+        return Promise.reject(new Error("wiki generation is busy"))
+      return Promise.resolve({})
+    })
+
+    const user = userEvent.setup()
+    render(<RealWikiView repoId="r1" onRepoChange={vi.fn()} />, { wrapper })
+
+    await screen.findByText("No wiki generated yet for this repository")
+    await user.click(screen.getByRole("button", { name: /Open reindex dialog/ }))
+    const dialog = await screen.findByRole("dialog")
+    await user.click(within(dialog).getByRole("button", { name: "Run reindex" }))
+
+    await vi.waitFor(() =>
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
+        expect.stringContaining("wiki generation is busy"),
+      ),
+    )
   })
 })

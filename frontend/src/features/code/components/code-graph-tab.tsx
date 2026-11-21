@@ -19,6 +19,11 @@ import {
   ZoomOut,
 } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
+import {
+  Clipboard,
+  ClipboardIndicator,
+  ClipboardTrigger,
+} from "darkraise-ui/components/clipboard"
 import { Input } from "darkraise-ui/components/input"
 import {
   Dialog,
@@ -131,7 +136,7 @@ export function CodeGraphTab({
   const [activeProcess, setActiveProcess] = useState<string | null>(null)
   const [mermaidProcess, setMermaidProcess] = useState<string | null>(null)
   const [search, setSearch] = useState("")
-  const [copied, setCopied] = useState(false)
+  const [copyFailed, setCopyFailed] = useState(false)
   const [leftTab, setLeftTab] = useState("explorer")
   const [hiddenKinds, setHiddenKinds] = useState<ReadonlySet<CodeNodeKind>>(
     new Set(),
@@ -259,16 +264,6 @@ export function CodeGraphTab({
   const moveCamera = (action: CameraAction) => setCameraCommand({ action })
   const focusSelected = () => {
     if (selectedId) moveCamera({ type: "focus" })
-  }
-
-  const copyMermaid = (text: string) => {
-    void navigator.clipboard
-      ?.writeText(text)
-      .catch(() => undefined)
-      .finally(() => {
-        setCopied(true)
-        window.setTimeout(() => setCopied(false), 1500)
-      })
   }
 
   const currentPhase = repo.phases?.find((p) => p.state === "current")
@@ -919,7 +914,10 @@ export function CodeGraphTab({
       <Dialog
         open={mermaidProcess !== null}
         onOpenChange={(open) => {
-          if (!open) setMermaidProcess(null)
+          if (!open) {
+            setMermaidProcess(null)
+            setCopyFailed(false)
+          }
         }}
       >
         <DialogContent className="max-w-lg">
@@ -938,13 +936,18 @@ export function CodeGraphTab({
                   {mermaid}
                 </pre>
                 <DialogFooter>
-                  <Button
-                    variant="outline"
-                    onClick={() => copyMermaid(mermaid)}
+                  <Clipboard
+                    value={mermaid}
+                    onCopyStatusChange={(d) => setCopyFailed(Boolean(d.error))}
                   >
-                    <Copy aria-hidden className="mr-1 h-3.5 w-3.5" />
-                    {copied ? "Copied" : "Copy Mermaid"}
-                  </Button>
+                    <ClipboardTrigger>
+                      <Copy aria-hidden className="mr-1 h-3.5 w-3.5" />
+                      <ClipboardIndicator
+                        copied="Copied"
+                        fallback={copyFailed ? "Copy failed" : "Copy Mermaid"}
+                      />
+                    </ClipboardTrigger>
+                  </Clipboard>
                 </DialogFooter>
               </>
             )

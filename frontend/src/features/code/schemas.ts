@@ -4,7 +4,6 @@ import { z } from "zod"
 // JobRegistry (the repo_sync job on the Jobs page), not the repo update path.
 export const editRepoSchema = z.object({
   name: z.string().min(1, "Name required"),
-  path: z.string().min(1, "Path required"),
   branch: z.string().default("main"),
   fetch_enabled: z.boolean().default(false),
   fetch_interval_seconds: z.number().int().min(30).default(300),

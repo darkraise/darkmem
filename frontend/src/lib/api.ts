@@ -39,13 +39,22 @@ export class ApiError extends Error {
   // `hash_conflict`, `note_required`). Absent when the body was not an
   // envelope.
   code?: string
+  // `error.candidates` on a 409 `symbol_ambiguous`: the symbols a key matched.
+  candidates?: unknown[]
 
-  constructor(message: string, status: number, details?: unknown[], code?: string) {
+  constructor(
+    message: string,
+    status: number,
+    details?: unknown[],
+    code?: string,
+    candidates?: unknown[],
+  ) {
     super(message)
     this.name = "ApiError"
     this.status = status
     this.details = details
     this.code = code
+    this.candidates = candidates
   }
 }
 
@@ -94,13 +103,14 @@ export async function apiFetchWithHeaders<T>(
       .catch(() => ({ detail: response.statusText }))
     const body = error as {
       detail?: string
-      error?: { details?: unknown[]; code?: string }
+      error?: { details?: unknown[]; code?: string; candidates?: unknown[] }
     }
     throw new ApiError(
       body.detail || `API error: ${response.status}`,
       response.status,
       body.error?.details,
       body.error?.code,
+      body.error?.candidates,
     )
   }
   if (response.status === 204) {

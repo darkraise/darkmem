@@ -9,6 +9,12 @@ import {
   Network,
 } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
+import {
+  Clipboard,
+  ClipboardIndicator,
+  ClipboardTrigger,
+} from "darkraise-ui/components/clipboard"
+import { toast } from "darkraise-ui/components/sonner"
 import { Input } from "darkraise-ui/components/input"
 import {
   Dialog,
@@ -38,12 +44,13 @@ import { cn } from "darkraise-ui/lib"
 import { mermaidForProcess } from "@/demo/explore"
 import type { CodeNodeKind } from "@/features/code/types"
 import {
+  symbolCandidates,
   useBlastRadius,
   useCodeFiles,
   useCodeGraph,
   useRepos,
 } from "@/hooks/api"
-import type { BlastRadiusResult } from "@/hooks/api"
+import type { BlastRadiusResult, SymbolCandidate } from "@/hooks/api"
 import { chartVar } from "./code-canvas"
 import { CodeGlowCanvas } from "./code-glow-canvas"
 import { CodeExplorer } from "./code-explorer"
@@ -119,17 +126,19 @@ export function RealCodeGraphView({
   const [activeProcess, setActiveProcess] = useState<string | null>(null)
   const [mermaidProcess, setMermaidProcess] = useState<string | null>(null)
   const [search, setSearch] = useState("")
-  const [copied, setCopied] = useState(false)
+  const [copyFailed, setCopyFailed] = useState(false)
   const [leftTab, setLeftTab] = useState("explorer")
   const [hiddenKinds, setHiddenKinds] = useState<ReadonlySet<CodeNodeKind>>(
     new Set(),
   )
   const [blast, setBlast] = useState<BlastRadiusResult | null>(null)
+  const [candidates, setCandidates] = useState<SymbolCandidate[] | null>(null)
   const blastRadius = useBlastRadius()
 
   useEffect(() => {
     setSelectedId(null)
     setBlast(null)
+    setCandidates(null)
     setActiveCommunity(null)
     setActiveProcess(null)
   }, [repo?.id])
@@ -215,19 +224,27 @@ export function RealCodeGraphView({
 
   const selectedNode = graph?.nodes.find((n) => n.id === selectedId) ?? null
 
+  const clearBlast = () => {
+    setBlast(null)
+    setCandidates(null)
+  }
+
   const selectNode = (id: string | null) => {
     setSelectedId(id)
-    setBlast(null)
+    clearBlast()
   }
 
   const folded = raw?.level === "file"
+  // A file node's id is its path; the server resolves symbols only.
+  const fileSelected =
+    selectedNode !== null && (folded || selectedNode.id === selectedNode.file)
   const nodeNoun = (count: number) =>
     folded ? (count === 1 ? "file" : "files") : count === 1 ? "node" : "nodes"
 
   const changeScope = (next: string | null) => {
     setScoped({ repoId: repo.id, scope: next })
     setSelectedId(null)
-    setBlast(null)
+    clearBlast()
     setActiveCommunity(null)
     setActiveProcess(null)
   }
@@ -239,22 +256,19 @@ export function RealCodeGraphView({
     if (folded && graph?.nodes.some((n) => n.id === path)) changeScope(path)
   }
 
-  const runBlastRadius = () => {
-    if (!selectedId) return
+  const runBlastRadius = (symbolId: string) => {
+    clearBlast()
     blastRadius.mutate(
-      { symbol_id: selectedId },
-      { onSuccess: (result) => setBlast(result) },
+      { symbol_id: symbolId, repo_id: repo.id },
+      {
+        onSuccess: (result) => setBlast(result),
+        onError: (err) => {
+          const matches = symbolCandidates(err)
+          if (matches) setCandidates(matches)
+          else toast.error(`Blast radius failed: ${err.message}`)
+        },
+      },
     )
-  }
-
-  const copyMermaid = (text: string) => {
-    void navigator.clipboard
-      ?.writeText(text)
-      .catch(() => undefined)
-      .finally(() => {
-        setCopied(true)
-        window.setTimeout(() => setCopied(false), 1500)
-      })
   }
 
   const toolbar = (
@@ -504,7 +518,9 @@ export function RealCodeGraphView({
                 variant="outline"
                 className="border-primary/50 text-primary-text bg-primary/8 rounded-full"
                 disabled={!selectedId || blastRadius.isPending}
-                onClick={runBlastRadius}
+                onClick={() => {
+                  if (selectedId && !fileSelected) runBlastRadius(selectedId)
+                }}
               >
                 Run Blast Radius
               </Button>
@@ -512,7 +528,7 @@ export function RealCodeGraphView({
                 <button
                   type="button"
                   className="text-muted-foreground font-mono text-sm"
-                  onClick={() => setBlast(null)}
+                  onClick={clearBlast}
                 >
                   Clear
                 </button>
@@ -541,11 +557,43 @@ export function RealCodeGraphView({
                   affected transitively
                 </p>
               </>
+            ) : candidates ? (
+              <div className="space-y-1">
+                <p className="text-muted-foreground text-sm">
+                  That name matches {candidates.length} symbols. Pick one:
+                </p>
+                <ul className="space-y-0.5">
+                  {candidates.map((c) => {
+                    // A key is name::file[::owner]; the owner is what tells
+                    // two same-named methods of one file apart.
+                    const owner = c.key.split("::")[2]
+                    return (
+                      <li key={c.id}>
+                        <button
+                          type="button"
+                          className="hover:bg-muted w-full rounded-sm px-1 py-0.5 text-left text-sm"
+                          disabled={blastRadius.isPending}
+                          onClick={() => runBlastRadius(c.id)}
+                        >
+                          <span className="font-mono font-semibold break-all">
+                            {owner ? `${owner}.${c.name}` : c.name}
+                          </span>{" "}
+                          <span className="text-muted-foreground block font-mono text-xs break-all">
+                            {c.kind} · {c.file_path}
+                          </span>
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
             ) : (
               <p className="text-muted-foreground text-sm">
-                {selectedId
-                  ? "Run to see what transitively depends on the selected symbol."
-                  : "Select a symbol first."}
+                {fileSelected
+                  ? "Select a symbol to see its blast radius"
+                  : selectedId
+                    ? "Run to see what transitively depends on the selected symbol."
+                    : "Select a symbol first."}
               </p>
             )}
           </div>
@@ -640,7 +688,10 @@ export function RealCodeGraphView({
       <Dialog
         open={mermaidProcess !== null}
         onOpenChange={(open) => {
-          if (!open) setMermaidProcess(null)
+          if (!open) {
+            setMermaidProcess(null)
+            setCopyFailed(false)
+          }
         }}
       >
         <DialogContent className="max-w-md">
@@ -658,14 +709,19 @@ export function RealCodeGraphView({
                 <pre className="bg-background border-border text-muted-foreground overflow-x-auto rounded-md border p-3 font-mono text-sm leading-relaxed whitespace-pre">
                   {mermaid}
                 </pre>
-                <Button
-                  variant="outline"
+                <Clipboard
+                  value={mermaid}
                   className="self-end"
-                  onClick={() => copyMermaid(mermaid)}
+                  onCopyStatusChange={(d) => setCopyFailed(Boolean(d.error))}
                 >
-                  <Copy aria-hidden className="mr-1 h-3.5 w-3.5" />
-                  {copied ? "Copied" : "Copy Mermaid"}
-                </Button>
+                  <ClipboardTrigger>
+                    <Copy aria-hidden className="mr-1 h-3.5 w-3.5" />
+                    <ClipboardIndicator
+                      copied="Copied"
+                      fallback={copyFailed ? "Copy failed" : "Copy Mermaid"}
+                    />
+                  </ClipboardTrigger>
+                </Clipboard>
               </>
             )
           })()}

@@ -4,6 +4,7 @@ import { FolderGit2,
   BookOpen,
 } from "lucide-react"
 import { Button } from "darkraise-ui/components/button"
+import { toast } from "darkraise-ui/components/sonner"
 import { Badge } from "darkraise-ui/components/badge"
 import {
   Card,
@@ -253,7 +254,13 @@ export function RealWikiView({
         onOpenChange={setReindexOpen}
         emphasizeWiki
         onConfirm={async (v: ReindexInput) => {
-          await reindexRepo.mutateAsync({ id: repo.id, options: v })
+          try {
+            await reindexRepo.mutateAsync({ id: repo.id, options: v })
+          } catch (err) {
+            toast.error(
+              `Wiki generation failed: ${err instanceof Error ? err.message : String(err)}`,
+            )
+          }
         }}
       />
     </div>

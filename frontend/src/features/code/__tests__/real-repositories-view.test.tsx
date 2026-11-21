@@ -417,6 +417,86 @@ describe("RealRepositoriesView", () => {
 })
 
 
+describe("Edit Repository", () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const CLONED = {
+    ...BASE_REPO,
+    url: "https://example.invalid/darkmem-backend.git",
+    local_path: null,
+    status: "ready",
+    status_message: null,
+    last_indexed_commit: "aaa1111",
+    last_indexed_at: "2026-07-27T09:00:00Z",
+    git_account_id: null,
+    git_account_label: null,
+    has_custom_token: false,
+    index_debt: null,
+  }
+
+  function mockEdit(put: (init: RequestInit | undefined) => Promise<unknown>) {
+    vi.mocked(apiFetch).mockImplementation(
+      (path: string, init?: RequestInit) => {
+        if (path === "/repos/r1" && init?.method === "PUT") return put(init)
+        if (path === "/repos") return Promise.resolve([CLONED])
+        if (path === "/git-accounts")
+          return Promise.resolve({ accounts: [], providers: [] })
+        return Promise.resolve([])
+      },
+    )
+  }
+
+  async function openAndChangeBranch() {
+    const user = userEvent.setup()
+    render(<RealRepositoriesView />, { wrapper })
+    await user.click(await screen.findByRole("button", { name: "Edit" }))
+    const dialog = await screen.findByRole("dialog")
+    const branch = within(dialog).getByRole("textbox", { name: "Branch" })
+    await user.clear(branch)
+    await user.type(branch, "develop")
+    await user.click(within(dialog).getByRole("button", { name: "Save" }))
+    return dialog
+  }
+
+  it("saves a repository cloned from a URL", async () => {
+    mockEdit((init) =>
+      Promise.resolve({ ...CLONED, default_branch: "develop", init }),
+    )
+    const dialog = await openAndChangeBranch()
+
+    await vi.waitFor(() =>
+      expect(
+        vi
+          .mocked(apiFetch)
+          .mock.calls.filter(([, init]) => init?.method === "PUT"),
+      ).toHaveLength(1),
+    )
+    const [path, init] = vi
+      .mocked(apiFetch)
+      .mock.calls.find(([, i]) => i?.method === "PUT")!
+    expect(path).toBe("/repos/r1")
+    const body = JSON.parse(String(init?.body))
+    expect(body).toEqual({ default_branch: "develop" })
+    expect(body).not.toHaveProperty("path")
+    expect(
+      within(dialog).queryByRole("textbox", { name: /path|location/i }),
+    ).not.toBeInTheDocument()
+    expect(dialog.textContent).toContain(
+      "https://example.invalid/darkmem-backend.git",
+    )
+  })
+
+  it("reports a failed save", async () => {
+    mockEdit(() => Promise.reject(new Error("upstream refused the branch")))
+    const dialog = await openAndChangeBranch()
+
+    expect(
+      await within(dialog).findByText(/upstream refused the branch/),
+    ).toBeInTheDocument()
+    expect(screen.getByRole("dialog")).toBe(dialog)
+  })
+})
+
 describe("a failed repository list is not an unindexed instance", () => {
   it("reports the failure instead of claiming no repositories are indexed", async () => {
     // `repos && repos.length > 0 ? ... : EmptyState` sends an errored read to
