@@ -82,8 +82,8 @@ can break while the floor stays green — which is exactly why the gate exists.
    `CLAUDE.md` describes, update `CLAUDE.md` in the same PR.
 
 CI runs the same backend, frontend and image jobs on every push and pull
-request. Images are published **only** on a version tag — see
-[Releases](#releases).
+request. Images are published only when a release is cut, and a push to
+master is what cuts one — see [Releases](#releases).
 
 ## Commits
 
@@ -186,14 +186,25 @@ an invariant, update `CLAUDE.md`.
 
 ## Releases
 
-Tags publish, branches do not. Pushing a tag matching `v*` runs the full CI
-pipeline and, only if it passes, builds one image and pushes it to both Docker
-Hub (`darkraise/darkmem`) and GHCR (`ghcr.io/darkraise/darkmem`).
+**A push to master releases.** `.github/workflows/release.yml` derives the
+next version from the conventional-commit types since the last tag
+(`scripts/next_version.py`); a push with no `feat`, `fix`, `perf` or breaking
+commit cuts nothing. A push whose derived version has no `## vN.N.N` section in
+`CHANGELOG.md` fails before the suite runs, so write that section first: the
+changelog is hand-written, and only the GitHub release body is generated. When
+a version is cut, CI runs the full pipeline, syncs the version fields, pushes
+one image to both Docker Hub (`darkraise/darkmem`) and GHCR
+(`ghcr.io/darkraise/darkmem`), and only then writes the tag and the GitHub
+release, so a tag that exists is one whose image was published. Other branches
+publish nothing. A hand-pushed `v*` tag still publishes under its own version.
 
-Cut releases with `./scripts/release.sh v1.0.0`. It runs the full gate, syncs
-the version fields, builds, deploys, and writes the tag **last** — so a tag that
-exists is one whose stack came up. It never pushes; `git push origin v1.0.0` is
-the separate, irreversible step that publishes.
+`./scripts/release.sh v1.0.0` is the local pre-flight, and it writes no tag. It
+checks the version and its changelog section, runs the floor gate plus the full
+gate's legs one at a time (`--full-gate` runs `gate.sh --full` instead), syncs
+the version fields, builds, deploys this host and probes `/openapi.json`.
+Commit the synced fields and push master: CI sees them, skips its own bump and
+publishes under the same number. Fetch tags before deriving a version locally
+(`git fetch --tags`), since CI writes them and local ones go stale.
 
 Versions are full semver (`vN.N.N`). The script rejects anything else, because
 the rolling `1.0` and `1` tags come from a semver parse and a partial version

@@ -254,8 +254,11 @@ table or column is dropped only once no released code reads it.
 `/mcp`; scopes in `api/mcp/scopes.py`), `services` (pipeline.py,
 extraction_clean.py, code_pipeline.py, job_registry.py, page_door.py, ...),
 `repositories` (graph/relational/vector), `models`, `schemas`; entry point
-`app/main.py`. `backend/migrations/versions` is Alembic. `backend/scripts`
-holds the eval harnesses: `extraction_bench/` (F1 bench and gold files) and
+`app/main.py`. `services/client_connect.py` is reached only from the
+`backend/scripts/connect.py` CLI, and `services/inject_adapters.py` only from
+that CLI and the read-only `GET /api/v1/distribution`; nothing in the app
+writes a managed block. `backend/migrations/versions` is Alembic.
+`backend/scripts` holds the eval harnesses: `extraction_bench/` (F1 bench and gold files) and
 `benchlib/` (corpus loader, offline ingest driver, run ledger, retrieval
 gold and scorer, latency/token twin, full-context comparator, `run_*.py`
 runners). Harness caches under `backend/scripts/` are warm and gitignored;
@@ -520,8 +523,9 @@ through a `project` column copied onto each vector row. The
 `embedders` table is the registry; `embedder_registry.register` inserts the
 row and runs every `CREATE TABLE IF NOT EXISTS` idempotently. Never name a
 child table directly; go through `child_table(parent, fingerprint)`. A
-cross-fingerprint join is a bug. `_register_fingerprint` must run before any
-insert into a partition.
+cross-fingerprint join is a bug. `embedder_registry.ensure_registered` is the
+one register-the-fingerprint helper (the pipeline's `_register_fingerprint`
+calls it), and it must run before any insert into a partition.
 
 ## Retrieval
 
@@ -1087,8 +1091,11 @@ the tool's own body.
   update after their commit, so an idle socket costs no query and a
   broadcast validates outside its send lock.
 - `DATABASE_URL` is derived from the `DB_*` vars (percent-encoded); an
-  explicit `DATABASE_URL` overrides. There are no `LLM_*` env vars; LLM
-  config lives in the database via the setup wizard.
+  explicit `DATABASE_URL` overrides. LLM config lives in the database via
+  the setup wizard. The `Settings.llm_<purpose>` fields (settable as an
+  `LLM_<PURPOSE>` JSON env var) are only the fallback `get_llm_config`
+  answers for a purpose with no `llm_purpose_configs` row, or whose provider
+  row is missing.
 - `cookie_secure` is tri-state in the LAN posture (unset = Secure only when
   `environment=production`; explicit false allows plain-HTTP LAN login).
   **`trust_proxy_headers` is the exposed-deployment switch**: with it on,
