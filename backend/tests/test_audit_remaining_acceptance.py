@@ -880,3 +880,119 @@ async def test_a32_partitions_three_months_ahead_with_pipeline_failure_cleanup_d
             async with factory() as s:
                 await s.execute(delete(Config).where(Config.key == "job:pipeline_failure_cleanup"))
                 await s.commit()
+
+
+# ------------------------------------------------------------------ A49
+
+import os
+import shutil
+import tempfile
+
+
+def _eval_gha(expr: str, ctx: dict) -> bool:
+    py = " ".join(expr.split())
+    py = py.replace("always()", "True").replace("&&", " and ").replace("||", " or ")
+    for key, val in ctx.items():
+        py = py.replace(key, repr(val))
+    py = py.replace("==", " == ")
+    return bool(eval(py, {"__builtins__": {}}))  # noqa: S307 - the expression is our own workflow's
+
+
+@pytest.mark.parametrize("tag_result", ["cancelled", "failure", "skipped"])
+def test_a49_a_cancelled_or_failed_tag_job_on_master_creates_no_release(tag_result):
+    wf = yaml.safe_load((REPO / ".github/workflows/release.yml").read_text())
+    jobs = wf["jobs"]
+    cond = str(jobs["github-release"]["if"])
+    ctx = {
+        "needs.publish.result": "success",
+        "needs.tag.result": tag_result,
+        "github.ref_type": "branch",
+    }
+    assert _eval_gha(cond, ctx) is False
+    ok = {**ctx, "needs.tag.result": "success"}
+    assert _eval_gha(cond, ok) is True
+    # a hand-cut tag run legitimately skips the tag job
+    assert _eval_gha(cond, {**ctx, "needs.tag.result": "skipped", "github.ref_type": "tag"}) is True
+    # and the tag job itself is not forced by always()
+    assert "always()" not in str(jobs["tag"].get("if", ""))
+    assert "publish" in jobs["tag"]["needs"]
+
+
+def test_a49_a_dirty_tree_is_not_tagged_with_the_head_sha(tmp_path):
+    repo = tmp_path / "r"
+    repo.mkdir()
+    env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+    def run(*a):
+        return subprocess.run(a, cwd=repo, env=env, capture_output=True, text=True, check=True).stdout
+    run("git", "init", "-q")
+    (repo / "f.txt").write_text("one\n")
+    run("git", "add", "f.txt")
+    run("git", "commit", "-q", "-m", "c")
+    head = run("git", "rev-parse", "--short", "HEAD").strip()
+    head_lines = "\n".join((REPO / "scripts/build-push.sh").read_text().splitlines()[:14])
+    probe = tmp_path / "probe.sh"
+    probe.write_text(head_lines + '\necho "SHA=$GIT_SHA"\n')
+
+    def sha():
+        out = subprocess.run(["bash", str(probe)], cwd=repo, capture_output=True, text=True, env=env).stdout
+        return re.search(r"SHA=(\S+)", out).group(1)
+
+    assert sha() == head
+    (repo / "f.txt").write_text("two\n")
+    assert sha() == f"{head}-dirty"
+
+
+def _run_backup(tmp_path, dump_text: str, keep: int):
+    dest = tmp_path / "dumps"
+    dest.mkdir()
+    import gzip
+    import time
+
+    old = []
+    for i in range(3):
+        p = dest / f"darkmem-2020010{i}-000000.sql.gz"
+        with gzip.open(p, "wt") as f:
+            f.write("-- old real dump\n")
+        t = time.time() - 1000 * (10 - i)
+        os.utime(p, (t, t))
+        old.append(p)
+    shim = tmp_path / "shim.sh"
+    dump = tmp_path / "dump.sql"
+    dump.write_text(dump_text)
+    shim.write_text(f"#!/usr/bin/env bash\ncat {dump}\n")
+    env = {**os.environ, "COMPOSE_CMD": f"bash {shim}", "BACKUP_KEEP": str(keep)}
+    r = subprocess.run(["bash", str(REPO / "scripts/backup.sh"), str(dest)], env=env, capture_output=True, text=True, timeout=60)
+    return r, dest, old
+
+
+def test_a49_a_dump_of_the_wrong_database_triggers_no_prune(tmp_path):
+    wrong = "-- PostgreSQL database dump\nCREATE TABLE public.other (id int);\n-- PostgreSQL database dump complete\n"
+    r, dest, old = _run_backup(tmp_path, wrong, keep=1)
+    assert r.returncode != 0
+    assert all(p.exists() for p in old), r.stderr
+    assert list(dest.glob("*.suspect"))
+
+
+def test_a49_a_right_dump_still_prunes(tmp_path):
+    right = (
+        "-- PostgreSQL database dump\nCREATE TABLE public.memories (\n id int\n);\n"
+        "COPY public.alembic_version (version_num) FROM stdin;\n0001\n\\.\n-- PostgreSQL database dump complete\n"
+    )
+    r, dest, old = _run_backup(tmp_path, right, keep=2)
+    assert r.returncode == 0, r.stderr
+    assert len(list(dest.glob("darkmem-*.sql.gz"))) == 2
+
+
+def test_a49_the_restore_cycle_exits_nonzero_on_a_migrate_failure_unless_an_older_baseline():
+    text = (REPO / "scripts/worker/restore-cycle.sh").read_text()
+    m = re.search(
+        r'if ! \$COMPOSE run .*?alembic upgrade head.*?; then\n(?P<body>.*?)\nfi\n', text, flags=re.S
+    )
+    assert m, "the migrate step is not guarded"
+    body = m.group("body")
+    cond = re.search(r'if (\[ .*? \]); then\n(?P<then>.*?)\n\s*fi\n(?P<after>.*)', body, flags=re.S)
+    assert cond, body
+    assert '"$STAMPED" != "$IMAGE_SHA"' in cond.group(1)
+    assert re.search(r"\bexit 0\b", cond.group("then"))
+    assert re.search(r"\bexit 1\b", cond.group("after"))
+    assert not re.search(r"\bexit 0\b", cond.group("after"))
