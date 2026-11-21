@@ -1609,3 +1609,80 @@ async def test_a22_a_hygiene_action_whose_journal_write_fails_commits_nothing(cl
         )
     ).scalar_one()
     assert n == 0
+
+
+# ------------------------------------------------------------------ A36
+
+
+def _qa_git(cwd, *args):
+    return subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args], cwd=cwd, check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+
+def _qa_upstream(root):
+    up = root / "upstream"
+    up.mkdir()
+    _qa_git(up, "init", "-q", "-b", "main")
+    (up / "a.py").write_text("x = 1\n")
+    _qa_git(up, "add", "a.py")
+    _qa_git(up, "commit", "-qm", "init")
+    return up
+
+
+@pytest.mark.asyncio
+async def test_a36_a_failed_fetch_never_deletes_a_healthy_clone(session, tmp_path, monkeypatch):
+    import app.services.repo_manager as rm
+    from app.services.repo_manager import RepoManager
+
+    base = tmp_path / "clones"
+    base.mkdir()
+    monkeypatch.setattr(rm, "REPOS_BASE_DIR", base)
+    up = _qa_upstream(tmp_path)
+    repo = Repository(
+        name=f"qa36-{uuid.uuid4().hex[:6]}", url="https://example.invalid/o/r.git", default_branch="main",
+        provider="github", status="ready",
+    )
+    session.add(repo)
+    await session.flush()
+    clone = base / str(repo.id)
+    _qa_git(tmp_path, "clone", "-q", str(up), str(clone))
+    marker = clone / "local-only.txt"
+    marker.write_text("untracked work")
+    _qa_git(clone, "remote", "set-url", "origin", str(tmp_path / "does-not-exist"))
+    head = _qa_git(clone, "rev-parse", "HEAD")
+
+    with pytest.raises(Exception):
+        await RepoManager(session).pull_repo(repo, take_claim=True)
+
+    assert (clone / ".git").is_dir()
+    assert marker.read_text() == "untracked work"
+    assert _qa_git(clone, "rev-parse", "HEAD") == head
+
+
+@pytest.mark.asyncio
+async def test_a36_the_fetch_lane_never_fast_forwards_a_branch_other_than_the_default(session, tmp_path):
+    from app.services.repo_manager import RepoManager
+
+    up = _qa_upstream(tmp_path)
+    work = tmp_path / "work"
+    _qa_git(tmp_path, "clone", "-q", str(up), str(work))
+    _qa_git(work, "checkout", "-q", "-b", "topic")
+    topic_head = _qa_git(work, "rev-parse", "HEAD")
+    (up / "a.py").write_text("x = 2\n")
+    _qa_git(up, "commit", "-qam", "upstream moves")
+    up_head = _qa_git(up, "rev-parse", "HEAD")
+    repo = Repository(
+        name=f"qa36b-{uuid.uuid4().hex[:6]}", local_path=str(work), default_branch="main", provider="local", status="ready"
+    )
+    session.add(repo)
+    await session.flush()
+    mgr = RepoManager(session)
+
+    await mgr.pull_repo(repo)
+    assert _qa_git(work, "rev-parse", "HEAD") == topic_head
+    assert _qa_git(work, "rev-parse", "topic") == topic_head
+
+    _qa_git(work, "checkout", "-q", "main")
+    await mgr.pull_repo(repo)
+    assert _qa_git(work, "rev-parse", "main") == up_head
