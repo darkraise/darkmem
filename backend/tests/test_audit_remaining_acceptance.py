@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import uuid
+from datetime import datetime, timedelta, timezone
 import re
 import subprocess
 from pathlib import Path
@@ -1554,3 +1556,56 @@ async def test_a28_unchanged_repush_makes_no_embed_call_and_a_refile_embeds_only
     finally:
         app.state.llm = previous
         embedder_registry.forget(FINGERPRINT)
+
+
+# ------------------------------------------------------------------ A22
+
+
+@pytest.mark.asyncio
+async def test_a22_a_hygiene_action_whose_journal_write_fails_commits_nothing(client, auth_headers, session, monkeypatch):
+    from sqlalchemy import text
+
+    from app.models.memory import Memory
+    from app.services import hygiene_queue
+
+    project = f"qa22-{uuid.uuid4().hex[:6]}"
+    now = datetime.now(timezone.utc)
+    older = Memory(id=uuid.uuid4(), content="old truth", source="test", project=project, status="active", importance=0.5,
+                   metadata_={}, created_at=now - timedelta(days=2))
+    newer = Memory(id=uuid.uuid4(), content="new truth", source="test", project=project, status="active", importance=0.5,
+                   metadata_={}, created_at=now - timedelta(days=1))
+    session.add_all([older, newer])
+    await session.flush()
+
+    async def refuse(*a, **k):
+        return False
+
+    control = await client.post(
+        "/api/v1/hygiene-queue/bulk/supersede",
+        json={"items": [{"memory_id": str(uuid.uuid4()), "superseded_by": str(newer.id)}]},
+        headers=auth_headers,
+    )
+    assert control.status_code == 200 and control.json()["results"][0]["reason"] == "not_found"
+    monkeypatch.setattr(hygiene_queue, "record_event", refuse)
+    r = await client.post(
+        "/api/v1/hygiene-queue/bulk/supersede",
+        json={"items": [{"memory_id": str(older.id), "superseded_by": str(newer.id)}]},
+        headers=auth_headers,
+    )
+    assert r.status_code == 200, r.text
+    result = r.json()["results"][0]
+    assert result["applied"] is False
+    assert result["reason"] == "journal_failed"
+    row = (
+        await session.execute(
+            text("SELECT status, superseded_by FROM memories WHERE id = CAST(:i AS uuid)"), {"i": str(older.id)}
+        )
+    ).one()
+    assert row[0] == "active" and row[1] is None, "the supersession committed without its journal row"
+    n = (
+        await session.execute(
+            text("SELECT count(*) FROM events WHERE object_id = CAST(:i AS uuid) AND event_type IN ('superseded','consolidated')"),
+            {"i": str(older.id)},
+        )
+    ).scalar_one()
+    assert n == 0
