@@ -1455,3 +1455,57 @@ def test_a29_only_the_two_streaming_routes_use_request_scoped_twins_and_no_other
             ann = inspect.signature(route.endpoint).return_annotation
             if ann is StreamingResponse or "StreamingResponse" in str(ann) or route.response_class is StreamingResponse:
                 assert ("POST", route.path) in scoped, route.path
+
+
+# ------------------------------------------------------------------ A25
+
+
+class _FailingEmbedder:
+    def __init__(self, fingerprint):
+        self.fingerprint = fingerprint
+
+    async def embed_batch_chunked(self, texts, chunk_size, concurrency):
+        raise RuntimeError("embedder is down")
+
+    async def embed(self, value):
+        raise RuntimeError("embedder is down")
+
+    def llm_fingerprint(self):
+        return self.fingerprint
+
+
+@pytest.mark.asyncio
+async def test_a25_a_block_edit_whose_embed_fails_answers_success_with_zero_embedded_and_no_stale_vector(
+    client, auth_headers, session, _stub_embedder_for_documents
+):
+    from sqlalchemy import text
+
+    from app.main import app
+    from app.services.embedder_registry import child_table
+    from tests.test_document_door import FINGERPRINT
+
+    doc = await _put_doc(client, auth_headers, "# T\n\nalpha paragraph\n", uri="qa25/a.md")
+    got = await client.get(f"/api/v1/documents/{doc}", headers=auth_headers)
+    para = next(b for b in got.json()["blocks"] if b["text"] == "alpha paragraph")
+    table = child_table("block_embeddings", FINGERPRINT)
+
+    async def vector_count():
+        return (
+            await session.execute(
+                text(f"SELECT count(*) FROM {table} WHERE block_id = CAST(:b AS uuid)"), {"b": para["block_id"]}
+            )
+        ).scalar_one()
+
+    assert await vector_count() == 1
+    good = app.state.llm
+    app.state.llm = _FailingEmbedder(FINGERPRINT)
+    try:
+        r = await client.patch(
+            f"/api/v1/documents/{doc}/blocks/{para['block_id']}", json={"text": "beta paragraph"}, headers=auth_headers
+        )
+    finally:
+        app.state.llm = good
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["blocks_embedded"] == 0
+    assert await vector_count() == 0, "the edited block still has the vector of its old text"
