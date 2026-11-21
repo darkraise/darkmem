@@ -19,9 +19,22 @@
  * yielding the wrong thing: `unsentTurns` receives an empty list and the
  * observer goes quiet, which is the correct failure for a feature whose
  * hazard is capturing too much.
+ *
+ * **It sends a turn once it has settled.** A reply streams in token by
+ * token, and every partial text is a different string, so sending on change
+ * would file each prefix as its own memory. Each message element keeps its
+ * last seen text and a timer; a change restarts the timer, and only a text
+ * left unchanged for `SETTLE_MS` is sent.
  */
 
 const AUTO_CAPTURE_MESSAGE = "darkmem.auto_capture.turn";
+
+const SETTLE_MS = 3000;
+
+// The worker's capture bound (`MAX_SELECTION_CHARS` in capture.js). This is a
+// classic script and cannot import it; a settled turn past it is skipped
+// here rather than sent to be refused.
+const MAX_TURN_CHARS = 20000;
 
 function unsentTurns(seen, turns) {
   const out = [];
@@ -63,6 +76,51 @@ function readTurns(selector) {
   return [...document.querySelectorAll(selector)].map((node) => node.innerText ?? "");
 }
 
+/**
+ * Per message element: the text it last showed and the timer that sends it
+ * once that text has held for `SETTLE_MS`. `seen` stays the second guard, so
+ * a re-rendered element showing an already-sent text sends nothing.
+ */
+function createSettler(seen) {
+  const states = new Map();
+
+  function settle(state) {
+    state.timer = null;
+    if (state.text.length > MAX_TURN_CHARS) return;
+    send(unsentTurns(seen, [state.text]));
+  }
+
+  function observe(nodes, { initial = false } = {}) {
+    const present = new Set(nodes);
+    for (const [node, state] of states) {
+      if (present.has(node)) continue;
+      if (state.timer !== null) clearTimeout(state.timer);
+      states.delete(node);
+    }
+    for (const node of nodes) {
+      const text = (node.innerText ?? "").trim();
+      let state = states.get(node);
+      if (!state) {
+        state = { text: initial ? text : "", timer: null };
+        states.set(node, state);
+      }
+      if (text === state.text) continue;
+      state.text = text;
+      if (state.timer !== null) clearTimeout(state.timer);
+      state.timer = text ? setTimeout(() => settle(state), SETTLE_MS) : null;
+    }
+  }
+
+  function stop() {
+    for (const state of states.values()) {
+      if (state.timer !== null) clearTimeout(state.timer);
+    }
+    states.clear();
+  }
+
+  return { observe, stop };
+}
+
 function send(turns) {
   for (const content of turns) {
     // Fire and forget: the worker reports its own outcome through the toolbar,
@@ -87,11 +145,20 @@ function start() {
   // door is, and it survives a reload; this only keeps one page-view from
   // re-sending what it already sent as the surface re-renders.
   const { seen } = firstSweep(readTurns(selector));
+  const settler = createSettler(seen);
+  settler.observe([...document.querySelectorAll(selector)], { initial: true });
 
   const observer = new MutationObserver(() => {
-    send(unsentTurns(seen, readTurns(selector)));
+    settler.observe([...document.querySelectorAll(selector)]);
   });
-  observer.observe(document.body, { childList: true, subtree: true });
+  observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+  // A page leaving for good takes its pending timers with it; one kept in
+  // the back/forward cache comes back still observing.
+  window.addEventListener("pagehide", (event) => {
+    if (event.persisted) return;
+    observer.disconnect();
+    settler.stop();
+  });
 }
 
 start();

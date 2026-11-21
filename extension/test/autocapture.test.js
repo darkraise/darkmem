@@ -21,6 +21,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import vm from "node:vm";
 
 import {
   AUTO_CAPTURE_BADGE,
@@ -265,4 +266,143 @@ test("registration status handles failure, recovery and overlapping syncs", asyn
   } finally {
     delete globalThis.chrome;
   }
+});
+
+// ── the observer captures a reply once it has settled ──
+
+/**
+ * Runs the content script in a sandbox: a fake chat page whose message
+ * elements the test edits, the observer the script registers, and a clock
+ * the test moves. `sent` holds every turn the script posted to the worker.
+ */
+function observedPage(initial = []) {
+  const messages = initial.map((text) => ({ innerText: text }));
+  const timers = new Map();
+  let now = 0;
+  let nextTimer = 1;
+  let onMutation = null;
+  const sent = [];
+  const sandbox = {
+    location: { hostname: "chatgpt.com", href: "https://chatgpt.com/c/1" },
+    document: {
+      title: "Chat",
+      body: {},
+      querySelectorAll: () => [...messages],
+    },
+    MutationObserver: class {
+      constructor(callback) {
+        onMutation = callback;
+      }
+      observe() {}
+      disconnect() {
+        onMutation = null;
+      }
+    },
+    chrome: { runtime: { sendMessage: (message) => sent.push(message) } },
+    window: { addEventListener() {} },
+    setTimeout: (fn, ms) => {
+      const id = nextTimer++;
+      timers.set(id, { at: now + ms, fn });
+      return id;
+    },
+    clearTimeout: (id) => timers.delete(id),
+  };
+  vm.runInNewContext(readFileSync(join(ROOT, "src/content-autocapture.js"), "utf8"), sandbox);
+  const page = {
+    sent,
+    messages,
+    add(text) {
+      const message = { innerText: text };
+      messages.push(message);
+      page.mutate();
+      return message;
+    },
+    set(message, text) {
+      message.innerText = text;
+      page.mutate();
+    },
+    mutate() {
+      onMutation?.([]);
+    },
+    advance(ms) {
+      const until = now + ms;
+      for (;;) {
+        const due = [...timers.entries()]
+          .filter(([, timer]) => timer.at <= until)
+          .sort((a, b) => a[1].at - b[1].at)[0];
+        if (!due) break;
+        timers.delete(due[0]);
+        now = due[1].at;
+        due[1].fn();
+      }
+      now = until;
+    },
+    texts: () => sent.map((message) => message.content),
+  };
+  return page;
+}
+
+test("a reply that changes 30 times before settling is captured once", () => {
+  const page = observedPage(["an earlier turn"]);
+  const reply = page.add("t");
+  let text = "t";
+  for (let i = 0; i < 30; i++) {
+    page.advance(100);
+    text += ` token${i}`;
+    page.set(reply, text);
+  }
+  assert.deepEqual(page.texts(), []);
+  page.advance(2999);
+  assert.deepEqual(page.texts(), []);
+  page.advance(1);
+  assert.deepEqual(page.texts(), [text]);
+});
+
+test("a settled message is not captured again", () => {
+  const page = observedPage();
+  page.add("a whole reply");
+  page.advance(3000);
+  page.mutate();
+  page.add("");
+  page.advance(10_000);
+  assert.deepEqual(page.texts(), ["a whole reply"]);
+});
+
+test("an edited message is captured again after it settles", () => {
+  const page = observedPage();
+  const reply = page.add("first wording");
+  page.advance(3000);
+  page.set(reply, "second wording");
+  page.advance(2999);
+  assert.deepEqual(page.texts(), ["first wording"]);
+  page.advance(1);
+  assert.deepEqual(page.texts(), ["first wording", "second wording"]);
+  page.advance(10_000);
+  assert.equal(page.sent.length, 2);
+});
+
+test("a reply over the size limit is skipped whole", () => {
+  const page = observedPage();
+  const reply = page.add("x".repeat(5000));
+  for (const size of [10_000, 15_000, 20_001]) {
+    page.advance(500);
+    page.set(reply, "x".repeat(size));
+  }
+  page.advance(10_000);
+  assert.deepEqual(page.sent, []);
+});
+
+test("two messages settle independently", () => {
+  const page = observedPage();
+  const first = page.add("message A");
+  page.advance(2000);
+  const second = page.add("message B starts");
+  page.advance(1000);
+  assert.deepEqual(page.texts(), ["message A"]);
+  page.set(second, "message B, longer");
+  page.advance(2999);
+  assert.deepEqual(page.texts(), ["message A"]);
+  page.advance(1);
+  assert.deepEqual(page.texts(), ["message A", "message B, longer"]);
+  assert.equal(first.innerText, "message A");
 });

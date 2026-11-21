@@ -44,15 +44,19 @@ const manifest = JSON.parse(readFileSync(join(ROOT, "manifest.json"), "utf8"));
 
 test("the registered observer executes as a classic script and sends only new turns", () => {
   const messages = [];
-  const turns = ["earlier question", "earlier answer"];
+  const turns = ["earlier question", "earlier answer"].map((innerText) => ({ innerText }));
+  const timers = [];
   let onMutation;
   const context = createContext({
     chrome: { runtime: { sendMessage: (message) => messages.push(message) } },
     document: {
       title: "Chat",
       body: {},
-      querySelectorAll: () => turns.map((innerText) => ({ innerText })),
+      querySelectorAll: () => [...turns],
     },
+    window: { addEventListener() {} },
+    setTimeout: (fn) => timers.push(fn),
+    clearTimeout: () => {},
     location: { hostname: "chatgpt.com", href: "https://chatgpt.com/c/example" },
     MutationObserver: class {
       constructor(callback) {
@@ -67,9 +71,12 @@ test("the registered observer executes as a classic script and sends only new tu
 
   assert.equal(messages.length, 0);
   assert.equal(typeof onMutation, "function");
-  turns.push("  ", "new answer", "next question");
+  turns.push(...["  ", "new answer", "next question"].map((innerText) => ({ innerText })));
   onMutation();
   onMutation();
+  // A turn is sent once its text has held still, not on the mutation.
+  assert.equal(messages.length, 0);
+  for (const fire of timers.splice(0)) fire();
   assert.deepEqual(JSON.parse(JSON.stringify(messages)), [{
     type: "darkmem.auto_capture.turn",
     content: "new answer",
