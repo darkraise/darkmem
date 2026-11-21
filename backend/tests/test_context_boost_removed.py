@@ -86,8 +86,26 @@ class _TextEmbedder:
         yield "answer"
 
 
+FILLERS = ("homelab", "staging", "rollout", "ticket", "followup", "audit", "draft")
+# One word per hash bucket of `_vector` (alpha -> 0, mike -> 1, ... papa -> 7),
+# so every row shares a bucket with every query: an orthogonal row sits at
+# cosine distance exactly 1.0, and two of them tie.
+COVER = ("alpha", "mike", "bravo", "india", "charlie", "echo", "foxtrot", "papa")
+COVER_STEPS = (2, 3, 5, 7, 11, 13, 17, 19)
+
+
 def _content(n: int) -> str:
-    return f"{TOPICS[n % len(TOPICS)]} {DETAILS[n % len(DETAILS)]}"
+    """Every row differs in topic repetition and filler, so no two rows tie on
+    either arm for any query (asserted before the doors run)."""
+    topic = TOPICS[n % len(TOPICS)]
+    filler = " ".join([FILLERS[n % len(FILLERS)]] * (1 + n % 3))
+    return (
+        " ".join([topic] * (1 + n // len(TOPICS)))
+        + f" {DETAILS[n % len(DETAILS)]} {filler} "
+        + " ".join(
+            word for word, step in zip(COVER, COVER_STEPS) for _ in range(1 + (n * step) % 7)
+        )
+    )
 
 
 async def _seed_corpus(session) -> None:
@@ -164,29 +182,29 @@ async def _knowledge(mcp_server, query: str) -> dict:
 
 EXPECTED_ORDER: dict[str, dict[str, list[int]]] = {
     "pgbouncer connection pooling": {
-        "memory_search": [30, 18, 12, 24, 6, 10, 15, 28, 3, 25, 20, 8, 13, 5, 23, 9, 2, 16, 4, 22],
-        "chat": [30, 18, 12, 24, 6, 10, 15, 28, 3, 25],
-        "knowledge_search": [30, 18, 12, 24, 6, 10, 15, 28, 3, 25, 20, 8, 13, 5, 23, 9, 2, 16, 4, 22],
+        "memory_search": [24, 30, 12, 18, 6, 10, 3, 5, 28, 19, 26, 22, 20, 13, 27, 15, 8, 16, 21, 2],
+        "chat": [24, 30, 12, 18, 6, 10, 3, 5, 28, 19],
+        "knowledge_search": [24, 30, 12, 18, 6, 10, 3, 5, 28, 19, 26, 22, 20, 13, 27, 15, 8, 16, 21, 2],
     },
     "vacuum bloat on postgres": {
-        "memory_search": [1, 19, 13, 25, 7, 11, 8, 23, 29, 26, 2, 14, 6, 21, 20, 5, 24, 9, 16, 3],
-        "chat": [1, 19, 13, 25, 7, 11, 8, 23, 29, 26],
-        "knowledge_search": [1, 19, 13, 25, 7, 11, 8, 23, 29, 26, 2, 14, 6, 21, 20, 5, 24, 9, 16, 3],
+        "memory_search": [25, 7, 1, 13, 19, 2, 11, 23, 4, 9, 16, 8, 18, 30, 14, 26, 29, 20, 6, 15],
+        "chat": [25, 7, 1, 13, 19, 2, 11, 23, 4, 9],
+        "knowledge_search": [25, 7, 1, 13, 19, 2, 11, 23, 4, 9, 16, 8, 18, 30, 14, 26, 29, 20, 6, 15],
     },
     "embedding model rotation runbook": {
-        "memory_search": [3, 23, 7, 27, 17, 5, 12, 29, 9, 11, 22, 13, 15, 21, 25, 19, 2, 28, 1, 18],
-        "chat": [3, 23, 7, 27, 17, 5, 12, 29, 9, 11],
-        "knowledge_search": [3, 23, 7, 27, 17, 5, 12, 29, 9, 11, 22, 13, 15, 21, 25, 19, 2, 28, 1, 18],
+        "memory_search": [3, 29, 15, 1, 27, 22, 17, 11, 23, 19, 21, 7, 5, 13, 25, 4, 9, 8, 12, 18],
+        "chat": [3, 29, 15, 1, 27, 22, 17, 11, 23, 19],
+        "knowledge_search": [3, 29, 15, 1, 27, 22, 17, 11, 23, 19, 21, 7, 5, 13, 25, 4, 9, 8, 12, 18],
     },
     "backup retention measured": {
-        "memory_search": [16, 4, 19, 24, 9, 28, 29, 14, 10, 1, 6, 13, 22, 3, 21, 18, 8, 25, 23, 12],
-        "chat": [16, 4, 19, 24, 9, 28, 29, 14, 10, 1],
-        "knowledge_search": [16, 4, 19, 24, 9, 28, 29, 14, 10, 1, 6, 13, 22, 3, 21, 18, 8, 25, 23, 12],
+        "memory_search": [16, 28, 10, 6, 13, 3, 24, 9, 4, 19, 30, 22, 27, 2, 17, 20, 7, 21, 18, 5],
+        "chat": [16, 28, 10, 6, 13, 3, 24, 9, 4, 19],
+        "knowledge_search": [16, 28, 10, 6, 13, 3, 24, 9, 4, 19, 30, 22, 27, 2, 17, 20, 7, 21, 18, 5],
     },
     "session revocation regression": {
-        "memory_search": [29, 11, 17, 5, 23, 7, 2, 1, 21, 27, 19, 9, 26, 14, 25, 12, 16, 6, 13, 15],
-        "chat": [29, 11, 17, 5, 23, 7, 2, 1, 21, 27],
-        "knowledge_search": [29, 11, 17, 5, 23, 7, 2, 1, 21, 27, 19, 9, 26, 14, 25, 12, 16, 6, 13, 15],
+        "memory_search": [29, 23, 17, 7, 9, 2, 1, 11, 21, 15, 8, 16, 25, 22, 3, 27, 14, 19, 13, 26],
+        "chat": [29, 23, 17, 7, 9, 2, 1, 11, 21, 15],
+        "knowledge_search": [29, 23, 17, 7, 9, 2, 1, 11, 21, 15, 8, 16, 25, 22, 3, 27, 14, 19, 13, 26],
     },
 }
 
@@ -224,8 +242,25 @@ async def test_stored_keys_are_not_served(session, client, auth_headers):
         assert refused.status_code == 422, (patch, refused.text)
 
 
+async def _assert_no_ties(session, query: str) -> None:
+    """Neither arm may tie: the doors break no ties, so a tied pair would
+    come back in whatever order the scan produced."""
+    ranks = (await session.execute(text(
+        "SELECT ts_rank(search_vector, plainto_tsquery('english', :q)) FROM memories "
+        "WHERE project = :p AND search_vector @@ plainto_tsquery('english', :q)"
+    ), {"q": query, "p": PROJECT})).scalars().all()
+    distances = (await session.execute(text(
+        f"SELECT embedding <=> CAST(:vec AS vector) FROM {child_table('memory_embeddings', FINGERPRINT)}"
+    ), {"vec": str(_vector(query))})).scalars().all()
+    assert len(distances) == 30
+    assert len(set(ranks)) == len(ranks), (query, sorted(ranks))
+    assert len(set(distances)) == len(distances), (query, sorted(distances))
+
+
 async def test_retrieval_order_is_unchanged(session, doors):
     await _seed_corpus(session)
+    for query in QUERIES:
+        await _assert_no_ties(session, query)
 
     observed: dict[str, dict[str, list[int]]] = {}
     for query in QUERIES:
