@@ -2075,3 +2075,61 @@ async def test_a18_a_hard_failed_replay_never_answers_201_with_an_unprocessed_me
         app.state.pipeline = None
     assert r.status_code == 202, r.text
     assert r.json()["status"] == "accepted"
+
+
+# ------------------------------------------------------------------ A13
+
+from tests.test_chat_retrieval_parity import (  # noqa: E402,F401
+    FLIPPED_FLAGS as _QA13_FLAGS,
+    PROJECT as _QA13_PROJECT,
+    QUERY as _QA13_QUERY,
+    RERANK_ORDER as _QA13_RERANK,
+    _FakeLLM as _QA13_LLM,
+    _chat_ids,
+    _flag_corpus,
+    _knowledge_ids,
+    _search_surface_ids,
+)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("case", ["hybrid_off", "reranker_on", "confidence_gamma"])
+async def test_a13_chat_knowledge_search_and_memory_search_return_one_memory_order_with_each_flag_flipped(
+    session, client, auth_headers, monkeypatch, case
+):
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+
+    from app.api.mcp import server as mcp_server
+    from app.main import app
+    from app.models.config import Config
+    from app.services.reranker import RerankerService
+
+    notes = await _flag_corpus(session)
+
+    async def fixed_rerank(self, query, documents, top_k=None, **_kw):
+        key = lambda row: _QA13_RERANK.index(notes[str(row.get("memory_id") or row.get("id"))])
+        ranked = sorted(documents, key=key)
+        return ranked[:top_k] if top_k else ranked
+
+    @asynccontextmanager
+    async def same_session():
+        yield session
+
+    monkeypatch.setattr(RerankerService, "rerank", fixed_rerank)
+    monkeypatch.setattr(mcp_server, "async_session_factory", same_session)
+    monkeypatch.setattr(mcp_server, "_pipeline", SimpleNamespace(llm=_QA13_LLM()))
+    monkeypatch.setattr(app.state, "llm", _QA13_LLM(), raising=False)
+
+    before = await _search_surface_ids(session)
+    session.add(Config(key="feature_flags", value=_QA13_FLAGS[case]))
+    await session.flush()
+
+    memory_search = await _search_surface_ids(session)
+    chat = await _chat_ids(session)
+    rest, knowledge_tool = await _knowledge_ids(client, auth_headers)
+
+    assert memory_search != before, f"{case} must change the order on this corpus"
+    assert chat == memory_search
+    assert rest == memory_search
+    assert knowledge_tool == memory_search
