@@ -1509,3 +1509,48 @@ async def test_a25_a_block_edit_whose_embed_fails_answers_success_with_zero_embe
     body = r.json()
     assert body["blocks_embedded"] == 0
     assert await vector_count() == 0, "the edited block still has the vector of its old text"
+
+
+# ------------------------------------------------------------------ A28
+
+
+@pytest.mark.asyncio
+async def test_a28_unchanged_repush_makes_no_embed_call_and_a_refile_embeds_only_changed_blocks(
+    client, auth_headers, session
+):
+    from app.main import app
+    from app.services.embedder_registry import embedder_registry
+    from tests.test_document_door import FINGERPRINT, StubEmbedder
+
+    class Counting(StubEmbedder):
+        def __init__(self):
+            super().__init__()
+            self.single = 0
+
+        async def embed(self, value):
+            self.single += 1
+            return await super().embed(value)
+
+    embedder_registry.forget(FINGERPRINT)
+    llm = Counting()
+    previous = getattr(app.state, "llm", None)
+    app.state.llm = llm
+    try:
+        v1 = "# Title\n\nFirst paragraph here.\n\nSecond paragraph here.\n"
+        await _put_doc(client, auth_headers, v1, uri="qa28/a.md")
+        embedded_first = sorted(t for batch in llm.batches for t in batch)
+        assert embedded_first, "the first filing embedded nothing"
+
+        before_batches, before_single = len(llm.batches), llm.single
+        await _put_doc(client, auth_headers, v1, uri="qa28/a.md")
+        assert len(llm.batches) == before_batches
+        assert llm.single == before_single, "an unchanged re-push spent an embed call"
+
+        v2 = "# Title\n\nFirst paragraph here.\n\nSecond paragraph CHANGED.\n"
+        await _put_doc(client, auth_headers, v2, uri="qa28/a.md")
+        new_texts = [t for batch in llm.batches[before_batches:] for t in batch]
+        assert new_texts == ["Second paragraph CHANGED."] or all("CHANGED" in t for t in new_texts), new_texts
+        assert new_texts
+    finally:
+        app.state.llm = previous
+        embedder_registry.forget(FINGERPRINT)
