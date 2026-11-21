@@ -1308,3 +1308,150 @@ async def test_a30_a_job_whose_only_run_is_older_than_5000_newer_runs_still_show
         async with factory() as s:
             await s.execute(delete(JobRun).where(JobRun.job_key.in_([old_key, other])))
             await s.commit()
+
+
+# ------------------------------------------------------------------ A29
+
+
+async def _asgi(app, method, path, body, headers):
+    """Call the ASGI app directly, running `on_start` when the response head is sent."""
+    raw = json.dumps(body).encode()
+    scope = {
+        "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1", "method": method, "path": path,
+        "raw_path": path.encode(), "query_string": b"", "scheme": "http", "server": ("test", 80),
+        "client": ("127.0.0.1", 1234), "root_path": "",
+        "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(raw)).encode())]
+        + [(k.lower().encode(), v.encode()) for k, v in headers.items()],
+    }
+    sent_body = False
+    events = []
+
+    async def receive():
+        nonlocal sent_body
+        if not sent_body:
+            sent_body = True
+            return {"type": "http.request", "body": raw, "more_body": False}
+        await asyncio.sleep(3600)
+
+    status = {}
+
+    async def send(message):
+        if message["type"] == "http.response.start":
+            status["code"] = message["status"]
+            await _asgi.on_start()
+        events.append(message["type"])
+
+    await app(scope, receive, send)
+    return status["code"]
+
+
+@pytest.mark.asyncio
+async def test_a29_change_password_and_a_config_save_are_durable_before_the_response_is_sent(setup_database):
+    from sqlalchemy import delete, select
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from app.api.auth import create_access_token, hash_password, verify_password
+    from app.main import app
+    from app.models.config import Config
+    from tests.conftest import test_engine
+
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    async with factory() as s:
+        before = (await s.execute(select(Config).where(Config.key == "admin_password_hash"))).scalar_one_or_none()
+        saved_before = dict(before.value) if before else None
+        flags_before = (await s.execute(select(Config).where(Config.key == "feature_flags"))).scalar_one_or_none()
+        flags_saved = dict(flags_before.value) if flags_before else None
+        if before is None:
+            s.add(Config(key="admin_password_hash", value={"hash": hash_password("old-pass-123456")}))
+        else:
+            before.value = {"hash": hash_password("old-pass-123456")}
+        await s.commit()
+    headers = {"Authorization": f"Bearer {create_access_token({'sub': 'admin'})}"}
+    try:
+        seen = {}
+
+        async def probe_password():
+            async with factory() as s:
+                row = (await s.execute(select(Config).where(Config.key == "admin_password_hash"))).scalar_one()
+            seen["pw"] = verify_password("new-pass-123456", row.value["hash"])
+
+        _asgi.on_start = probe_password
+        code = await _asgi(app, "POST", "/api/v1/auth/change-password",
+                           {"current_password": "old-pass-123456", "new_password": "new-pass-123456"}, headers)
+        assert code == 200
+        assert seen["pw"] is True, "the new password was not committed when the response head was sent"
+
+        headers = {"Authorization": f"Bearer {create_access_token({'sub': 'admin'})}"}
+
+        async def probe_flags():
+            async with factory() as s:
+                row = (await s.execute(select(Config).where(Config.key == "feature_flags"))).scalar_one_or_none()
+            seen["flag"] = row.value.get("confidence_rank_gamma") if row else None
+
+        _asgi.on_start = probe_flags
+        code = await _asgi(app, "PUT", "/api/v1/config/feature-flags", {"confidence_rank_gamma": 0.123}, headers)
+        assert code == 200
+        assert seen["flag"] == 0.123, "the config save was not committed when the response head was sent"
+    finally:
+        async with factory() as s:
+            await s.execute(delete(Config).where(Config.key.in_(["admin_password_hash", "password_changed_at", "feature_flags"])))
+            if saved_before is not None:
+                s.add(Config(key="admin_password_hash", value=saved_before))
+            if flags_saved is not None:
+                s.add(Config(key="feature_flags", value=flags_saved))
+            await s.commit()
+
+
+@pytest.mark.asyncio
+async def test_a29_two_concurrent_saves_of_one_config_row_both_survive(setup_database):
+    from sqlalchemy import delete, select
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from app.models.config import Config
+    from app.services.config import patch_config_row
+    from tests.conftest import test_engine
+
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    key = f"qa29-{uuid.uuid4().hex[:6]}"
+    try:
+        async def save(name):
+            async with factory() as s:
+                await patch_config_row(s, key, lambda cur: {**cur, name: True})
+
+        await asyncio.wait_for(asyncio.gather(*(save(f"k{i}") for i in range(8))), 20)
+        async with factory() as s:
+            row = (await s.execute(select(Config).where(Config.key == key))).scalar_one()
+        assert set(row.value) == {f"k{i}" for i in range(8)}
+    finally:
+        async with factory() as s:
+            await s.execute(delete(Config).where(Config.key == key))
+            await s.commit()
+
+
+def test_a29_only_the_two_streaming_routes_use_request_scoped_twins_and_no_other_route_does():
+    from fastapi.routing import APIRoute
+    from starlette.responses import StreamingResponse
+    import inspect
+
+    from app.main import app
+
+    def walk(dep):
+        for d in dep.dependencies:
+            yield d.call
+            yield from walk(d)
+
+    scoped = set()
+    for route in app.routes:
+        if not isinstance(route, APIRoute):
+            continue
+        names = {getattr(c, "__name__", "") for c in walk(route.dependant)} | {getattr(route.endpoint, "__name__", "")}
+        if any(n.endswith("_for_stream") for n in names if n != getattr(route.endpoint, "__name__", "")):
+            for m in route.methods:
+                scoped.add((m, route.path))
+    assert scoped == {("POST", "/api/v1/chat/completions"), ("POST", "/api/v1/analytics/reprocess/stream")}
+    # every handler annotated as returning a streaming body is one of the two
+    for route in app.routes:
+        if isinstance(route, APIRoute):
+            ann = inspect.signature(route.endpoint).return_annotation
+            if ann is StreamingResponse or "StreamingResponse" in str(ann) or route.response_class is StreamingResponse:
+                assert ("POST", route.path) in scoped, route.path
