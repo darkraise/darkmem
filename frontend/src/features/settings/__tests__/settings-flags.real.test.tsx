@@ -396,11 +396,16 @@ describe("useFlagsTabBinding (DEMO off — real /config/feature-flags)", () => {
     const { result } = renderHook(() => useFlagsTabBinding(), { wrapper })
     await waitFor(() => expect(result.current.isLoading).toBe(false))
 
-    let saved: Promise<void> = Promise.resolve()
+    // Observed from the start, as the dialog observes it: a handler attached
+    // only after the waits below leaves the rejection unhandled meanwhile.
+    let outcome: Promise<Error | null> = Promise.resolve(null)
     act(() => {
-      saved = result.current.saveFlags("classification", {
-        classification_mode: "expanded",
-      })
+      outcome = result.current
+        .saveFlags("classification", { classification_mode: "expanded" })
+        .then(
+          () => null,
+          (error: Error) => error,
+        )
     })
     await waitFor(() =>
       expect(result.current.isSaving("classification")).toBe(true),
@@ -417,7 +422,7 @@ describe("useFlagsTabBinding (DEMO off — real /config/feature-flags)", () => {
     )
     // The refusal goes back to the dialog that asked, which stays open to
     // show it; nothing announces a save that did not land.
-    await expect(saved).rejects.toThrow("boom")
+    expect((await outcome)?.message).toBe("boom")
     expect(toast.success).not.toHaveBeenCalled()
   })
 
