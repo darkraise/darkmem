@@ -1708,10 +1708,10 @@ async def test_a20_a_new_refine_changes_the_summary_and_never_the_tags(committin
     assert verdict.summary == "a crisp summary"
     assert not hasattr(verdict, "tags") or not getattr(verdict, "tags")
 
-    memory, _event = await produce_refine(committing, project, cycle_id=str(new_id()), prior_tags=("t213-original", "project/keep"))
+    memory, _event = await produce_refine(committing, project, cycle_id=str(new_id()), prior_tags=("t213-original", "project/t213-keep"))
     row = await memory_row(committing, memory)
     assert row["summary"] == "a refined summary"
-    assert sorted(row["tag_names"]) == ["project/keep", "t213-original"]
+    assert sorted(row["tag_names"]) == ["project/t213-keep", "t213-original"]
 
 
 @pytest.mark.asyncio
@@ -1719,14 +1719,14 @@ async def test_a20_undoing_a_refine_journalled_with_tags_still_restores_them(com
     from app.utils.ids import new_id
 
     memory, event_id = await produce_refine(
-        committing, project, cycle_id=str(new_id()), tags=("t213-changed",), prior_tags=("t213-original", "project/keep")
+        committing, project, cycle_id=str(new_id()), tags=("t213-changed",), prior_tags=("t213-original", "project/t213-keep")
     )
     changed = await memory_row(committing, memory)
     assert sorted(changed["tag_names"]) == ["t213-changed"]
     await undo_ids(committing, event_id)
     row = await memory_row(committing, memory)
     assert row["summary"] == "the old summary"
-    assert sorted(row["tag_names"]) == ["project/keep", "t213-original"]
+    assert sorted(row["tag_names"]) == ["project/t213-keep", "t213-original"]
 
 
 # ------------------------------------------------------------------ A21
@@ -1949,6 +1949,9 @@ async def test_a26_an_upload_in_progress_does_not_block_a_page_write_in_another_
         async with factory() as s:
             from sqlalchemy import text
 
+            await s.execute(
+                text("DELETE FROM page_attachments WHERE project IN (:a, :b)"), {"a": proj_a, "b": proj_b}
+            )
             await s.execute(text("DELETE FROM pages WHERE project IN (:a, :b)"), {"a": proj_a, "b": proj_b})
             if saved is None:
                 await s.execute(delete(Config).where(Config.key == "admin_password_hash"))
