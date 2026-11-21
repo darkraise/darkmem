@@ -194,7 +194,7 @@
 | 187 | F3-9g: Notes does a full-document conversion on every keystroke | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 64 contracts | done | 8f788aa |
 | 188 | F3-9h: the facts list's filter options cover only the pages already loaded | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 62/63 contracts | done | 7a312ac |
 | 189 | F3 mirror note: no test pins the TypeScript copy of block_verbs.py's refusals to the Python one | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 64 contracts | done | 8f788aa |
-| 190 | P1-1 (high): the extension's auto-capture stores every partial state of a streaming reply as its own memory | docs/dforge/plans/2026-11-20-audit-remaining.md | A5 (Task 65) | doing | - |
+| 190 | P1-1 (high): the extension's auto-capture stores every partial state of a streaming reply as its own memory | docs/dforge/plans/2026-11-20-audit-remaining.md | A5 (Task 65) | done | 58b1518 |
 | 191 | P1-2 (high): pull requests can run code on the self-hosted LAN runner; check the fork-approval setting | docs/dforge/plans/2026-11-20-audit-remaining.md | A6 (Task 4) | done | f0b79c0 |
 | 192 | P1-3: a cancelled tag job still lets github-release create the tag on master's tip | docs/dforge/plans/2026-11-20-audit-remaining.md | A49 (Task 66) | doing | - |
 | 193 | P1-4: numpy is imported but not declared | docs/dforge/plans/2026-11-20-audit-remaining.md | A50 (Task 66) | doing | - |
