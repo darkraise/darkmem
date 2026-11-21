@@ -29,7 +29,9 @@ from app.services.embedder_registry import (
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 
-_WORKER_URL = make_url(os.environ["TEST_DATABASE_URL"])
+# conftest pins DATABASE_URL to this worker's database on every run; it
+# exports TEST_DATABASE_URL only under xdist.
+_WORKER_URL = make_url(os.environ["DATABASE_URL"])
 REV_DB = f"{_WORKER_URL.database}_rev"
 REV_URL = _WORKER_URL.set(database=REV_DB).render_as_string(hide_password=False)
 _ASYNCPG = _WORKER_URL.set(drivername="postgresql")
