@@ -5,7 +5,7 @@ description = "Centralized memory system for AI agents"
 requires-python = ">=3.12"
 license = "Apache-2.0"
 dependencies = [
-    "fastapi>=0.115.0",
+    "fastapi>=0.121.0",
     "uvicorn[standard]>=0.34.0",
     "sqlalchemy[asyncio]>=2.0.0",
     "asyncpg>=0.30.0",
