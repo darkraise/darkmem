@@ -170,6 +170,19 @@ async def test_file_with_a_failed_embed_is_embedded_by_the_next_run(
     assert await _chunk_files(session, repo.id, embedder.fingerprint) == {"a.py", "b.py"}
 
 
+async def test_a_skipped_gap_scan_is_named_in_the_run_errors(session, tmp_path, embedder):
+    repo = await _repo(session, tmp_path, {"a.py": "def alpha():\n    return 1\n"})
+    embedder.fail_marker = "alpha"
+
+    async def probe_fails(_text):
+        raise RuntimeError("embedder unreachable")
+
+    embedder.embed = probe_fails
+    result = await _index(session, repo, embedder)
+
+    assert any(e.startswith("embed_gap_scan:") for e in result["errors"])
+
+
 async def test_unchanged_dependent_is_not_reembedded(session, tmp_path, embedder):
     repo = await _repo(session, tmp_path, {
         "util.py": "def helper():\n    return 'UTIL_ONE'\n",

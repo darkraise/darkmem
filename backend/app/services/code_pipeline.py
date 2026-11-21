@@ -2065,6 +2065,7 @@ class CodePipeline:
                 _vector, fingerprint = await self.llm.embed(_FINGERPRINT_PROBE_TEXT)
             except Exception as exc:
                 logger.warning("Embedding gap scan skipped: %s", exc)
+                self._stats["errors"].append(f"embed_gap_scan:{exc}")
                 return []
         try:
             parse_fingerprint(fingerprint)
