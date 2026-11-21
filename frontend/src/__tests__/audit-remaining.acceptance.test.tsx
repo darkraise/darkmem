@@ -220,3 +220,64 @@ describe("A4: memory graph 2D builds no 3D data", () => {
     }
   })
 })
+
+
+import { FailedCapturesSection } from "@/features/activity/components/failed-captures-section"
+import type { BufferRow } from "@/hooks/api/use-memory-buffer-api"
+
+describe("A55: discarding a failed capture whose memory exists", () => {
+  const ROW: BufferRow = {
+    id: "0190f000-0000-7000-8000-00000000b001",
+    memory_id: "0190f000-0000-7000-8000-0000abcd1234",
+    memory_exists: true,
+    project: "darkmem",
+    source: "api",
+    status: "error",
+    is_stale: false,
+    attempts: 5,
+    max_attempts: 5,
+    last_error: "boom",
+    created_at: "2026-11-20T10:00:00Z",
+    claimed_at: null,
+    claimed_by: null,
+    token_size: null,
+    content_preview: "payments worker keeps restarting",
+    content_length: 30,
+  }
+
+  function mount(onDiscard: () => Promise<unknown>) {
+    render(
+      <FailedCapturesSection
+        items={[ROW]}
+        total={1}
+        isLoading={false}
+        isError={false}
+        onRequeue={vi.fn(() => Promise.resolve())}
+        onDiscard={onDiscard}
+      />,
+    )
+  }
+
+  it("A55: opening the discard asks first, names the memory, and cancel deletes nothing", async () => {
+    const onDiscard = vi.fn(() => Promise.resolve())
+    const user = userEvent.setup()
+    mount(onDiscard)
+    await user.click(screen.getByRole("button", { name: /discard/i }))
+    expect(onDiscard).not.toHaveBeenCalled()
+    const dialog = await screen.findByRole("alertdialog")
+    expect(dialog.textContent).toContain("abcd1234")
+    expect(dialog.textContent?.toLowerCase()).toContain("memory")
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }))
+    expect(onDiscard).not.toHaveBeenCalled()
+  })
+
+  it("A55: confirming discards the capture", async () => {
+    const onDiscard = vi.fn(() => Promise.resolve())
+    const user = userEvent.setup()
+    mount(onDiscard)
+    await user.click(screen.getByRole("button", { name: /discard/i }))
+    const dialog = await screen.findByRole("alertdialog")
+    await user.click(within(dialog).getByRole("button", { name: "Discard" }))
+    await vi.waitFor(() => expect(onDiscard).toHaveBeenCalledWith(ROW.id))
+  })
+})
