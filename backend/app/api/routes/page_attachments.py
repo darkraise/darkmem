@@ -73,8 +73,12 @@ async def upload_attachment_route(
     declared = request.headers.get("content-length")
     if declared is not None and declared.isdigit() and int(declared) > settings.attachment_max_bytes:
         raise _too_large()
-    # Authentication read on this session; ending its transaction here means
-    # a slow body holds no transaction and no lock while it streams.
+    # A missing page is refused before the body is read. The read is repeated
+    # after the stream, since the page can be trashed while it streams.
+    if (await session.execute(_LIVE_PAGE_PROJECT, {"id": str(page_id)})).scalar_one_or_none() is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"no live page with id {page_id}")
+    # Ending the auth and page reads' transaction here means a slow body holds
+    # no transaction and no lock while it streams.
     await session.commit()
     try:
         staged = await stage_upload(

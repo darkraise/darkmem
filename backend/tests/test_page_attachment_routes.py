@@ -99,6 +99,22 @@ async def test_upload_to_an_unknown_page_is_404(client, auth_headers, root):
     assert response.status_code == 404
 
 
+async def test_upload_to_an_unknown_page_reads_no_body(client, auth_headers, root, monkeypatch):
+    from app.api.routes import page_attachments
+
+    staged = []
+
+    async def stage_upload(*args, **kwargs):
+        staged.append(args)
+        raise AssertionError("the body was read for a page that does not exist")
+
+    monkeypatch.setattr(page_attachments, "stage_upload", stage_upload)
+    response = await _upload(client, auth_headers, str(uuid4()), b"abc")
+
+    assert response.status_code == 404
+    assert staged == []
+
+
 async def test_upload_to_a_trashed_page_is_404(client, auth_headers, root, page, session):
     await session.execute(text(f"UPDATE pages SET deleted_at = now() WHERE id = '{PAGE}'"))
     response = await _upload(client, auth_headers, page, b"abc")
