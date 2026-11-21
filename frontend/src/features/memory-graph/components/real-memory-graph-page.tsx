@@ -19,6 +19,7 @@ import {
   transformToGraphData,
   DEFAULT_SIZE_MODE,
   type FilterState,
+  type GraphData3D,
 } from "@/features/graph/lib/graph-utils"
 import {
   DEFAULT_COLOR_MODE,
@@ -41,6 +42,8 @@ import {
 } from "@/features/graph/lib/panel-resize"
 
 type ViewMode = "2d" | "3d"
+
+const EMPTY_3D: GraphData3D = { nodes: [], links: [] }
 
 /**
  * The real-backend counterpart of the demo `MemoryGraphExplorer` (Ruling 5's
@@ -180,7 +183,7 @@ export function RealMemoryGraphPage() {
 
   const graphData3D = useMemo(
     () => {
-      if (!data) return { nodes: [], links: [] }
+      if (!data || viewMode !== "3d") return EMPTY_3D
       const graphFilters: FilterState = {
         searchText: filters.debouncedSearchText,
         selectedTags: filters.selectedTags,
@@ -200,11 +203,12 @@ export function RealMemoryGraphPage() {
         palette,
       )
     },
-    // palette intentionally excluded from deps: the renderer recolors node
-    // materials in place so a theme flip preserves 3D positions. colorMode (a dep)
-    // still recomputes with the current palette.
+    // palette and colorMode intentionally excluded from deps: the renderer
+    // recolours node materials in place, so neither a theme flip nor a colour
+    // mode change re-seeds the 3D layout.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
+      viewMode,
       data,
       layout.sizeMode,
       filters.debouncedSearchText,
@@ -213,7 +217,6 @@ export function RealMemoryGraphPage() {
       filters.selectedSources,
       filters.selectedClusters,
       selectedEntityTypes,
-      colorMode,
       entityLayerEnabled,
       filters.filteredEntities,
       filters.filteredEntityRelations,
@@ -285,6 +288,7 @@ export function RealMemoryGraphPage() {
                   height={dimensions.height}
                   selectedNodeId={selection.selectedNodeId}
                   onNodeSelect={selection.handleNodeSelect}
+                  onEntitySelect={selection.handleEntitySelect}
                   onReady={handleGraphReady}
                   spacing={layout.spacing3D}
                   colorMode={colorMode}

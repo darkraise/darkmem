@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { act, render, screen } from "@testing-library/react"
+import { act, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
@@ -24,7 +24,13 @@ vi.mock("@/hooks/api", async (importOriginal) => ({
   useUnifiedGraph: (...args: unknown[]) => mockUseUnifiedGraph(...args),
 }))
 
+vi.mock("@/features/graph/lib/graph-utils", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/features/graph/lib/graph-utils")>()
+  return { ...actual, transformToGraphData: vi.fn(actual.transformToGraphData) }
+})
+
 import { RealMemoryGraphPage } from "../real-memory-graph-page"
+import { transformToGraphData } from "@/features/graph/lib/graph-utils"
 import { useGraphPrefs } from "@/features/graph/lib/graph-prefs"
 
 const ONE_MEMORY: UnifiedGraphData = {
@@ -167,5 +173,37 @@ describe("RealMemoryGraphPage: filter panel", () => {
 
     await user.click(screen.getByRole("button", { name: "Filters" }))
     expect(contentFilter.closest("[inert]")).toBeNull()
+  })
+})
+
+describe("RealMemoryGraphPage: 3D data", () => {
+  beforeEach(() => {
+    mockUseUnifiedGraph.mockReset()
+    vi.mocked(transformToGraphData).mockClear()
+  })
+
+  it("builds no 3D data in the 2D view", () => {
+    vi.useFakeTimers()
+    try {
+      mockUseUnifiedGraph.mockReturnValue({
+        data: { ...ONE_MEMORY, memories: [{ ...ONE_MEMORY.memories[0]!, tags: ["a"] }] },
+        isLoading: false,
+      })
+      render(<RealMemoryGraphPage />, { wrapper })
+      const search = screen.getByPlaceholderText("Filter by content…")
+      for (const value of ["h", "he", "hel"]) {
+        fireEvent.change(search, { target: { value } })
+        act(() => {
+          vi.advanceTimersByTime(1100)
+        })
+      }
+      expect(transformToGraphData).not.toHaveBeenCalled()
+
+      fireEvent.click(screen.getByRole("button", { name: /toggle graph settings/i }))
+      fireEvent.click(screen.getByRole("radio", { name: "3D" }))
+      expect(transformToGraphData).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

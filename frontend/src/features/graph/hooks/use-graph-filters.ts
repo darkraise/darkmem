@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react"
 import { useDebouncedValue } from "./use-debounced-value"
+import { matchesSearchText } from "@/features/graph/lib/graph-utils"
 import type { UnifiedGraphData, GraphEntity, EntityRelation } from "@/hooks/api"
 
 // Counted against the memories actually on screen, not the entity's whole
@@ -65,13 +66,7 @@ export function useGraphFilters(
         return false
       if (selectedClusters.size > 0 && !selectedClusters.has(m.cluster))
         return false
-      if (
-        debouncedSearchText.trim() &&
-        !m.content
-          .toLowerCase()
-          .includes(debouncedSearchText.trim().toLowerCase())
-      )
-        return false
+      if (!matchesSearchText(m, debouncedSearchText)) return false
       return true
     })
   }, [

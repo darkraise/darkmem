@@ -34,6 +34,8 @@ export interface Node3D {
   entityName?: string
   entityType?: string
   entityMemoryIds?: string[]
+  /** Where the cluster force pulls this node; set for clustered memories. */
+  anchor?: { x: number; y: number; z: number }
   x?: number
   y?: number
   z?: number
@@ -75,10 +77,23 @@ export function computeNodeVal(
   return 1 + Math.min(5, Math.log1p(connectionCount) * 1.5)
 }
 
+/** The node carries only a preview of its content, so the text filter reads
+ *  the preview and the tags. */
+export function matchesSearchText(
+  memory: Pick<UnifiedMemory, "content" | "tags">,
+  searchText: string,
+): boolean {
+  const term = searchText.trim().toLowerCase()
+  if (!term) return true
+  return (
+    memory.content.toLowerCase().includes(term) ||
+    memory.tags.some((t) => t.toLowerCase().includes(term))
+  )
+}
+
 function matchesFilter(memory: UnifiedMemory, filters: FilterState): boolean {
   if (filters.searchText) {
-    const term = filters.searchText.toLowerCase()
-    if (!memory.content.toLowerCase().includes(term)) return false
+    if (!matchesSearchText(memory, filters.searchText)) return false
   }
   if (filters.selectedTags.size > 0) {
     if (!memory.tags.some((t) => filters.selectedTags.has(t))) return false
@@ -144,43 +159,11 @@ export function transformToGraphData(
     }
   }
 
-  const existingEdges = new Set(links.map((l) => `${l.source}-${l.target}`))
-  for (const [, members] of clusterMembers) {
-    for (let i = 0; i < members.length; i++) {
-      for (let j = i + 1; j < members.length; j++) {
-        // loop bounds guarantee both indices are within range
-        const a = members[i]!
-        const b = members[j]!
-        const key1 = `${a}-${b}`
-        const key2 = `${b}-${a}`
-        if (!existingEdges.has(key1) && !existingEdges.has(key2)) {
-          links.push({
-            source: a,
-            target: b,
-            score: 0,
-            hidden: true,
-          })
-        }
-      }
-    }
-  }
-
-  const clusterIdList = [...clusterMembers.keys()]
-  for (let i = 0; i < clusterIdList.length; i++) {
-    for (let j = i + 1; j < clusterIdList.length; j++) {
-      // indices come from the key list; loop bounds keep them in range
-      const rep1 = clusterMembers.get(clusterIdList[i]!)?.[0]
-      const rep2 = clusterMembers.get(clusterIdList[j]!)?.[0]
-      if (rep1 === undefined || rep2 === undefined) continue
-      const key1 = `${rep1}-${rep2}`
-      const key2 = `${rep2}-${rep1}`
-      if (!existingEdges.has(key1) && !existingEdges.has(key2)) {
-        links.push({ source: rep1, target: rep2, score: 0, hidden: true })
-      }
-    }
-  }
-
-  const clusterIds = clusterIdList
+  // Clusters hold together through one anchor each (the renderer's cluster
+  // force), not hidden links: a link per member pair is quadratic in the
+  // cluster's size.
+  const nodeById = new Map(nodes.map((n) => [n.id, n]))
+  const clusterIds = [...clusterMembers.keys()]
   const nClusters = clusterIds.length
   const clusterRadius = 60 + nClusters * 12
   for (let ci = 0; ci < clusterIds.length; ci++) {
@@ -196,8 +179,9 @@ export function transformToGraphData(
     const spread = 30 + Math.sqrt(nodes.length) * 3
     const members = clusterMembers.get(clusterId) ?? []
     for (const id of members) {
-      const node = nodes.find((n) => n.id === id)
+      const node = nodeById.get(id)
       if (node) {
+        node.anchor = { x: cx, y: cy, z: cz }
         node.x = cx + (seededUnit(id, 1) - 0.5) * spread
         node.y = cy + (seededUnit(id, 2) - 0.5) * spread
         node.z = cz + (seededUnit(id, 3) - 0.5) * spread

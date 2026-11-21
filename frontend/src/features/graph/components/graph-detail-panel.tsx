@@ -12,6 +12,8 @@ import { GraphSummary } from "./graph-summary"
 import type { ColorMode } from "@/features/graph/lib/graph-colors"
 import { useMemoryGraphTheme } from "@/features/graph/lib/memory-graph-theme"
 import { shortId } from "@/lib/short-id"
+import { DEMO } from "@/lib/demo-flag"
+import { useMemory } from "@/hooks/api"
 
 interface GraphDetailPanelProps {
   selectedMemory: UnifiedMemory | null
@@ -64,6 +66,8 @@ export function GraphDetailPanel({
           size="icon"
           className="text-muted-foreground hover:text-foreground rounded-sm p-1"
           onClick={onClose}
+          aria-label="Close details"
+          title="Close details"
         >
           <X className="h-4 w-4" />
         </Button>
@@ -298,10 +302,14 @@ function MemoryDetail({
   onNavigateToMemory,
 }: MemoryDetailProps) {
   const { palette } = useMemoryGraphTheme()
+  // The node carries a preview; a cut one reads the whole memory.
+  const full = useMemory(memory.id, {
+    enabled: !DEMO && memory.content_truncated === true,
+  })
   return (
     <div className="space-y-3 p-4">
       <p className="text-foreground text-sm leading-relaxed">
-        {memory.content}
+        {full.data?.content ?? memory.content}
       </p>
 
       {memory.tags.length > 0 && (

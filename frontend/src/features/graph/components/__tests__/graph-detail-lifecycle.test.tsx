@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest"
 import { render, screen } from "@testing-library/react"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { GraphDetailPanel } from "../graph-detail-panel"
 import type { UnifiedMemory } from "@/hooks/api"
 
@@ -16,6 +17,11 @@ function memory(over: Partial<UnifiedMemory> = {}): UnifiedMemory {
   }
 }
 
+// The panel reads the whole memory for a cut node, through a query.
+function QueryWrapper({ children }: { children: React.ReactNode }) {
+  return <QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider>
+}
+
 function renderPanel(m: UnifiedMemory) {
   return render(
     <GraphDetailPanel
@@ -27,6 +33,7 @@ function renderPanel(m: UnifiedMemory) {
       onClose={() => {}}
       colorMode="cluster"
     />,
+    { wrapper: QueryWrapper },
   )
 }
 

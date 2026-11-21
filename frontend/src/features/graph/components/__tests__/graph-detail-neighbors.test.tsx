@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest"
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { GraphDetailPanel } from "../graph-detail-panel"
 import type { UnifiedMemory, SimilarityEdge } from "@/hooks/api"
 
@@ -20,6 +21,11 @@ function memory(over: Partial<UnifiedMemory> = {}): UnifiedMemory {
 const SEED = memory()
 const NEAR = memory({ id: "near", content: "Shooting on a Sony A7 IV." })
 const FAR = memory({ id: "far", content: "The backup CLI uses Tokio." })
+
+// The panel reads the whole memory for a cut node, through a query.
+function QueryWrapper({ children }: { children: React.ReactNode }) {
+  return <QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider>
+}
 
 function renderPanel(
   edges: SimilarityEdge[],
@@ -42,6 +48,7 @@ function renderPanel(
     >
       {over.children}
     </GraphDetailPanel>,
+    { wrapper: QueryWrapper },
   )
 }
 

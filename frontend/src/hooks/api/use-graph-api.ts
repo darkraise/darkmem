@@ -14,6 +14,8 @@ export interface UnifiedMemory {
   memory_type: string | null
   importance: number
   cluster: number
+  /** `content` is cut to a preview; the whole text is `GET /memories/{id}`. */
+  content_truncated?: boolean
   /** Lifecycle rung. `/graph/unified` has always sent this; the type dropped
    *  it, so no surface could report it. Optional because a node whose payload
    *  predates the field must render as unknown rather than as active. */

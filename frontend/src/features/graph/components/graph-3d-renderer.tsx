@@ -45,6 +45,27 @@ function endpointId(endpoint: string | NodeObject<Node3D> | undefined): string {
   return endpoint ?? ""
 }
 
+const CLUSTER_PULL = 0.08
+
+/** Pulls each clustered memory toward its cluster's anchor. */
+function clusterAnchorForce(strength: number) {
+  let nodes: SimNode[] = []
+  const force = (alpha: number) => {
+    const k = strength * alpha
+    for (const n of nodes) {
+      const a = n.anchor
+      if (!a) continue
+      n.vx = (n.vx ?? 0) + (a.x - (n.x ?? 0)) * k
+      n.vy = (n.vy ?? 0) + (a.y - (n.y ?? 0)) * k
+      n.vz = (n.vz ?? 0) + (a.z - (n.z ?? 0)) * k
+    }
+  }
+  force.initialize = (next: SimNode[]) => {
+    nodes = next
+  }
+  return force
+}
+
 interface Graph3DRendererProps {
   graphData: GraphData3D
   width: number
@@ -54,6 +75,7 @@ interface Graph3DRendererProps {
   hullMode: HullMode
   selectedNodeId: string | null
   onNodeSelect: (nodeId: string | null) => void
+  onEntitySelect?: (entityId: string | null) => void
   onReady: () => void
   tokens: GraphThemeTokens
   palette: MemoryPalette
@@ -68,6 +90,7 @@ export function Graph3DRenderer({
   hullMode,
   selectedNodeId,
   onNodeSelect,
+  onEntitySelect,
   onReady,
   tokens,
   palette,
@@ -166,6 +189,7 @@ export function Graph3DRenderer({
     fgRef.current.d3Force("charge")?.strength(-50)
     fgRef.current.d3Force("link")?.distance(spacing)?.strength(0.7)
     fgRef.current.d3Force("center")?.strength(1.5)
+    fgRef.current.d3Force("cluster", clusterAnchorForce(CLUSTER_PULL))
     if (prevSpacingRef.current !== spacing) {
       prevSpacingRef.current = spacing
       fgRef.current.d3ReheatSimulation()
@@ -424,7 +448,11 @@ export function Graph3DRenderer({
       }
       linkDirectionalArrowRelPos={1}
       onNodeClick={(node: Node3D) => {
-        onNodeSelect(node.id)
+        if (node.nodeKind === "entity" && onEntitySelect) {
+          onEntitySelect(node.id.slice("entity:".length))
+        } else {
+          onNodeSelect(node.id)
+        }
         const distance = 150
         const h = Math.hypot(node.x!, node.y!, node.z!) || 1
         const distRatio = 1 + distance / h

@@ -1025,7 +1025,6 @@ export function Graph2DRenderer({
     filteredMemories,
     filteredEdges,
     sizeMode,
-    colorMode,
     // The keys, not the arrays: `filteredEntities` is a fresh array on every
     // data change, and its identity moving is not a reason to rebuild.
     entitiesKey,
@@ -1124,9 +1123,10 @@ export function Graph2DRenderer({
     })
     sigma.setSetting("defaultNodeColor", tokensRef.current.mutedForeground)
     sigma.refresh()
-    // Keyed on a primitive theme signature so incidental re-renders don't recolor.
+    // Keyed on a primitive theme and colour-mode signature so incidental
+    // re-renders don't recolor.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [`${tokens.background}:${tokens.isDark}:${tokens.primary}:${tokens.border}`])
+  }, [`${tokens.background}:${tokens.isDark}:${tokens.primary}:${tokens.border}:${colorMode}`])
 
   return (
     <>
