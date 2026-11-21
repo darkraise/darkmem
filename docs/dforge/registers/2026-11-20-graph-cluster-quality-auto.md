@@ -5,7 +5,7 @@
 
 | # | Item | Assigned | Acceptance | State | Note |
 |---|---|---|---|---|---|
-| 1 | Switching graph Regions off leaves the region outlines and chips drawn beside the centre names until a repaint | - | - | deferred | final review follow-up: pre-existing in the regions feature; this branch changes no frontend file |
+| 1 | Switching graph Regions off leaves the region outlines and chips drawn beside the centre names until a repaint | - | - | done | not reproduced: sigma refresh() renders synchronously and clears the hull canvas in the same frame (audit-remaining row 223) |
 | 2 | Two clusters can receive the same computed name (e.g. both carry only the tag retrieval); the filter panel then lists two identical rows | - | - | done | c03c42b |
 | 3 | A chosen term that is part of the prefix (darkraise under prefix darkraise-modder) is not skipped, so a name can partly repeat its prefix | - | - | done | c03c42b |
 | 4 | Measure entity_terms_for_memories latency on an all_memories view (up to GRAPH_MAX_NODES ids); only the 1,000-id page view was measured | - | - | done | measured 2026-11-21 on production (read-only EXPLAIN ANALYZE, view ids selected in the statement): all_memories view of 4,759 memories, execution 437 ms (310 ms in the ix_entities_memory_ids bitmap scan, 7,215 term rows) |
