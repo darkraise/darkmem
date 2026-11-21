@@ -102,6 +102,7 @@ narwhals==2.22.1
     # via scikit-learn
 numpy==2.4.6
     # via
+    #   darkmem (pyproject.toml)
     #   pgvector
     #   scikit-learn
     #   scipy

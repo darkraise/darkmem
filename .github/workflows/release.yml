@@ -397,8 +397,12 @@ jobs:
     needs: [plan, prepare, publish, tag]
     # `always()` so a tag-triggered run, where the `tag` job is skipped, still
     # reaches this; the explicit result checks are what keep a failed publish
-    # from announcing itself.
-    if: always() && needs.publish.result == 'success' && needs.tag.result != 'failure'
+    # from announcing itself. Only a hand-cut tag's run may release without
+    # the tag job: a master run whose tag job was cancelled wrote no tag.
+    if: >-
+      always() && needs.publish.result == 'success' &&
+      (needs.tag.result == 'success' ||
+       (github.ref_type == 'tag' && needs.tag.result == 'skipped'))
     runs-on: ubuntu-latest
     permissions:
       contents: write        # creating a release writes to the repository
@@ -461,7 +465,10 @@ jobs:
           # No --generate-notes: the body already carries a commit-derived
           # changelog from next_version.py, and GitHub's own summary would
           # duplicate it under a second heading.
+          # --verify-tag: a missing tag fails here instead of being created on
+          # master's tip, which may have moved past the published commit.
           gh release create "$RELEASE_TAG" \
+            --verify-tag \
             --title "$RELEASE_TAG" \
             --notes-file release-body.md \
             $flag

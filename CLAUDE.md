@@ -187,8 +187,9 @@ table or column is dropped only once no released code reads it.
   derived version has no `## vN.N.N` section in `CHANGELOG.md` fails before
   the suite runs. The changelog is hand-written; only the release body is
   generated (`scripts/next_version.py`). `./scripts/release.sh vN.N.N` does
-  not tag: it is the local pre-flight (sync version fields, build, deploy,
-  probe `/openapi.json`). Fetch tags before deriving a version locally.
+  not tag: it is the local pre-flight (floor gate plus the three `--full`
+  legs named above, or `gate.sh --full` with `--full-gate`; sync version
+  fields, build, deploy, probe `/openapi.json`). Fetch tags before deriving a version locally.
 - **CI verification prefers `darkmem-linux`**: `scripts/pick_runner.py`'s
   default `fallback` mode routes backend/frontend checks to self-hosted
   while a labelled runner is online (queuing when busy) and to `ubuntu-latest` when none is online. Seeing the runners needs

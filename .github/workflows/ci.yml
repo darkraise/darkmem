@@ -201,6 +201,53 @@ jobs:
           TEST_SHARD: ${{ matrix.shard }}/2
         run: npx vitest run --shard="$TEST_SHARD"
 
+  # The two distribution clients: the browser extension's suite, both SDK
+  # suites and the SDK build. They need Node and the backend interpreter, so
+  # the job runs in the backend's container (setup-python has no build for
+  # the darkmem-linux runners' OS) and brings Node into it.
+  clients:
+    name: Extension and SDK suites
+    needs: pick-runner
+    runs-on: ${{ fromJSON(needs.pick-runner.outputs.runs-on) }}
+    container: python:3.12-bookworm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install (pinned)
+        working-directory: backend
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+          PATH="$RUNNER_TEMP/venv/bin:$PATH"
+          python -m pip install --upgrade pip
+          pip install -r requirements.lock
+          pip install --no-deps .
+          pip install pytest pytest-asyncio
+      # The TypeScript SDK borrows the frontend's vitest and tsc.
+      - name: Frontend toolchain
+        working-directory: frontend
+        run: npm ci
+      - name: Extension tests
+        working-directory: extension
+        run: npm test
+      - name: Python SDK tests
+        working-directory: sdks/python
+        run: python -m pytest -q
+      - name: TypeScript SDK tests
+        working-directory: sdks/ts
+        run: npm test
+      - name: SDK build
+        working-directory: sdks
+        run: make build PY="$RUNNER_TEMP/venv/bin/python"
+      # The container runs as root; return the checkout to the runner user.
+      - name: Restore runner workspace ownership
+        if: always()
+        run: chown -R "$(stat -c '%u:%g' "$GITHUB_WORKSPACE/..")" "$GITHUB_WORKSPACE" "$RUNNER_TEMP"
+
   # Build, scan and boot the image in one hosted job. Nothing crosses a job
   # boundary, so no artifact is stored: an 830 MB image artifact per run is
   # what filled the account's Actions storage (2026-10-06), and a full quota

@@ -22,7 +22,7 @@ def _needs(job: dict) -> list[str]:
 
 
 @pytest.mark.parametrize("workflow,hosted,routed", [
-    ("ci.yml", {"pick-runner", "images"}, {"backend", "frontend", "frontend-tests"}),
+    ("ci.yml", {"pick-runner", "images"}, {"backend", "frontend", "frontend-tests", "clients"}),
     ("release.yml", {"pick-runner", "plan", "prepare", "publish", "tag", "github-release"}, set()),
 ])
 def test_builds_and_releases_stay_hosted_while_checks_use_the_picker(workflow, hosted, routed):
@@ -79,6 +79,37 @@ def test_the_image_job_uploads_no_artifact():
         assert not step.get("uses", "").startswith("actions/upload-artifact@")
     build = next(s for s in _jobs("ci.yml")["images"]["steps"] if s.get("name") == "Build image")
     assert build["env"]["DOCKER_BUILD_RECORD_UPLOAD"] is False
+
+
+def test_cancelled_tag_job_creates_no_release():
+    job = _jobs("release.yml")["github-release"]
+    condition = " ".join(job["if"].split())
+    assert "needs.tag.result == 'success'" in condition
+    assert "!= 'failure'" not in condition
+    # A hand-cut tag skips the tag job; only that run may release without it.
+    assert "(github.ref_type == 'tag' && needs.tag.result == 'skipped')" in condition
+    create = next(s for s in job["steps"] if "gh release create" in s.get("run", ""))
+    assert "--verify-tag" in create["run"]
+
+
+def test_ci_runs_extension_and_sdk_suites():
+    jobs = _jobs("ci.yml")
+    steps = [
+        (step.get("working-directory", ""), step.get("run", ""))
+        for job in jobs.values()
+        for step in job.get("steps", [])
+    ]
+
+    def runs(directory: str, command: str) -> bool:
+        return any(
+            command in script and (where == directory or f"cd {directory}" in script or f"-C {directory}" in script)
+            for where, script in steps
+        )
+
+    assert runs("extension", "npm test")
+    assert runs("sdks/python", "pytest")
+    assert runs("sdks/ts", "npm test")
+    assert runs("sdks", "make build")
 
 
 @pytest.mark.parametrize("workflow", ["ci.yml", "release.yml"])

@@ -4,7 +4,11 @@
 # Four steps that repeat every version, which is why this is a script and not a
 # checklist.
 #
-#   ./scripts/release.sh v1.0.0
+#   ./scripts/release.sh v1.0.0 [--full-gate]
+#
+# The gate is the floor gate plus the full gate's legs run one at a time,
+# because `gate.sh --full` cannot complete on this host (CLAUDE.md, "Gate and
+# tests"). `--full-gate` runs `gate.sh --full` instead, on a host that can.
 #
 # Versions are full semver (vN.N.N). The older vN.N form is not accepted: the
 # publish workflow derives its rolling `1.0` and `1` tags from a semver parse,
@@ -24,7 +28,15 @@
 # number. Pushing master is what releases.
 set -euo pipefail
 
-VERSION="${1:?usage: release.sh vN.N.N}"
+FULL_GATE=0
+ARGS=()
+for arg in "$@"; do
+  case "$arg" in
+    --full-gate) FULL_GATE=1 ;;
+    *) ARGS+=("$arg") ;;
+  esac
+done
+VERSION="${ARGS[0]:?usage: release.sh vN.N.N [--full-gate]}"
 NUMERIC="${VERSION#v}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -43,7 +55,14 @@ grep -qE "^## $VERSION\b" CHANGELOG.md || {
 }
 
 echo "── gate ──"
-./scripts/gate.sh --full
+if [ "$FULL_GATE" = 1 ]; then
+  ./scripts/gate.sh --full
+else
+  ./scripts/gate.sh
+  (cd backend && .venv/bin/python -m pytest -q tests/test_api/test_rest_conformance.py)
+  (cd backend && .venv/bin/python -m pytest -q scripts/benchlib/tests)
+  (cd sdks && make generate && git diff --exit-code -- . && make test)
+fi
 
 echo "── version fields -> $NUMERIC ──"
 sed -i -E "s/^version = \"[0-9]+\.[0-9]+\.[0-9]+\"/version = \"$NUMERIC\"/" backend/pyproject.toml
