@@ -1086,3 +1086,46 @@ async def test_a35_an_ambiguous_repository_name_lists_candidates(mcp_http_client
     env = json.loads(result["content"][0]["text"])
     assert env["status"] == "ambiguous"
     assert {c["id"] for c in env["candidates"]} == {str(one.id), str(two.id)}
+
+
+# ------------------------------------------------------------------ A17
+
+
+@pytest.mark.asyncio
+async def test_a17_memory_graph_predicates_plan_as_gin_index_scans(session):
+    from sqlalchemy import event, text
+
+    from app.repositories.graph import PostgresGraphRepository
+
+    captured: list[tuple[str, tuple]] = []
+
+    def grab(conn, cursor, statement, parameters, context, executemany):
+        if "memory_ids" in statement and statement.lstrip().upper().startswith(("UPDATE ENTITIES", "UPDATE ENTITY_RELATIONS")):
+            captured.append((statement, tuple(parameters) if not isinstance(parameters, dict) else parameters))
+
+    from tests.conftest import test_engine
+
+    event.listen(test_engine.sync_engine, "before_cursor_execute", grab)
+    try:
+        await PostgresGraphRepository(session).delete_by_memory_id(str(uuid.uuid4()))
+    finally:
+        event.remove(test_engine.sync_engine, "before_cursor_execute", grab)
+    assert captured, "delete_by_memory_id issued no memory_ids statement"
+
+    # With sequential scans disabled the planner can only avoid one when the
+    # predicate matches the GIN index; the `:mid = ANY(memory_ids)` form cannot.
+    await session.execute(text("SET LOCAL enable_seqscan = off"))
+    raw = await session.connection()
+    for statement, params in captured:
+        rows = (await raw.exec_driver_sql("EXPLAIN " + statement, params)).all()
+        plan = "\n".join(r[0] for r in rows)
+        assert "Seq Scan" not in plan, plan
+        assert re.search(r"(Bitmap Index Scan|Index Scan).*memory_ids", plan), plan
+
+    # control: the old shape cannot use the index, so the assertion above discriminates
+    rows = (
+        await raw.exec_driver_sql(
+            "EXPLAIN SELECT id FROM entities WHERE CAST('00000000-0000-4000-8000-000000000001' AS uuid) = ANY(memory_ids)"
+        )
+    ).all()
+    assert "Seq Scan" in "\n".join(r[0] for r in rows)
