@@ -29,6 +29,8 @@ export function NumberField({
   onBlur,
   onKeyDown,
   "aria-label": ariaLabel,
+  "aria-invalid": ariaInvalid,
+  "aria-describedby": ariaDescribedBy,
   className,
 }: {
   value: number
@@ -42,6 +44,8 @@ export function NumberField({
   /** For commit-on-Enter. The field handles arrows and page keys itself. */
   onKeyDown?: (event: React.KeyboardEvent<HTMLInputElement>) => void
   "aria-label": string
+  "aria-invalid"?: boolean
+  "aria-describedby"?: string
   className?: string
 }) {
   return (
@@ -57,6 +61,8 @@ export function NumberField({
       <NumberInputControl>
         <NumberInputField
           aria-label={ariaLabel}
+          aria-invalid={ariaInvalid}
+          aria-describedby={ariaDescribedBy}
           onBlur={onBlur}
           onKeyDown={onKeyDown}
           className="font-mono"

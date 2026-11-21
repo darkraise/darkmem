@@ -277,12 +277,14 @@ function DraftNumber({
   step,
   value,
   onChange,
+  error,
   className,
 }: {
   name: string
   step: number
   value: number
   onChange: (value: number) => void
+  error: string | null
   className?: string
 }) {
   return (
@@ -290,6 +292,8 @@ function DraftNumber({
       step={step}
       value={value}
       aria-label={name}
+      aria-invalid={error ? true : undefined}
+      aria-describedby={error ? rangeErrorId(name) : undefined}
       onValueChange={onChange}
       className={cn("w-24", className)}
     />
@@ -314,17 +318,25 @@ function armRangeError(arm: DemoRankArm, value: number): string | null {
 
 /** The allowed range under a field being edited, turning into the error when
  *  the draft leaves it. */
+const rangeErrorId = (name: string) => `range-error-${name}`
+
 function RangeHint({
+  name,
   min,
   max,
   error,
 }: {
+  name: string
   min?: number
   max?: number
   error: string | null
 }) {
   if (error)
-    return <p className="text-destructive-text basis-full text-sm">{error}</p>
+    return (
+      <p id={rangeErrorId(name)} role="alert" className="text-destructive-text basis-full text-sm">
+        {error}
+      </p>
+    )
   if (min === undefined || max === undefined) return null
   return (
     <p className="text-muted-foreground basis-full text-right text-xs">
@@ -371,6 +383,7 @@ function ArmRow({
             step={arm.step ?? 1}
             value={draft}
             onChange={onChange}
+            error={error}
           />
         ) : (
           <ValueTag value={arm.value} />
@@ -379,7 +392,7 @@ function ArmRow({
             an effect the save cannot have. */}
         {!error && <ArmPill value={shown} />}
       </RowValue>
-      {editing && <RangeHint min={arm.min} max={arm.max} error={error} />}
+      {editing && <RangeHint name={arm.key} min={arm.min} max={arm.max} error={error} />}
       {DORMANT_RANK_ARMS.has(arm.key) && (
         <FieldDescription className="basis-full">
           {DORMANT_ARM_NOTE}
@@ -532,6 +545,7 @@ function TunableRow({
               step={1}
               value={draft}
               onChange={onChange}
+              error={tunableRangeError(tunable, draft)}
             />
             {tunable.unit && (
               <span className="text-muted-foreground font-mono text-xs whitespace-nowrap">
@@ -545,6 +559,7 @@ function TunableRow({
       </RowValue>
       {editing && (
         <RangeHint
+          name={tunable.key}
           min={tunable.min}
           max={tunable.max}
           error={tunableRangeError(tunable, draft)}
@@ -796,6 +811,7 @@ function LadderDialog({
               step={1}
               value={draft[param.name] ?? param.floor}
               onChange={(v) => setDraft((d) => ({ ...d, [param.name]: v }))}
+              error={errorOf(param.name)}
               className="w-20"
             />
             <Button
@@ -807,7 +823,7 @@ function LadderDialog({
               reset to floor
             </Button>
           </div>
-          <RangeHint error={errorOf(param.name)} />
+          <RangeHint name={param.name} error={errorOf(param.name)} />
         </div>
       ))}
     </SectionDialog>
@@ -1224,12 +1240,14 @@ function GraphDialog({
                   step={flag.paired_arm.step ?? 1}
                   value={draft[flag.paired_arm.key] as number}
                   onChange={(v) => set(flag.paired_arm!.key, v)}
+                  error={weightError(flag)}
                 />
                 {!weightError(flag) && (
                   <ArmPill value={draft[flag.paired_arm.key] as number} />
                 )}
               </RowValue>
               <RangeHint
+                name={flag.paired_arm.key}
                 min={flag.paired_arm.min}
                 max={flag.paired_arm.max}
                 error={weightError(flag)}

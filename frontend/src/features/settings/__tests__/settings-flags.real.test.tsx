@@ -513,9 +513,10 @@ describe("FlagsTab — the ranking dialog enforces the server's ranges", () => {
     fireEvent.change(field, { target: { value: "10" } })
     fireEvent.blur(field)
 
-    expect(
-      await within(dialog).findByText("Enter a value from 0 to 5."),
-    ).toBeInTheDocument()
+    const message = await within(dialog).findByText("Enter a value from 0 to 5.")
+    expect(message).toHaveAttribute("role", "alert")
+    expect(field).toHaveAttribute("aria-invalid", "true")
+    expect(field).toHaveAccessibleDescription("Enter a value from 0 to 5.")
     expect(within(dialog).getByRole("button", { name: "Save" })).toBeDisabled()
     // The row no longer claims an effect the save cannot have.
     expect(within(dialog).getAllByText("inactive").length).toBe(3)
