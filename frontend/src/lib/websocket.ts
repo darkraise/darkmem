@@ -4,6 +4,13 @@ import { toast } from "darkraise-ui/components/sonner"
 import type { WebSocketEventMap, PipelineStatus } from "./websocket-events"
 import { describeSkippedFiles } from "./websocket-events"
 import { shortId } from "@/lib/short-id"
+import { RENEWAL_WINDOW_MS, endSession, onRenewal, recentlyRenewed } from "@/lib/session-renewal"
+
+/** The server's close for a socket whose token a refresh or a password change
+ *  rotated: reconnect once the new cookie has arrived. */
+const RENEWED_CODE = 4001
+/** Close reasons that end the session unless a renewal just landed. */
+const SESSION_REFUSALS = new Set(["Session expired or revoked", "Unauthorized"])
 
 /**
  * Every query key any pipeline/memory/repo WebSocket event keeps fresh while
@@ -66,15 +73,43 @@ export function useWebSocket() {
   const closedByCaller = useRef<boolean>(false)
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const hasConnectedBefore = useRef<boolean>(false)
+  /** One reconnect after a refusal that raced a renewal; reset on open. */
+  const refusalRetried = useRef<boolean>(false)
+  const stopWaiting = useRef<(() => void) | null>(null)
   const qc = useQueryClient()
 
   const connect = useCallback(() => {
-    if (closedByCaller.current) return
+    // Idempotent: under StrictMode the effect runs twice, and a second socket
+    // would deliver every event twice.
+    if (closedByCaller.current || ws.current) return
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:"
     const url = `${protocol}//${window.location.host}/ws`
-    ws.current = new WebSocket(url)
+    const socket = new WebSocket(url)
+    ws.current = socket
 
-    ws.current.onmessage = (event) => {
+    const awaitRenewal = () => {
+      if (recentlyRenewed()) {
+        connect()
+        return
+      }
+      const off = onRenewal(() => {
+        stop()
+        connect()
+      })
+      const deadline = setTimeout(() => {
+        stop()
+        endSession()
+      }, RENEWAL_WINDOW_MS)
+      const stop = () => {
+        off()
+        clearTimeout(deadline)
+        stopWaiting.current = null
+      }
+      stopWaiting.current = stop
+    }
+
+    socket.onmessage = (event) => {
+      if (ws.current !== socket) return
       const msg = JSON.parse(event.data as string) as {
         [K in keyof WebSocketEventMap]?: {
           event: K
@@ -249,7 +284,9 @@ export function useWebSocket() {
       }
     }
 
-    ws.current.onopen = () => {
+    socket.onopen = () => {
+      if (ws.current !== socket) return
+      refusalRetried.current = false
       if (hasConnectedBefore.current) {
         for (const key of RECONCILE_QUERY_KEYS) {
           void qc.invalidateQueries({ queryKey: [key] })
@@ -259,8 +296,24 @@ export function useWebSocket() {
       retryCount.current = 0
     }
 
-    ws.current.onclose = () => {
+    socket.onclose = (event?: CloseEvent) => {
+      // A socket this hook already replaced or let go of says nothing now.
+      if (ws.current !== socket) return
+      ws.current = null
       if (closedByCaller.current) return
+      if (event?.code === RENEWED_CODE) {
+        awaitRenewal()
+        return
+      }
+      if (event && SESSION_REFUSALS.has(event.reason)) {
+        if (!refusalRetried.current && recentlyRenewed()) {
+          refusalRetried.current = true
+          connect()
+          return
+        }
+        endSession()
+        return
+      }
       const delay = Math.min(1000 * Math.pow(2, retryCount.current), 30000)
       retryCount.current++
       reconnectTimer.current = setTimeout(connect, delay)
@@ -276,7 +329,10 @@ export function useWebSocket() {
         clearTimeout(reconnectTimer.current)
         reconnectTimer.current = null
       }
-      ws.current?.close()
+      stopWaiting.current?.()
+      const socket = ws.current
+      ws.current = null
+      socket?.close()
     }
   }, [connect])
 }

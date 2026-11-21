@@ -1,25 +1,12 @@
 import { useAuthStore } from "@/features/auth"
+import { endSession, mayRetryAfterRenewal } from "@/lib/session-renewal"
 
 const API_BASE = "/api/v1"
 
-// Guards a 401 burst (background queries can fire many at once) so a single
-// expired session triggers exactly one logout + redirect instead of N
-// full-page reloads. Reset once we're on /login so a later re-login works.
-let handling401 = false
-
+/** A 401 burst (background queries can fire many at once) ends the session
+ *  once: `endSession` signs out and navigates to sign-in a single time. */
 export function handleUnauthorized() {
-  useAuthStore.getState().logout()
-  if (handling401) return
-  handling401 = true
-  // Router beforeLoad guards redirect on the next navigation once the store
-  // flips, but a user idle on a page triggers none — fall back to a single
-  // location change, skipped if we're already on /login to avoid a loop.
-  if (window.location.pathname !== "/login") {
-    const back = window.location.pathname + window.location.search
-    window.location.href = `/login?redirect=${encodeURIComponent(back)}`
-  } else {
-    handling401 = false
-  }
+  endSession()
 }
 
 // Carries the HTTP status alongside the message so a caller that needs to
@@ -78,9 +65,17 @@ export interface ApiFetchOptions extends RequestInit {
 /** The one request implementation. `apiFetch` is the body-only view of it;
  *  a caller that needs a response header — today only the page block delete,
  *  whose 204 carries the page's new `content_hash` — takes this one. */
-export async function apiFetchWithHeaders<T>(
+export function apiFetchWithHeaders<T>(
   path: string,
   options: ApiFetchOptions = {},
+): Promise<{ data: T; headers: Headers }> {
+  return request<T>(path, options, false)
+}
+
+async function request<T>(
+  path: string,
+  options: ApiFetchOptions,
+  retried: boolean,
 ): Promise<{ data: T; headers: Headers }> {
   const { on401 = "redirect", ...init } = options
   const headers: Record<string, string> = {
@@ -94,6 +89,8 @@ export async function apiFetchWithHeaders<T>(
     credentials: "include",
   })
   if (response.status === 401 && on401 === "redirect") {
+    // Sent with the cookie a rotation was replacing: once more with the new.
+    if (!retried && (await mayRetryAfterRenewal())) return request<T>(path, options, true)
     handleUnauthorized()
     throw new ApiError("Unauthorized", 401)
   }

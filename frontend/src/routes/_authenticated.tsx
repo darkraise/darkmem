@@ -35,11 +35,12 @@ import {
 import type { NavGroup } from "darkraise-ui/layout"
 import { cn } from "darkraise-ui/lib"
 import { UiLabelsProvider } from "darkraise-ui/labels"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { ChangePasswordDialog } from "@/features/settings/components/change-password-dialog"
 import { useQueryClient } from "@tanstack/react-query"
 import { useAuthStore } from "@/features/auth"
 import { useWebSocket } from "@/lib/websocket"
+import { startSessionRenewal, stopSessionRenewal } from "@/lib/session-renewal"
 import { DEMO } from "@/lib/demo-flag"
 import {
   AppNotFound,
@@ -216,6 +217,19 @@ function AuthenticatedLayout() {
   const [changingPassword, setChangingPassword] = useState(false)
   const pathname = useRouterState({ select: (s) => s.location.pathname })
 
+  // A router navigation, not a reload, when the session ends: module state
+  // such as the notes draft registry survives it.
+  useEffect(() => {
+    if (DEMO) return
+    return startSessionRenewal(() => {
+      queryClient.clear()
+      void router.navigate({
+        to: "/login",
+        search: { redirect: router.state.location.href },
+      })
+    })
+  }, [queryClient, router])
+
   // Content is capped on wide viewports so a dense page does not stretch a
   // card row to 2000px and leave the eye travelling between a label on the
   // left and its value on the right. The graph pages opt out: they render a
@@ -231,6 +245,7 @@ function AuthenticatedLayout() {
 
   const handleLogout = async () => {
     if (!DEMO) {
+      stopSessionRenewal()
       const { logout } = await import("@/lib/api")
       await logout()
       useAuthStore.getState().logout()
