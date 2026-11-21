@@ -1678,12 +1678,16 @@ async def code_search(
         }
         for r in answer.results
     ]
+    # One arm still answered; the envelope names the one that did not, so an
+    # agent does not read a thin list as complete.
     if answer.semantic_skipped or "vector" in answer.failed_arms:
-        # The keyword arm still answered; the envelope says the ranking had
-        # no semantic arm, so an agent does not read a thin list as complete.
         reason = answer.semantic_skipped or "it failed"
         return json.dumps(_degraded(
             f"semantic arm did not run: {reason}", degraded=True, results=rows,
+        ))
+    if "keyword" in answer.failed_arms:
+        return json.dumps(_degraded(
+            "keyword arm did not run: it failed", degraded=True, results=rows,
         ))
     return json.dumps(rows)
 

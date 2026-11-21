@@ -74,6 +74,10 @@ def symbol_candidate(row: dict) -> dict:
     }
 
 
+class CodeSearchUnavailable(RuntimeError):
+    """No arm of code search answered, so an empty list would read as no match."""
+
+
 @dataclass(frozen=True)
 class CodeSearchAnswer:
     """Fused hits plus the arms that raised, so a failed arm never reads as
@@ -216,6 +220,11 @@ class CodeQueryService:
         except Exception as e:
             logger.warning("Text search failed: %s", e)
             failed.append("keyword")
+            if skipped is not None or "vector" in failed:
+                raise CodeSearchUnavailable(
+                    "code search failed: the keyword arm raised and the vector arm "
+                    + (f"did not run ({skipped})" if skipped else "failed")
+                ) from e
 
         return CodeSearchAnswer(
             results=rrf_fuse(lists, limit, key=_code_hit_key),

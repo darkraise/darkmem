@@ -89,3 +89,44 @@ async def test_one_failing_arm_leaves_the_other_answering(session, monkeypatch):
     assert [r["symbol_name"] for r in answer.results] == ["target"]
     assert answer.failed_arms == ("vector",)
     assert (await session.execute(text("SELECT 1"))).scalar_one() == 1
+
+
+def _break_the_keyword_arm(session, monkeypatch):
+    real_execute = session.execute
+
+    async def _execute(statement, *args, **kwargs):
+        if "code_symbols" in str(statement) and "LIKE" in str(statement).upper():
+            raise RuntimeError("keyword arm down")
+        return await real_execute(statement, *args, **kwargs)
+
+    monkeypatch.setattr(session, "execute", _execute)
+
+
+@pytest.mark.parametrize("vector", ["skipped", "failed"])
+async def test_no_arm_answering_raises_rather_than_reads_empty(session, monkeypatch, vector):
+    if vector == "failed":
+        llm = Mock(embed=AsyncMock(side_effect=RuntimeError("embedder down")))
+    else:
+        llm = None
+    _break_the_keyword_arm(session, monkeypatch)
+
+    with pytest.raises(code_query.CodeSearchUnavailable):
+        await CodeQueryService(session, llm).search_code("target")
+
+
+async def test_a_failed_keyword_arm_is_marked_beside_the_vector_rows(session, monkeypatch):
+    chunks = [{
+        "repo_id": uuid4(), "file_path": "src/main.py", "line_start": 1,
+        "line_end": 2, "chunk_content": "target", "language": "python",
+    }]
+    monkeypatch.setattr(
+        "app.services.code_query.PostgresVectorRepository.search_code_chunks",
+        AsyncMock(return_value=chunks),
+    )
+    _break_the_keyword_arm(session, monkeypatch)
+    llm = Mock(embed=AsyncMock(return_value=([0.0], "unused")))
+
+    answer = await CodeQueryService(session, llm).search_code("target")
+
+    assert [r["file_path"] for r in answer.results] == ["src/main.py"]
+    assert answer.failed_arms == ("keyword",)
