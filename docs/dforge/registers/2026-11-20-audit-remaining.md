@@ -196,11 +196,11 @@
 | 189 | F3 mirror note: no test pins the TypeScript copy of block_verbs.py's refusals to the Python one | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 64 contracts | done | 8f788aa |
 | 190 | P1-1 (high): the extension's auto-capture stores every partial state of a streaming reply as its own memory | docs/dforge/plans/2026-11-20-audit-remaining.md | A5 (Task 65) | done | 58b1518 |
 | 191 | P1-2 (high): pull requests can run code on the self-hosted LAN runner; check the fork-approval setting | docs/dforge/plans/2026-11-20-audit-remaining.md | A6 (Task 4) | done | f0b79c0 |
-| 192 | P1-3: a cancelled tag job still lets github-release create the tag on master's tip | docs/dforge/plans/2026-11-20-audit-remaining.md | A49 (Task 66) | doing | - |
-| 193 | P1-4: numpy is imported but not declared | docs/dforge/plans/2026-11-20-audit-remaining.md | A50 (Task 66) | doing | - |
+| 192 | P1-3: a cancelled tag job still lets github-release create the tag on master's tip | docs/dforge/plans/2026-11-20-audit-remaining.md | A49 (Task 66) | done | 1583bda |
+| 193 | P1-4: numpy is imported but not declared | docs/dforge/plans/2026-11-20-audit-remaining.md | A50 (Task 66) | done | 1583bda |
 | 194 | P1-5: third-party actions are pinned to movable tags, not commit SHAs; the trivy job writes the cache publish reads | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 4 contracts | done | f0b79c0 |
 | 195 | P1-6: CONTRIBUTING.md describes the old release model | docs/dforge/plans/2026-11-20-audit-remaining.md | A51 (Task 69) | doing | - |
-| 196 | P1-7: release.sh cannot finish on this host (it runs gate.sh --full) | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 66 contracts | doing | - |
+| 196 | P1-7: release.sh cannot finish on this host (it runs gate.sh --full) | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 66 contracts | done | 1583bda |
 | 197 | P1-8: the e2e database reset bypasses the destructive-SQL guard on a false premise | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 4 contracts | done | f0b79c0 |
 | 198 | P1-9: the worker's restore loop treats every migrate failure as an old-baseline snapshot and exits 0 | docs/dforge/plans/2026-11-20-audit-remaining.md | A49 (Task 67) | doing | - |
 | 199 | P1-10: start_dev_server.sh calls bare python and by default migrates localhost:5432, which is production on this host | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 4 contracts | done | f0b79c0 |
@@ -208,7 +208,7 @@
 | 201 | P1-12 remainder: publish_production_models.sh changes into the deleted fine-tuning directory | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 68 contracts | doing | - |
 | 202 | P1-13: the cutover package is the one-time 0006-to-baseline loader and only its own tests use it (llm_providers_transition.py stays) | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 68 contracts | doing | - |
 | 203 | P1-14: entailment/cache_span (about 549 judge-cache files) appears to be tracked although judge output is quarantined | - | - | deferred | kept: faithfulness_gate.py reads the directory and the G-F replay ran from it |
-| 204 | P1-15: CI skips the extension suite, both SDK suites and the SDK build | docs/dforge/plans/2026-11-20-audit-remaining.md | A50 (Task 66) | doing | - |
+| 204 | P1-15: CI skips the extension suite, both SDK suites and the SDK build | docs/dforge/plans/2026-11-20-audit-remaining.md | A50 (Task 66) | done | 1583bda |
 | 205 | P1-16: the Dockerfile's chown -R duplicates layers and leaves the code writable; the app package is installed twice; Node 20 is end-of-life | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 67 contracts | doing | - |
 | 206 | P1-17: build-push.sh tags the HEAD sha even from a dirty tree | docs/dforge/plans/2026-11-20-audit-remaining.md | A49 (Task 67) | doing | - |
 | 207 | P1-18: backup.sh accepts any complete dump, so a dump of the wrong database would push real dumps out of retention | docs/dforge/plans/2026-11-20-audit-remaining.md | A49 (Task 67) | doing | - |
@@ -218,7 +218,7 @@
 | 211 | P1-22: eval_round3 is held in place by the guard test and still waits on owner decision D5 | - | - | deferred | owner decision D5 is not this programme's to make |
 | 212 | P1-23: import_docs_corpus.py is likely superseded by the dr-forge mirror | - | - | deferred | declined in the spec: supersession by the dr-forge mirror is likely, not shown |
 | 213 | P1-24: the worker compose comment says the receiver has no network, but it joins the default one | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 67 contracts | doing | - |
-| 214 | Section 6: lucide-react is not declared; 152 files import it through darkraise-ui | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 66 contracts | doing | - |
+| 214 | Section 6: lucide-react is not declared; 152 files import it through darkraise-ui | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 66 contracts | done | 1583bda |
 | 215 | Section 1 follow-up 2: requeue the 53 error rows on this host once the fixes are deployed (owner answer 2026-11-20: requeue here) | - | - | deferred | production write: an auto run performs none; carried out after the merge by the sequence at the end of Task 71 of docs/dforge/plans/2026-11-20-audit-remaining.md |
 | 216 | P1-2 follow-up: read the repository's fork-approval setting with gh and report it | docs/dforge/plans/2026-11-20-audit-remaining.md | test: Task 71 contracts | doing | - |
 | 217 | Section 1 follow-ups 1 and 2 on 192.168.0.199: restore the embedding provider there and requeue its error rows | - | - | deferred | owner's: that instance is outside this host (owner answer 2026-11-20) |
