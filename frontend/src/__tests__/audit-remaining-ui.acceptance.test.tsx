@@ -35,7 +35,7 @@ vi.mock("@/features/knowledge/use-hygiene-queue", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/features/knowledge/use-hygiene-queue")>()),
   useHygieneLowConfidenceRows: (q: { project?: string }) => ({
     rows: [0, 1, 2].map((i) => ({
-      id: `row-${q.project ?? "all"}-${i}`,
+      id: `row-${i}`,
       project: q.project ?? "all",
       content_preview: `memory ${q.project ?? "all"} number ${i}`,
       confidence: 0.2,
@@ -84,7 +84,8 @@ describe("A40: hygiene bulk actions after a project change", () => {
     }
     for (const call of prune.mock.calls) {
       const ids = JSON.stringify(call[0])
-      expect(ids).not.toContain("row-alpha")
+      expect(ids).not.toContain("row-0")
+      expect(ids).not.toContain("row-1")
     }
   })
 })
