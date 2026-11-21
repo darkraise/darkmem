@@ -2133,3 +2133,58 @@ async def test_a13_chat_knowledge_search_and_memory_search_return_one_memory_ord
     assert chat == memory_search
     assert rest == memory_search
     assert knowledge_tool == memory_search
+
+
+# ------------------------------------------------------------------ A1
+
+
+@pytest.mark.asyncio
+async def test_a1_a_lift_interleaved_with_a_re_extraction_leaves_no_source_the_new_graph_does_not_assert(setup_database):
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from app.repositories.graph import PostgresGraphRepository
+    from app.services.fact_lift import run_lift
+    from app.services.fact_provenance import memory_source_ref
+    from tests.conftest import test_engine
+    from tests.test_fact_lift import facts, sources
+    from tests.test_fact_lift_interleave import (
+        _candidate,
+        _cleanup,
+        _hold_memory_row,
+        _lift,
+        _seed_asserting,
+    )
+
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    project = f"qa1-{uuid.uuid4()}"
+    keeper = await _seed_asserting(factory, project, "qa1-keeper")
+    async with factory() as seed:
+        await run_lift(seed)
+        await seed.commit()
+    moved = await _seed_asserting(factory, project, "qa1-moved")
+
+    task = None
+    async with factory() as reextracting, factory() as lifting, factory() as observer:
+        try:
+            fact_id = (await facts(observer, project))[0]["id"]
+            candidate = await _candidate(lifting, project)
+            # the re-extraction starts first: it locks the memory row and strips the old graph...
+            await _hold_memory_row(reextracting, moved)
+            await PostgresGraphRepository(reextracting).delete_by_memory_id(uuid.UUID(moved))
+            # ...and the lift, started during it, must not commit a source from the stale graph
+            task = asyncio.create_task(_lift(lifting, candidate))
+            await asyncio.sleep(0.3)
+            await reextracting.commit()
+            await asyncio.wait_for(task, 10)
+            await lifting.commit()
+            refs = {row["source_ref"] for row in await sources(observer, fact_id)}
+            assert memory_source_ref(moved) not in refs
+            assert refs == {memory_source_ref(keeper)}
+        finally:
+            if task is not None and not task.done():
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+            await reextracting.rollback()
+            await lifting.rollback()
+            await observer.rollback()
+            await _cleanup(factory, [project], [keeper, moved])
