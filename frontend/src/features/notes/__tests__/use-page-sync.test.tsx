@@ -27,7 +27,13 @@ vi.mock("../lib/attachments", async (importOriginal) => {
   }
 })
 
+vi.mock("../lib/block-mapping", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/block-mapping")>()
+  return { ...actual, toSyncTree: vi.fn(actual.toSyncTree) }
+})
+
 import { toast } from "darkraise-ui/components/sonner"
+import * as mapping from "../lib/block-mapping"
 import * as attachments from "../lib/attachments"
 import type { PageView } from "@/hooks/api"
 import type { EditorBlockLike } from "../lib/block-mapping"
@@ -143,6 +149,20 @@ describe("usePageSync", () => {
     await act(async () => vi.advanceTimersByTimeAsync(1))
     expect(sent).toEqual([{ kind: "update", id: "a", type: "paragraph", text: "ab", properties: null }])
     expect(result.current.status).toEqual({ kind: "saved" })
+  })
+
+  it("the editor document is converted once per change batch", async () => {
+    const { t, sent } = transport()
+    const { result } = renderHook(() => usePageSync(PAGE, 0, () => t), { wrapper })
+    vi.mocked(mapping.toSyncTree).mockClear()
+    let text = "a"
+    for (let i = 0; i < 10; i++) {
+      text += "b"
+      act(() => result.current.onDocumentChange([para("a", text)]))
+    }
+    await act(async () => vi.advanceTimersByTimeAsync(TEXT_IDLE_MS))
+    expect(vi.mocked(mapping.toSyncTree)).toHaveBeenCalledTimes(1)
+    expect(sent).toEqual([{ kind: "update", id: "a", type: "paragraph", text, properties: null }])
   })
 
   it("sends a structural change at once", async () => {

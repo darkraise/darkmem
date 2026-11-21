@@ -1,3 +1,4 @@
+import { useRef } from "react"
 import {
   useMutation,
   useQuery,
@@ -5,6 +6,7 @@ import {
   type QueryClient,
 } from "@tanstack/react-query"
 import { apiFetch } from "@/lib/api"
+import { isHashConflict } from "@/lib/hash-precondition"
 import { DEMO } from "@/lib/demo-flag"
 import { demoBoardRecords, DEMO_BOARD_VIEWS } from "@/demo/board"
 
@@ -186,8 +188,64 @@ function invalidate(
   void qc.invalidateQueries({ queryKey: [key, project] })
 }
 
+/** One register's edits, sent one at a time. `superseded` maps each hash an
+ *  edit was sent with to the hash it answered, so an edit made against a
+ *  hash this queue's own write replaced is sent with the newer one; a hash
+ *  some other writer produced is not in it and goes out as given. */
+interface RegisterQueue {
+  tail: Promise<unknown>
+  queued: number
+  conflict: unknown
+  superseded: Map<string, string>
+}
+
+function currentHash(queue: RegisterQueue, hash: string): string {
+  const seen = new Set<string>()
+  while (queue.superseded.has(hash) && !seen.has(hash)) {
+    seen.add(hash)
+    hash = queue.superseded.get(hash)!
+  }
+  return hash
+}
+
 export function useRegisterRowEdit(project: string) {
   const qc = useQueryClient()
+  const queues = useRef(new Map<string, RegisterQueue>())
+
+  const enqueue = (
+    documentId: string,
+    expectedHash: string,
+    send: (hash: string) => Promise<RowEditResult>,
+  ): Promise<RowEditResult> => {
+    let queue = queues.current.get(documentId)
+    if (!queue) {
+      queue = { tail: Promise.resolve(), queued: 0, conflict: null, superseded: new Map() }
+      queues.current.set(documentId, queue)
+    }
+    const q = queue
+    q.queued++
+    const run = q.tail.then(async () => {
+      // An edit queued behind a real conflict was made against the view the
+      // conflict just proved stale.
+      if (q.conflict !== null) throw q.conflict
+      const hash = currentHash(q, expectedHash)
+      try {
+        const result = await send(hash)
+        q.superseded.delete(result.content_hash)
+        q.superseded.set(hash, result.content_hash)
+        return result
+      } catch (error) {
+        if (isHashConflict(error)) q.conflict = error
+        throw error
+      }
+    })
+    const settle = () => {
+      if (--q.queued === 0) q.conflict = null
+    }
+    q.tail = run.then(settle, settle)
+    return run
+  }
+
   return useMutation<
     RowEditResult,
     Error,
@@ -196,12 +254,14 @@ export function useRegisterRowEdit(project: string) {
     mutationFn: ({ documentId, number, expectedHash, ...changes }) =>
       DEMO
         ? Promise.reject(new Error(DEMO_REFUSAL))
-        : apiFetch<RowEditResult>(
-            `/board/registers/${documentId}/rows/${number}`,
-            {
-              method: "PATCH",
-              body: JSON.stringify({ expected_hash: expectedHash, ...changes }),
-            },
+        : enqueue(documentId, expectedHash, (hash) =>
+            apiFetch<RowEditResult>(
+              `/board/registers/${documentId}/rows/${number}`,
+              {
+                method: "PATCH",
+                body: JSON.stringify({ expected_hash: hash, ...changes }),
+              },
+            ),
           ),
     // The answered hash goes into the cache at once, so an edit made before
     // the re-read lands does not send the hash this one replaced.

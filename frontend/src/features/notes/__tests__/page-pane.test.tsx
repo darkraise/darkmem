@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("@/lib/demo-flag", () => ({ DEMO: false }))
 vi.mock("@/lib/api", () => ({ apiFetch: vi.fn(), apiFetchWithHeaders: vi.fn() }))
+vi.mock("darkraise-ui/components/sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
 
 const binding = vi.hoisted(() => ({
   status: { kind: "idle" } as { kind: string; reason?: string; message?: string },
@@ -31,6 +32,7 @@ vi.mock("../page-editor", () => ({
   ),
 }))
 
+import { toast } from "darkraise-ui/components/sonner"
 import { apiFetch } from "@/lib/api"
 import type { PageView } from "@/hooks/api"
 import { PagePane } from "../page-pane"
@@ -55,6 +57,7 @@ const PAGE: PageView = {
 beforeEach(() => {
   vi.mocked(apiFetch).mockReset()
   vi.mocked(apiFetch).mockResolvedValue({ id: "p1" })
+  vi.mocked(toast.error).mockReset()
   binding.status = { kind: "idle" }
   binding.discard.mockReset()
   binding.generations.length = 0
@@ -87,6 +90,20 @@ describe("PagePane", () => {
         body: JSON.stringify({ title: "Renamed" }),
       }),
     )
+  })
+
+  it("a failed rename shows an error and keeps the typed title", async () => {
+    vi.mocked(apiFetch).mockRejectedValueOnce(new Error("Internal Server Error"))
+    render(<PagePane page={PAGE} autoFocusTitle={false} />, { wrapper })
+    const field = screen.getByLabelText("Page title")
+    fireEvent.change(field, { target: { value: "Renamed" } })
+    fireEvent.blur(field)
+    await waitFor(() =>
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
+        "Could not rename the page — Internal Server Error",
+      ),
+    )
+    expect(field).toHaveValue("Renamed")
   })
 
   it("focuses the title when asked", () => {

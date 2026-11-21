@@ -11,6 +11,8 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 
 import { ApiError, apiFetch } from "@/lib/api"
 import {
+  LEDGER_PAGE,
+  useAllLedgerEntries,
   useWorklogEntries,
   useWorklogResume,
   useWorklogSearch,
@@ -29,6 +31,31 @@ beforeEach(() => {
 })
 
 describe("work-log reads", () => {
+  it("a live refetch fetches only newer entries", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const entry = (seq: number) => ({ id: `e${seq}`, seq, kind: "ledger" })
+      const run = (from: number, to: number) =>
+        Array.from({ length: to - from + 1 }, (_, i) => entry(from + i))
+      vi.mocked(apiFetch)
+        .mockResolvedValueOnce({ items: run(1, LEDGER_PAGE), next_after: LEDGER_PAGE })
+        .mockResolvedValueOnce({ items: run(LEDGER_PAGE + 1, 700), next_after: null })
+        .mockResolvedValueOnce({ items: run(701, 702), next_after: null })
+      const { result } = renderHook(() => useAllLedgerEntries("w1", true, true), { wrapper })
+      await waitFor(() => expect(result.current.data).toHaveLength(700))
+      expect(vi.mocked(apiFetch)).toHaveBeenCalledTimes(2)
+      await vi.advanceTimersByTimeAsync(5_000)
+      await waitFor(() => expect(result.current.data).toHaveLength(702))
+      expect(vi.mocked(apiFetch)).toHaveBeenCalledTimes(3)
+      expect(vi.mocked(apiFetch).mock.calls[2]![0]).toBe(
+        "/worklog/workstreams/w1/entries?kind=ledger&limit=500&after=700",
+      )
+      expect(result.current.data!.map((e) => e.seq).slice(-3)).toEqual([700, 701, 702])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("lists one state of a project's workstreams and pages back on next_before", async () => {
     vi.mocked(apiFetch)
       .mockResolvedValueOnce({ items: [{ id: "w1" }], next_before: "cursor-1" })

@@ -105,6 +105,14 @@ export function refusalOf(tree: SyncTree, op: SyncOp, placedType?: string): Refu
   }
   switch (op.kind) {
     case "insert": {
+      if (op.blocks.length === 0) return { status: 422, message: "a batch insert needs at least one block" }
+      const ids = new Set<string>()
+      for (const item of op.blocks) {
+        if (ids.has(item.block_id)) {
+          return { status: 422, message: `block id ${item.block_id} appears more than once in this batch` }
+        }
+        ids.add(item.block_id)
+      }
       let current: SyncTree = tree
       for (const item of op.blocks) {
         if (current.some((b) => b.id === item.block_id)) {

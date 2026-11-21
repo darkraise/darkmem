@@ -5,6 +5,7 @@ import { Input } from "darkraise-ui/components/input"
 import { Label } from "darkraise-ui/components/label"
 import { ScrollArea } from "darkraise-ui/components/scroll-area"
 import { Skeleton } from "darkraise-ui/components/skeleton"
+import { toast } from "darkraise-ui/components/sonner"
 import { pageQuery, usePageRename, type PageView } from "@/hooks/api"
 import { PAGE_TITLE_FALLBACK } from "./lib/build-page-tree"
 import type { SyncStatus } from "./lib/page-sync"
@@ -58,7 +59,15 @@ export function PagePane({
   const commitTitle = () => {
     const next = title.trim()
     if (next === (page.title ?? "")) return
-    rename.mutate({ pageId: page.id, title: next === "" ? null : next })
+    // The field keeps the typed title on a refusal, so leaving it again
+    // retries the rename.
+    rename.mutate(
+      { pageId: page.id, title: next === "" ? null : next },
+      {
+        onError: (error) =>
+          toast.error(`Could not rename the page — ${error.message}`),
+      },
+    )
   }
 
   const reload = async () => {

@@ -195,17 +195,21 @@ export function useWorklogEntries(
 export const LEDGER_PAGE = 500
 
 /** Every `ledger` entry of one workstream, paged to the end in one read, so a
- *  task filter never reflects only the pages a timeline happened to load. */
+ *  task filter never reflects only the pages a timeline happened to load.
+ *  Entries are append-only, so a refetch keeps what it holds and reads only
+ *  past the last held `seq`. */
 export function useAllLedgerEntries(
   workstreamId: string,
   enabled: boolean,
   live: boolean,
 ) {
+  const qc = useQueryClient()
   return useQuery<WorklogEntry[]>({
     queryKey: ["worklogLedgerAll", workstreamId],
-    queryFn: async () => {
-      const all: WorklogEntry[] = []
-      let after: number | null = null
+    queryFn: async ({ queryKey }) => {
+      const held = qc.getQueryData<WorklogEntry[]>(queryKey) ?? []
+      const all: WorklogEntry[] = [...held]
+      let after: number | null = held.length > 0 ? held[held.length - 1]!.seq : null
       do {
         const qs = new URLSearchParams({ kind: "ledger", limit: String(LEDGER_PAGE) })
         if (after !== null) qs.set("after", String(after))

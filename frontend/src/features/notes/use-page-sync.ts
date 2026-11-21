@@ -13,7 +13,6 @@ import {
 import { subscribeUploads, uploadsInFlight } from "./lib/attachments"
 import { PageSync, type PageTransport, type SyncStatus } from "./lib/page-sync"
 import { createPageTransport } from "./lib/page-transport"
-import type { SyncTree } from "./lib/sync-tree"
 
 /** How long typing may pause before the text it produced is saved. */
 export const TEXT_IDLE_MS = 800
@@ -21,6 +20,11 @@ export const TEXT_IDLE_MS = 800
 interface Entry {
   sync: PageSync
   rowIds: TableRowIds
+  /** The editor's newest document, not yet converted to a tree: conversion
+   *  waits for the save, so typing costs one conversion per idle pause. */
+  latest: EditorBlockLike[] | null
+  /** `editorShape` of the newest document the editor reported. */
+  shape: string
   title: string
   mounted: number
   timer: ReturnType<typeof setTimeout> | null
@@ -54,13 +58,25 @@ function anyPending(): boolean {
   // A block whose upload has not resolved carries no url, so it is absent
   // from every sync tree: the engines alone cannot see that work.
   if (uploadsInFlight() > 0) return true
-  for (const entry of engines.values()) if (entry.sync.pending) return true
+  for (const entry of engines.values()) {
+    convertLatest(entry)
+    if (entry.sync.pending) return true
+  }
   return false
+}
+
+function convertLatest(entry: Entry) {
+  if (entry.latest === null) return
+  const { tree, rowIds } = toSyncTree(entry.latest, entry.sync.snapshot, entry.rowIds, () => crypto.randomUUID())
+  entry.latest = null
+  entry.rowIds = rowIds
+  entry.sync.setDesired(tree)
 }
 
 function flushEntry(entry: Entry) {
   if (entry.timer !== null) clearTimeout(entry.timer)
   entry.timer = null
+  convertLatest(entry)
   void entry.sync.flush()
 }
 
@@ -73,7 +89,7 @@ function flushAll() {
  *  page reopened from it would show old content and meet its own writes as a
  *  change made elsewhere. */
 function release(pageId: string, entry: Entry) {
-  if (entry.mounted !== 0 || entry.sync.pending || engines.get(pageId) !== entry) return
+  if (entry.mounted !== 0 || entry.latest !== null || entry.sync.pending || engines.get(pageId) !== entry) return
   engines.delete(pageId)
   entry.queryClient.removeQueries({ queryKey: pageQuery(pageId).queryKey, exact: true })
 }
@@ -89,6 +105,8 @@ function acquire(
   const entry: Entry = {
     sync: new PageSync(tree, page.content_hash ?? "", createTransport(page.id)),
     rowIds,
+    latest: null,
+    shape: "",
     title: page.title?.trim() || "Untitled",
     mounted: 0,
     timer: null,
@@ -119,17 +137,19 @@ function unmount(pageId: string, entry: Entry) {
 /** The editor blocks to mount, from the engine's desired tree: the server's
  *  copy for a fresh engine, the unsent work for one still draining. */
 function mountBlocks(entry: Entry): EditorBlockLike[] {
+  convertLatest(entry)
   const { blocks, rowIds } = toEditorBlocks(entry.sync.desired)
   entry.rowIds = rowIds
+  entry.shape = editorShape(blocks)
   return blocks
 }
 
 function acceptDocument(entry: Entry, blocks: EditorBlockLike[]) {
-  const before = entry.sync.desired
-  const { tree, rowIds } = toSyncTree(blocks, entry.sync.snapshot, entry.rowIds, () => crypto.randomUUID())
-  entry.rowIds = rowIds
-  entry.sync.setDesired(tree)
-  if (!sameShape(before, tree)) {
+  entry.latest = blocks
+  const shape = editorShape(blocks)
+  const structural = shape !== entry.shape
+  entry.shape = shape
+  if (structural) {
     flushEntry(entry)
     return
   }
@@ -139,16 +159,28 @@ function acceptDocument(entry: Entry, blocks: EditorBlockLike[]) {
 
 function discard(pageId: string, entry: Entry) {
   if (entry.timer !== null) clearTimeout(entry.timer)
+  entry.latest = null
   if (engines.get(pageId) === entry) engines.delete(pageId)
 }
 
-/** Same blocks under the same parents in the same order with the same
- *  types: a change that keeps this is typing, anything else is structure. */
-function sameShape(a: SyncTree, b: SyncTree): boolean {
-  return a.length === b.length && a.every((x, i) => {
-    const y = b[i]!
-    return x.id === y.id && x.parentId === y.parentId && x.type === y.type
-  })
+/** The blocks' ids, parents, order and types, with what decides how many
+ *  tree blocks each becomes (a table's rows, whether a file block has its
+ *  url yet). Two documents with one shape convert to trees of one shape, so
+ *  a change that keeps it is typing and anything else is structure. */
+function editorShape(blocks: EditorBlockLike[]): string {
+  const parts: string[] = []
+  const walk = (block: EditorBlockLike, parentId: string) => {
+    let extra = ""
+    if (block.type === "table") {
+      extra = String((block.content as { rows?: unknown[] } | undefined)?.rows?.length ?? 0)
+    } else if (block.type === "image" || block.type === "file") {
+      extra = block.props.url ? "url" : ""
+    }
+    parts.push(`${block.id}/${parentId}/${block.type}/${extra}`)
+    for (const child of block.children) walk(child, block.id)
+  }
+  for (const block of blocks) walk(block, "")
+  return parts.join("\n")
 }
 
 export interface PageSyncBinding {

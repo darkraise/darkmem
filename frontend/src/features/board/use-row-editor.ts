@@ -20,6 +20,9 @@ export function useRowEditor(project: string) {
   const [prompt, setPrompt] = useState<NotePrompt | null>(null)
   const [refused, setRefused] = useState<Record<string, number>>({})
   const [inFlight, setInFlight] = useState<Record<string, number>>({})
+  // Edits queued behind a conflict are refused with that same error; one
+  // conflict is one message.
+  const [reported] = useState(() => new WeakSet<object>())
 
   const save = (
     record: BoardRecord,
@@ -50,11 +53,14 @@ export function useRowEditor(project: string) {
             ...prev,
             [record.id]: (prev[record.id] ?? 0) + 1,
           }))
-          toast.error(
-            error instanceof ApiError && error.code === "hash_conflict"
-              ? CONFLICT_MESSAGE
-              : error.message,
-          )
+          if (!reported.has(error)) {
+            reported.add(error)
+            toast.error(
+              error instanceof ApiError && error.code === "hash_conflict"
+                ? CONFLICT_MESSAGE
+                : error.message,
+            )
+          }
           onRefused?.(error)
         },
       )

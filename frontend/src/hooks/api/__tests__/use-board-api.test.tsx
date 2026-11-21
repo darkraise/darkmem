@@ -9,7 +9,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   apiFetch: vi.fn(),
 }))
 
-import { apiFetch } from "@/lib/api"
+import { ApiError, apiFetch } from "@/lib/api"
 import { useBoardRecords, useRegisterRowEdit } from "../use-board-api"
 
 function setup() {
@@ -33,6 +33,39 @@ describe("the board hooks", () => {
     expect(vi.mocked(apiFetch).mock.calls[0]![0]).toBe(
       "/board/records?project=darkmem",
     )
+  })
+
+  it("two quick edits to one register both land", async () => {
+    vi.mocked(apiFetch).mockReset()
+    let stored = "h1"
+    let next = 1
+    vi.mocked(apiFetch).mockImplementation(async (_path: string, init?: RequestInit) => {
+      const { expected_hash } = JSON.parse(String(init?.body))
+      if (expected_hash !== stored) {
+        throw new ApiError("changed", 409, undefined, "hash_conflict")
+      }
+      stored = `h${++next}`
+      return { document_id: "d", content_hash: stored, row: {} }
+    })
+    const { wrapper } = setup()
+    const { result } = renderHook(() => useRegisterRowEdit("darkmem"), {
+      wrapper,
+    })
+    const edit = (note: string) =>
+      result.current.mutateAsync({
+        documentId: "d",
+        number: 7,
+        expectedHash: "h1",
+        note,
+      })
+    await expect(Promise.all([edit("first"), edit("second")])).resolves.toHaveLength(2)
+    const sent = vi
+      .mocked(apiFetch)
+      .mock.calls.map(([, init]) => JSON.parse(String(init?.body)))
+    expect(sent).toEqual([
+      { expected_hash: "h1", note: "first" },
+      { expected_hash: "h2", note: "second" },
+    ])
   })
 
   it("sends the row edit with its expected hash and re-reads the records", async () => {
