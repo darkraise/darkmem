@@ -8,10 +8,11 @@ import { ProjectSwitcher } from "./project-switcher"
 import { RealCodeGraphView } from "@/features/code/components/real-code-graph-view"
 import { RealWikiView } from "@/features/code/components/real-wiki-view"
 import { LLMTab } from "@/features/settings/components/llm-tab"
+import { BackupsTab } from "@/features/settings/components/backups-tab"
 import { RealMemoryGraphPage } from "@/features/memory-graph/components/real-memory-graph-page"
 import { syntheticMemoryGraph } from "@/features/graph/lib/synthetic-graph"
 
-type Surface = "code-graph" | "wiki" | "project-switcher" | "llm-tab" | "graph-page"
+type Surface = "code-graph" | "wiki" | "project-switcher" | "llm-tab" | "graph-page" | "backups"
 type State = "loading" | "failed" | "empty" | "populated"
 type Answer = "pending" | "failed" | { body: unknown }
 
@@ -139,6 +140,33 @@ function unifiedGraph() {
 
 const EMPTY_GRAPH = { memories: [], clusters: {}, cluster_names: {}, similarity_edges: [] }
 
+const BACKUP_DESTINATION = {
+  name: "disk",
+  kind: "local",
+  enabled: true,
+  retention_keep: 14,
+  attachments_retention_keep: 3,
+  age_recipient: null,
+  ssh: null,
+  s3: null,
+  worker: null,
+}
+
+const BACKUP_HOLDING = {
+  name: "disk",
+  kind: "local",
+  enabled: true,
+  retention_keep: 14,
+  attachments_retention_keep: 3,
+  snapshots: [
+    { name: "darkmem-app-20261120-043000.sql.gz", size: 252130697, modified_at: "2026-11-20T04:30:00Z" },
+  ],
+  attachment_snapshots: [],
+  last_outcome: { event_type: "backup_shipped", at: "2026-11-20T04:30:00Z", sha256: "a".repeat(64), error: null },
+  last_attachment_outcome: null,
+  error: null,
+}
+
 /** The request each surface renders, keyed by its path under `/api/v1`. */
 const SUBJECT: Record<Surface, string> = {
   "code-graph": "/repos",
@@ -146,6 +174,7 @@ const SUBJECT: Record<Surface, string> = {
   "project-switcher": "/projects",
   "llm-tab": "/config/llm",
   "graph-page": "/graph/unified",
+  backups: "/config/backup-destinations",
 }
 
 function routesFor(surface: Surface, state: State): Record<string, Answer> {
@@ -153,7 +182,14 @@ function routesFor(surface: Surface, state: State): Record<string, Answer> {
   if (state === "loading") return { [subject]: "pending" }
   if (state === "failed") return { [subject]: "failed" }
   if (state === "empty") {
-    const body = surface === "llm-tab" ? {} : surface === "graph-page" ? EMPTY_GRAPH : []
+    const body =
+      surface === "llm-tab"
+        ? {}
+        : surface === "graph-page"
+          ? EMPTY_GRAPH
+          : surface === "backups"
+            ? { destinations: [] }
+            : []
     return { [subject]: { body } }
   }
   return {
@@ -163,6 +199,9 @@ function routesFor(surface: Surface, state: State): Record<string, Answer> {
     "/projects": { body: PROJECTS },
     "/config/llm": { body: LLM_CONFIG },
     "/graph/unified": { body: unifiedGraph() },
+    "/config/backup-destinations": { body: { destinations: [BACKUP_DESTINATION] } },
+    "/backups/inventory": { body: { destinations: [BACKUP_HOLDING] } },
+    "/events": { body: { items: [], total: 0 } },
   }
 }
 
@@ -256,6 +295,12 @@ function SurfaceView({ surface }: { surface: Surface }) {
           <RealMemoryGraphPage />
         </div>
       )
+    case "backups":
+      return (
+        <div className="mx-auto max-w-4xl p-6">
+          <BackupsTab />
+        </div>
+      )
   }
 }
 
@@ -263,13 +308,21 @@ function Board({
   surface,
   state,
   mode = "light",
+  failing = [],
 }: {
   surface: Surface
   state: State
   mode?: "light" | "dark"
+  /** Paths that answer a 500 on top of `state`'s routes: one failed read
+   *  beside reads that succeed. */
+  failing?: string[]
 }) {
+  const routes = {
+    ...routesFor(surface, state),
+    ...Object.fromEntries(failing.map((path) => [path, "failed" as const])),
+  }
   return (
-    <StubbedBackend key={`${surface}-${state}`} routes={routesFor(surface, state)}>
+    <StubbedBackend key={`${surface}-${state}-${failing.join(",")}`} routes={routes}>
       <Mode mode={mode} />
       {/* Covers the shared preview's router outlet, which prints its own
           not-found line above every story. */}
@@ -329,3 +382,12 @@ export const GraphPageLoading = story("graph-page", "loading")
 export const GraphPageFailed = story("graph-page", "failed")
 export const GraphPageEmpty = story("graph-page", "empty")
 export const GraphPagePopulated = story("graph-page", "populated")
+
+/** One failed Backups read at a time, beside the two that succeed. */
+const backupsFailing = (path: string): S => ({
+  args: { surface: "backups", state: "populated", failing: [path] },
+})
+
+export const BackupsDestinationsFailed = backupsFailing("/config/backup-destinations")
+export const BackupsInventoryFailed = backupsFailing("/backups/inventory")
+export const BackupsOutcomesFailed = backupsFailing("/events")

@@ -11,9 +11,12 @@ import type { ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("@/lib/demo-flag", () => ({ DEMO: false }))
-vi.mock("@/lib/api", () => ({ apiFetch: vi.fn() }))
+vi.mock("@/lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api")>()),
+  apiFetch: vi.fn(),
+}))
 
-import { apiFetch } from "@/lib/api"
+import { ApiError, apiFetch } from "@/lib/api"
 import { BackupsTab } from "../components/backups-tab"
 import { outcomeKey, useBackupsTabBinding } from "../use-backups-tab-binding"
 
@@ -449,9 +452,121 @@ describe("a failed destinations read is not an unconfigured backup system", () =
     vi.mocked(apiFetch).mockRejectedValue(new Error("boom"))
     render(<BackupsTab />, { wrapper })
 
-    expect(await screen.findByText(/could not be loaded/i)).toBeInTheDocument()
+    expect(
+      await screen.findByText("Backup destinations could not be loaded"),
+    ).toBeInTheDocument()
     expect(
       screen.queryByText(/no destinations configured/i),
+    ).not.toBeInTheDocument()
+  })
+})
+
+describe("a failed read shows the failed state with Retry", () => {
+  const EMPTY_HOLDING = {
+    name: "disk",
+    kind: "local",
+    enabled: true,
+    retention_keep: 14,
+    attachments_retention_keep: 3,
+    snapshots: [],
+    attachment_snapshots: [],
+    last_outcome: null,
+    last_attachment_outcome: null,
+    error: null,
+  }
+
+  /** Every Backups read answers, except those under `paths`: a 500 until healed. */
+  function failing(paths: string[]) {
+    const broken = new Set(paths)
+    const mock = vi.mocked(apiFetch).mockImplementation(async (path: string) => {
+      for (const prefix of broken) {
+        if (path.startsWith(prefix)) throw new ApiError("Internal server error", 500)
+      }
+      if (path.startsWith("/config/backup-destinations")) return { destinations: [LOCAL] }
+      if (path.startsWith("/events")) return { items: [], total: 0 }
+      if (path.startsWith("/backups/inventory")) return { destinations: [EMPTY_HOLDING] }
+      return {}
+    })
+    return { mock, heal: () => broken.clear() }
+  }
+
+  const callsTo = (mock: ReturnType<typeof failing>["mock"], prefix: string) =>
+    mock.mock.calls.filter(([path]) => String(path).startsWith(prefix)).length
+
+  it.each([
+    ["destinations", ["/config/backup-destinations"], "Backup destinations could not be loaded", "/config/backup-destinations"],
+    ["inventory", ["/backups/inventory"], "What each destination holds could not be loaded", "/backups/inventory"],
+    [
+      "outcomes",
+      ["/events?event_type=backup_shipped&limit=50"],
+      "Recent backup outcomes could not be loaded",
+      "/events?event_type=backup_shipped",
+    ],
+  ])("the %s read", async (_name, paths, title, prefix) => {
+    const { mock } = failing(paths)
+    render(<BackupsTab />, { wrapper })
+
+    expect(await screen.findByText(title)).toBeInTheDocument()
+    const before = callsTo(mock, prefix)
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }))
+    await waitFor(() => expect(callsTo(mock, prefix)).toBeGreaterThan(before))
+  })
+
+  it("an empty inventory appears only after a successful read", async () => {
+    const { heal } = failing(["/backups/inventory"])
+    render(<BackupsTab />, { wrapper })
+
+    expect(
+      await screen.findByText("What each destination holds could not be loaded"),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/no snapshots yet/i)).not.toBeInTheDocument()
+
+    heal()
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }))
+    expect(await screen.findByText(/no snapshots yet/i)).toBeInTheDocument()
+    expect(
+      screen.queryByText("What each destination holds could not be loaded"),
+    ).not.toBeInTheDocument()
+  })
+})
+
+describe("Run now reports a busy run only on 409", () => {
+  function triggerAnswers(error: ApiError) {
+    vi.mocked(apiFetch).mockImplementation(async (path: string) => {
+      if (path === "/jobs/backup_ship/trigger") throw error
+      if (path.startsWith("/config/backup-destinations")) return { destinations: [LOCAL] }
+      if (path.startsWith("/events")) return { items: [], total: 0 }
+      if (path.startsWith("/backups/inventory")) return { destinations: [] }
+      return {}
+    })
+  }
+
+  it("a 409 says a run is already in progress", async () => {
+    triggerAnswers(new ApiError("job is running", 409))
+    render(<BackupsTab />, { wrapper })
+    fireEvent.click(await screen.findByRole("button", { name: /run now/i }))
+    expect(
+      await screen.findByText("A backup run is already in progress."),
+    ).toBeInTheDocument()
+  })
+
+  it("a 500 shows its own message, not the in-progress one", async () => {
+    triggerAnswers(new ApiError("Dump failed", 500))
+    render(<BackupsTab />, { wrapper })
+    fireEvent.click(await screen.findByRole("button", { name: /run now/i }))
+    expect(await screen.findByText("Dump failed")).toBeInTheDocument()
+    expect(
+      screen.queryByText("A backup run is already in progress."),
+    ).not.toBeInTheDocument()
+  })
+
+  it("a 500 whose message mentions 409 is still not busy", async () => {
+    triggerAnswers(new ApiError("upstream answered 409", 500))
+    render(<BackupsTab />, { wrapper })
+    fireEvent.click(await screen.findByRole("button", { name: /run now/i }))
+    expect(await screen.findByText("upstream answered 409")).toBeInTheDocument()
+    expect(
+      screen.queryByText("A backup run is already in progress."),
     ).not.toBeInTheDocument()
   })
 })

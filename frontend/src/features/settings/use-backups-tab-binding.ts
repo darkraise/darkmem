@@ -9,6 +9,7 @@ import {
 } from "@/hooks/api/use-backups-api"
 import { useEvents } from "@/hooks/api/use-events-api"
 import { useTriggerJob } from "@/hooks/api/use-jobs-api"
+import { ApiError } from "@/lib/api"
 import { DEMO } from "@/lib/demo-flag"
 
 export const BACKUP_SHIP_JOB_KEY = "backup_ship"
@@ -111,7 +112,7 @@ export function useBackupsTabBinding() {
       // operator should see, not an exception the tab should throw on — the
       // ship they asked for is already happening.
       const message = error instanceof Error ? error.message : String(error)
-      const busy = /409/.test(message) || /busy/i.test(message)
+      const busy = error instanceof ApiError && error.status === 409
       return {
         ok: false,
         reason: busy ? "busy" : "failed",
@@ -119,6 +120,13 @@ export function useBackupsTabBinding() {
       }
     }
   }, [triggerJob])
+
+  const retryDestinations = () => void destinationsQuery.refetch()
+  const retryInventory = () => void inventoryQuery.refetch()
+  const retryOutcomes = () => {
+    if (shipped.isError) void shipped.refetch()
+    if (failed.isError) void failed.refetch()
+  }
 
   return {
     destinations,
@@ -129,6 +137,12 @@ export function useBackupsTabBinding() {
     runNow,
     isLoading: DEMO ? false : destinationsQuery.isLoading,
     isError: DEMO ? false : destinationsQuery.isError,
+    destinationsError: DEMO ? null : destinationsQuery.error,
+    retryDestinations,
+    inventoryError: DEMO ? null : inventoryQuery.error,
+    retryInventory,
+    outcomesError: DEMO ? null : (shipped.error ?? failed.error),
+    retryOutcomes,
     isSaving: saveMutation.isPending,
     isRunning: triggerJob.isPending,
     saveError: saveMutation.error,

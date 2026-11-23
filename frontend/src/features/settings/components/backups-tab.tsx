@@ -83,6 +83,12 @@ export function BackupsTab() {
     isError,
     isSaving,
     isRunning,
+    destinationsError,
+    retryDestinations,
+    inventoryError,
+    retryInventory,
+    outcomesError,
+    retryOutcomes,
   } = useBackupsTabBinding()
 
   const [editing, setEditing] = useState<BackupDestination | null>(null)
@@ -177,9 +183,12 @@ export function BackupsTab() {
           // Not the empty state: "No destinations configured" tells an
           // operator their backups are not set up, which on a failed read is
           // both false and the most alarming thing this tab can say.
-          <p className="text-destructive-text text-sm">
-            Backup destinations could not be loaded.
-          </p>
+          <EmptyState
+            kind="failed"
+            title="Backup destinations could not be loaded"
+            description={destinationsError?.message}
+            action={<Button onClick={retryDestinations}>Retry</Button>}
+          />
         ) : destinations.length === 0 && !isLoading ? (
           <EmptyState
             kind="empty"
@@ -213,7 +222,24 @@ export function BackupsTab() {
             ))}
           </ul>
         )}
-        <InventorySection inventory={inventory} />
+        {outcomesError ? (
+          <EmptyState
+            kind="failed"
+            title="Recent backup outcomes could not be loaded"
+            description={outcomesError.message}
+            action={<Button onClick={retryOutcomes}>Retry</Button>}
+          />
+        ) : null}
+        {inventoryError ? (
+          <EmptyState
+            kind="failed"
+            title="What each destination holds could not be loaded"
+            description={inventoryError.message}
+            action={<Button onClick={retryInventory}>Retry</Button>}
+          />
+        ) : (
+          <InventorySection inventory={inventory} />
+        )}
       </div>
 
       <Dialog
