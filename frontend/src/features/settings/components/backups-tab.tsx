@@ -72,6 +72,20 @@ import {
  * explains. A client-side copy of the rule would be a second decider that
  * drifts.
  */
+function RetryButton({
+  retrying,
+  onRetry,
+}: {
+  retrying: boolean
+  onRetry: () => void
+}) {
+  return (
+    <Button disabled={retrying} onClick={onRetry}>
+      {retrying ? "Retrying…" : "Retry"}
+    </Button>
+  )
+}
+
 export function BackupsTab() {
   const {
     destinations,
@@ -88,7 +102,9 @@ export function BackupsTab() {
     inventoryError,
     retryInventory,
     outcomesError,
+    outcomesLoading,
     retryOutcomes,
+    retrying,
   } = useBackupsTabBinding()
 
   const [editing, setEditing] = useState<BackupDestination | null>(null)
@@ -174,7 +190,14 @@ export function BackupsTab() {
           ) : runMessage ? (
             <span className="text-muted-foreground text-sm">{runMessage}</span>
           ) : null}
-          <Button variant="outline" className="ml-auto" onClick={openAdd}>
+          {/* Saving an added destination writes the whole list, so it waits
+              for a list it can append to. */}
+          <Button
+            variant="outline"
+            className="ml-auto"
+            disabled={isLoading || isError}
+            onClick={openAdd}
+          >
             Add destination
           </Button>
         </div>
@@ -187,7 +210,12 @@ export function BackupsTab() {
             kind="failed"
             title="Backup destinations could not be loaded"
             description={destinationsError?.message}
-            action={<Button onClick={retryDestinations}>Retry</Button>}
+            action={
+              <RetryButton
+                retrying={retrying.destinations}
+                onRetry={retryDestinations}
+              />
+            }
           />
         ) : destinations.length === 0 && !isLoading ? (
           <EmptyState
@@ -212,7 +240,7 @@ export function BackupsTab() {
                     outcomeKey(destination.name, "attachments"),
                   ) ?? null
                 }
-                outcomesKnown={!outcomesError}
+                outcomesKnown={!outcomesError && !outcomesLoading}
                 busy={isSaving}
                 onToggle={(enabled) => toggle(destination, enabled)}
                 onEdit={() => {
@@ -228,7 +256,9 @@ export function BackupsTab() {
             kind="failed"
             title="Recent backup outcomes could not be loaded"
             description={outcomesError.message}
-            action={<Button onClick={retryOutcomes}>Retry</Button>}
+            action={
+              <RetryButton retrying={retrying.outcomes} onRetry={retryOutcomes} />
+            }
           />
         ) : null}
         {inventoryError ? (
@@ -236,7 +266,12 @@ export function BackupsTab() {
             kind="failed"
             title="What each destination holds could not be loaded"
             description={inventoryError.message}
-            action={<Button onClick={retryInventory}>Retry</Button>}
+            action={
+              <RetryButton
+                retrying={retrying.inventory}
+                onRetry={retryInventory}
+              />
+            }
           />
         ) : (
           <InventorySection inventory={inventory} />

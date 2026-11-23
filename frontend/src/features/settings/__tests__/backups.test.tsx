@@ -523,6 +523,31 @@ describe("a failed read shows the failed state with Retry", () => {
     expect(screen.queryByText(/no run yet/)).not.toBeInTheDocument()
   })
 
+  it("a failed destinations read leaves no Add that would save over the list", async () => {
+    failing(["/config/backup-destinations"])
+    render(<BackupsTab />, { wrapper })
+
+    expect(
+      await screen.findByText("Backup destinations could not be loaded"),
+    ).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Add destination" })).toBeDisabled()
+  })
+
+  it("no destination says it never ran while the outcomes are still loading", async () => {
+    vi.mocked(apiFetch).mockImplementation(async (path: string) => {
+      if (path.startsWith("/config/backup-destinations")) return { destinations: [LOCAL] }
+      if (path.startsWith("/events")) return new Promise(() => {})
+      if (path.startsWith("/backups/inventory")) return { destinations: [EMPTY_HOLDING] }
+      return {}
+    })
+    render(<BackupsTab />, { wrapper })
+
+    expect(
+      await screen.findByRole("button", { name: `Edit ${LOCAL.name}` }),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/no run yet/)).not.toBeInTheDocument()
+  })
+
   it("an empty inventory appears only after a successful read", async () => {
     const { heal } = failing(["/backups/inventory"])
     render(<BackupsTab />, { wrapper })

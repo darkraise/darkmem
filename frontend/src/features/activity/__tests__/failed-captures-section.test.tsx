@@ -94,6 +94,27 @@ describe("FailedCapturesSection", () => {
     await waitFor(() => expect(requeue).toBeEnabled())
   })
 
+  it("a failed requeue gives focus back to its button", async () => {
+    let fail: (error: Error) => void = () => {}
+    const onRequeue = vi.fn(() => new Promise<void>((_, reject) => { fail = reject }))
+    renderSection({ onRequeue })
+    const first = rowOf("the payments worker kept restarting")
+    const requeue = within(first).getByRole("button", { name: "Requeue" })
+
+    requeue.focus()
+    await userEvent.keyboard("{Enter}")
+    expect(requeue).toBeDisabled()
+    // A browser drops focus from a button as it is disabled; happy-dom keeps
+    // it, so focus is moved off the button by hand.
+    within(rowOf("we chose redis for the cache"))
+      .getByRole("button", { name: "Requeue" })
+      .focus()
+    expect(requeue).not.toHaveFocus()
+    fail(new Error("boom"))
+    await waitFor(() => expect(requeue).toBeEnabled())
+    expect(requeue).toHaveFocus()
+  })
+
   it("a pending requeue disables both of its row's buttons", async () => {
     let finish: () => void = () => {}
     const onRequeue = vi.fn(() => new Promise<void>((resolve) => { finish = resolve }))

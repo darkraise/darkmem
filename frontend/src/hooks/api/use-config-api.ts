@@ -74,6 +74,9 @@ export function useUpdateLlmConfig() {
       qc.invalidateQueries({ queryKey: ["llmConfig"] })
       qc.invalidateQueries({ queryKey: ["obsoleteCounts"] })
       qc.invalidateQueries({ queryKey: ["pipeline"] })
+      // The save that installs an orchestrator builds the pipeline, and the
+      // stopped-processing banner reads /health.
+      qc.invalidateQueries({ queryKey: ["health"] })
     },
   })
 }

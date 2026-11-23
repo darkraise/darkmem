@@ -112,6 +112,7 @@ export function useCreateLlmProvider() {
       // A provider edit changes what every purpose resolves to.
       qc.invalidateQueries({ queryKey: ["llmProviders"] })
       qc.invalidateQueries({ queryKey: ["llmConfig"] })
+      qc.invalidateQueries({ queryKey: ["health"] })
     },
   })
 }
@@ -133,6 +134,7 @@ export function useUpdateLlmProvider() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["llmProviders"] })
       qc.invalidateQueries({ queryKey: ["llmConfig"] })
+      qc.invalidateQueries({ queryKey: ["health"] })
     },
   })
 }
@@ -149,6 +151,7 @@ export function useDeleteLlmProvider() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["llmProviders"] })
       qc.invalidateQueries({ queryKey: ["llmConfig"] })
+      qc.invalidateQueries({ queryKey: ["health"] })
     },
   })
 }

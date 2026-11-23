@@ -43,18 +43,22 @@ function FailedCaptureRow({
 }) {
   const memory = item.memory_exists && item.memory_id ? item.memory_id : null
   const [busy, setBusy] = useState(false)
-  // The confirmed dialog closes while the Discard trigger is disabled, so it
-  // cannot take focus back then; it does so once the discard settles.
+  // Each action disables its own button while it runs, which drops focus
+  // (and the confirmed dialog closes while the Discard trigger is disabled),
+  // so the button takes focus back once the action settles.
+  const requeueTrigger = useRef<HTMLButtonElement>(null)
   const discardTrigger = useRef<HTMLButtonElement>(null)
-  const refocusDiscard = useRef(false)
+  const refocus = useRef<HTMLButtonElement | null>(null)
   useEffect(() => {
-    if (busy || !refocusDiscard.current) return
-    refocusDiscard.current = false
-    discardTrigger.current?.focus()
+    if (busy || !refocus.current) return
+    const target = refocus.current
+    refocus.current = null
+    target.focus()
   }, [busy])
 
   const requeue = () => {
     if (busy) return
+    refocus.current = requeueTrigger.current
     setBusy(true)
     onRequeue(item.id)
       .then(
@@ -68,7 +72,7 @@ function FailedCaptureRow({
   }
   const discard = () => {
     if (busy) return
-    refocusDiscard.current = true
+    refocus.current = discardTrigger.current
     setBusy(true)
     onDiscard(item.id).then(
       () =>
@@ -109,7 +113,12 @@ function FailedCaptureRow({
         </div>
       )}
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="outline" disabled={busy} onClick={requeue}>
+        <Button
+          ref={requeueTrigger}
+          variant="outline"
+          disabled={busy}
+          onClick={requeue}
+        >
           <RefreshCw className="mr-1.5 size-3.5" />
           Requeue
         </Button>

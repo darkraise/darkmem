@@ -301,7 +301,11 @@ export function ProviderDialog({
               )}
             </div>
             {keyOwed && (
-              <span id={keyHintId} className="text-destructive-text text-sm">
+              <span
+                id={keyHintId}
+                role="status"
+                className="text-destructive-text text-sm"
+              >
                 The address or API kind changed. Enter the API key again.
               </span>
             )}
@@ -324,6 +328,7 @@ export function ProviderDialog({
             variant="outline"
             className="border-primary/60 text-primary-text"
             disabled={!canSubmit}
+            aria-describedby={keyOwed ? keyHintId : undefined}
             onClick={submit}
           >
             {isEdit ? "Save" : "Create"}

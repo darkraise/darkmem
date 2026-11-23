@@ -142,7 +142,13 @@ export function useBackupsTabBinding() {
     inventoryError: DEMO ? null : inventoryQuery.error,
     retryInventory,
     outcomesError: DEMO ? null : (shipped.error ?? failed.error),
+    outcomesLoading: DEMO ? false : shipped.isLoading || failed.isLoading,
     retryOutcomes,
+    retrying: {
+      destinations: destinationsQuery.isFetching,
+      inventory: inventoryQuery.isFetching,
+      outcomes: shipped.isFetching || failed.isFetching,
+    },
     isSaving: saveMutation.isPending,
     isRunning: triggerJob.isPending,
     saveError: saveMutation.error,
