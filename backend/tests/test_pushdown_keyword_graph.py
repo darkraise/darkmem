@@ -700,3 +700,32 @@ async def test_memory_context_neighbours_stay_in_project(session):
 
     neighbour_ids = {n["id"] for n in context["neighbors"]}
     assert str(ids["beta_memory"]) not in neighbour_ids
+
+
+@pytest.mark.asyncio
+async def test_memory_context_fills_from_in_scope_neighbours(session):
+    """The neighbour limit is taken after the scope, so out-of-scope rows with
+    the smallest ids cannot crowd in-scope neighbours out of it."""
+    seed = await _add_memory(session, project="alpha", content="context seed")
+    neighbour_ids = sorted(uuid.uuid4() for _ in range(25))
+    for index, mid in enumerate(neighbour_ids):
+        if index < 5:
+            fields = {"project": "beta"}
+        elif index < 10:
+            fields = {"status": "deprecated"}
+        else:
+            fields = {}
+        await _add_memory(session, id=mid, content=f"neighbour {index}", **fields)
+    await session.execute(
+        text(
+            "INSERT INTO entities (id, name, entity_type, memory_ids) "
+            "VALUES (gen_random_uuid(), 'context-hub', 'tool', CAST(:mids AS uuid[]))"
+        ),
+        {"mids": [str(seed.id)] + [str(mid) for mid in neighbour_ids]},
+    )
+    await session.flush()
+
+    svc = GraphService(session, graph_repo=PostgresGraphRepository(session))
+    context = await svc.get_memory_context(str(seed.id))
+
+    assert [n["id"] for n in context["neighbors"]] == [str(mid) for mid in neighbour_ids[10:]]

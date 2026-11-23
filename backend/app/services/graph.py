@@ -2,7 +2,7 @@ import logging
 from collections import OrderedDict
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.memory import Memory
@@ -218,7 +218,7 @@ class GraphService:
                     neighbor_memory_ids.add(mid)
 
         neighbors = await self._fetch_neighbor_memories(
-            sorted(neighbor_memory_ids)[:20], self._memory_scope(scope),
+            sorted(neighbor_memory_ids), self._memory_scope(scope),
         )
 
         return {
@@ -270,10 +270,13 @@ class GraphService:
         if not memory_ids:
             return []
         try:
-            uuids = [UUID(mid) for mid in memory_ids]
-            stmt = select(Memory).where(Memory.id.in_(uuids)).order_by(Memory.id)
+            ids = [str(UUID(mid)) for mid in memory_ids]
+            stmt = select(Memory).where(
+                text("memories.id = ANY(CAST(:ids AS uuid[]))").bindparams(ids=ids),
+            )
             if scope is not None:
                 stmt = stmt.where(*scope.orm_criteria(Memory))
+            stmt = stmt.order_by(Memory.id).limit(20)
             result = await self.session.execute(stmt)
             return [
                 {

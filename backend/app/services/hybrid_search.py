@@ -114,10 +114,11 @@ class HybridSearchService:
                     semantic_ran=False,
                 )
         else:
-            if embedded is not None and embedded[0] is not None:
-                vector, fingerprint, _ = embedded
-            else:
-                vector, fingerprint = await self.llm.embed(query)
+            if embedded is None:
+                embedded = await self.embed_query(query)
+            vector, fingerprint, _ = embedded
+            if vector is None:
+                raise RuntimeError("Pure-vector search failed: the query embed failed")
             results = _by_score_then_id(await PostgresVectorRepository(self.session).search(
                 vector, fingerprint=fingerprint, limit=limit, filters=filters,
             ))

@@ -152,3 +152,27 @@ async def test_an_unreachable_embedder_is_not_dialled_again_inside_the_cooldown(
     clock[0] += hybrid_search.EMBEDDER_RETRY_COOLDOWN_SECONDS
     await svc.search("third")
     assert llm.calls == 2
+
+
+HYBRID_OFF = {"hybrid_search_enabled": False}
+
+
+async def test_hybrid_off_outage_dials_the_embedder_once(quiet_search):
+    llm = _DownLLM()
+    svc = HybridSearchService(llm, _KeywordOnlySession())
+
+    for query in ("first", "second"):
+        with pytest.raises(Exception):
+            await svc.search_ranked(query, flags=HYBRID_OFF)
+
+    assert llm.calls == 1
+
+
+async def test_hybrid_off_shared_failed_embed_is_not_retried(quiet_search):
+    llm = _DownLLM()
+    svc = HybridSearchService(llm, _KeywordOnlySession())
+
+    with pytest.raises(Exception):
+        await svc.search_ranked("shared", flags=HYBRID_OFF, embedded=(None, None, True))
+
+    assert llm.calls == 0
