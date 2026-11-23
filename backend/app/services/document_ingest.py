@@ -91,10 +91,12 @@ __all__ = [
     "DocumentUriConflict",
     "DocumentIngest",
     "OVERSIZED_BLOCK_CHARS",
+    "REVISIONS_PRUNED_EVENT",
     "UNCHANGED",
     "UPDATED",
     "compute_content_hash",
     "file_document",
+    "prune_revisions",
 ]
 
 DOCUMENT_FILED_EVENT = "document_filed"
@@ -411,7 +413,7 @@ async def _file_document_without_savepoint(
     else:
         changed = await documents_repo.latest_revision_hash(session, resolved_id) != content_hash
     if stored_content is not None and changed:
-        await _prune_revisions(
+        await prune_revisions(
             session, resolved_id,
             project=project, actor=actor, api_key_id=api_key_id, source=source,
         )
@@ -463,7 +465,7 @@ async def _file_document_without_savepoint(
     )
 
 
-async def _prune_revisions(
+async def prune_revisions(
     session: AsyncSession,
     document_id: UUID,
     *,
@@ -472,11 +474,12 @@ async def _prune_revisions(
     api_key_id: UUID | None,
     source: str | None,
 ) -> None:
-    # Runs before this filing's own revision is written, so the window keeps
-    # the newest earlier revisions and the new one rides on top of them. The
-    # count is journalled first and the rows go only if that row landed: an
-    # unrecorded erase of content is worse than keeping it one more filing.
-    # A failed delete raises into the filing's savepoint and refuses the put.
+    # A filing runs this before its own revision is written, so the window
+    # keeps the newest earlier revisions and the new one rides on top of them;
+    # a block verb on a document runs it in its write savepoint. The count is
+    # journalled first and the rows go only if that row landed: an unrecorded
+    # erase of content is worse than keeping it one more write. A failed
+    # delete raises into the caller's savepoint and refuses the write.
     ids = await documents_repo.prunable_revision_ids(
         session, document_id,
         keep_newest=REVISION_KEEP_NEWEST, keep_days=REVISION_KEEP_DAYS,

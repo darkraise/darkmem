@@ -605,3 +605,109 @@ async def test_unchanged_repush_prunes_nothing(session):
     assert again.outcome == "unchanged"
     assert len(await _revision_ids(session, filed.document_id)) == 60
     assert await _pruned_events(session, filed.document_id) == []
+
+
+async def _first_block(session, document_id):
+    return (await session.execute(
+        text(
+            "SELECT CAST(id AS text) FROM blocks WHERE document_id = CAST(:d AS uuid) "
+            "ORDER BY order_index LIMIT 1"
+        ),
+        {"d": str(document_id)},
+    )).scalar_one()
+
+
+async def test_a_block_verb_prunes_expired_revisions(session):
+    from app.services.block_verbs import update_block
+
+    filed = await _put(session, "# A\n\nFirst.\n")
+    await _history(session, filed.document_id, [100] * 20 + [10] * 40)
+    before = await _revision_ids(session, filed.document_id)
+
+    await update_block(
+        session, StubEmbedder(), block_id=await _first_block(session, filed.document_id),
+        text="Edited",
+    )
+
+    assert await _revision_ids(session, filed.document_id) == before[10:]
+    assert await _pruned_events(session, filed.document_id) == [("document", {"pruned": 10})]
+
+
+async def test_a_block_verb_prune_without_its_journal_row_is_skipped(session, monkeypatch):
+    import app.services.document_ingest as ingest
+    from app.services.block_verbs import update_block
+
+    real = ingest.record_event
+
+    async def refuse_the_prune(session, *, event_type, **kwargs):
+        if event_type == "document_revisions_pruned":
+            return False
+        return await real(session, event_type=event_type, **kwargs)
+
+    monkeypatch.setattr(ingest, "record_event", refuse_the_prune)
+    filed = await _put(session, "# A\n\nFirst.\n")
+    await _history(session, filed.document_id, [100] * 20 + [10] * 40)
+
+    result = await update_block(
+        session, StubEmbedder(), block_id=await _first_block(session, filed.document_id),
+        text="Edited",
+    )
+
+    assert result.outcome == "updated"
+    assert len(await _revision_ids(session, filed.document_id)) == 60
+    assert await _pruned_events(session, filed.document_id) == []
+
+
+async def test_a_page_block_verb_prunes_nothing(session, monkeypatch):
+    from app.services import block_verbs
+    from app.services.page_door import create_page
+
+    pruned = []
+
+    async def record_prune(*args, **kwargs):
+        pruned.append((args, kwargs))
+
+    monkeypatch.setattr(block_verbs, "prune_revisions", record_prune, raising=False)
+    page = await create_page(
+        session, StubEmbedder(), project="proj", title="page", content="para one\n",
+    )
+    block_id = (await session.execute(
+        text("SELECT CAST(id AS text) FROM blocks WHERE page_id = CAST(:p AS uuid) LIMIT 1"),
+        {"p": str(page.id)},
+    )).scalar_one()
+
+    await block_verbs.update_block(
+        session, StubEmbedder(), block_id=block_id, text="para two", owner=block_verbs.PAGE_OWNER,
+    )
+
+    assert pruned == []
+    assert await _pruned_events(session, page.id) == []
+
+
+async def test_a_failed_block_verb_prune_refuses_the_edit(session):
+    from sqlalchemy.exc import DBAPIError
+
+    from app.services.block_verbs import update_block
+
+    filed = await _put(session, "# A\n\nFirst.\n")
+    await _history(session, filed.document_id, [100] * 20 + [10] * 40)
+    await session.execute(text(
+        "CREATE FUNCTION pg_temp.refuse_revision_delete() RETURNS trigger "
+        "LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'revision delete refused'; END $$"
+    ))
+    await session.execute(text(
+        "CREATE TRIGGER refuse_revision_delete BEFORE DELETE ON document_revisions "
+        "FOR EACH STATEMENT EXECUTE FUNCTION pg_temp.refuse_revision_delete()"
+    ))
+    block_id = await _first_block(session, filed.document_id)
+    revisions = await _revision_ids(session, filed.document_id)
+
+    with pytest.raises(DBAPIError, match="revision delete refused"):
+        await update_block(session, StubEmbedder(), block_id=block_id, text="Edited")
+
+    text_now = (await session.execute(
+        text("SELECT text FROM blocks WHERE id = CAST(:b AS uuid)"), {"b": block_id},
+    )).scalar_one()
+    assert text_now != "Edited"
+    assert await _revision_ids(session, filed.document_id) == revisions
+    assert await _pruned_events(session, filed.document_id) == []

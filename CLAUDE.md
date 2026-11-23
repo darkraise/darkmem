@@ -882,11 +882,11 @@ summaries in `consolidated`/`undone`, contradiction counterparts in
 `verified`, `knowledge_triples.fact`, 24h of raw content in `memory_buffer`
 done rows, `messages.context`, and a document's earlier contents in
 `document_revisions` until the retention prune or the document's delete
-removes them (the newest 50 and any younger than 90 days stay). Pasted secrets go through
-the operator break-glass procedure `docs/runbook-content-purge.md`, **never an
-in-app journal-rewriting path**. **Write-time minimisation is the standing
-rule**: a new payload copies content only when a feature demonstrably needs it,
-and says so at the writer.
+removes them (the newest 50 and any younger than 90 days stay). Pasted
+secrets go through the operator break-glass procedure
+`docs/runbook-content-purge.md`, **never an in-app journal-rewriting path**.
+**Write-time minimisation is the standing rule**: a new payload copies content
+only when a feature demonstrably needs it, and says so at the writer.
 
 **Dream digest and undo.** `app/services/dream_digest.py` reads the
 `consolidated` stream grouped by `payload.cycle_id`, then by object, in
@@ -1313,10 +1313,11 @@ the same `document_door` functions; targets resolve through
   refused put rolls its revision back. **Retention**: a filing that writes a
   revision first deletes the document's earlier revisions that are both past
   its newest 50 and older than 90 days (`REVISION_KEEP_NEWEST`,
-  `REVISION_KEEP_DAYS` in `document_revisions.py`), journalling one
+  `REVISION_KEEP_DAYS` in `document_revisions.py`), and each block verb on a
+  document runs the same prune, journalling one
   count-only `document_revisions_pruned` row before the delete; when that row
-  does not land the prune is skipped and the put still succeeds, and a failed
-  delete refuses the put. Reads come newest first, pages carry
+  does not land the prune is skipped and the put or edit still succeeds, and
+  a failed delete refuses it. Reads come newest first, pages carry
   no content and page back through `before` (a revision id; one naming no
   revision of the document, a pruned one included, answers 404 or an
   `unresolved` envelope):

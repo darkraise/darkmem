@@ -43,7 +43,9 @@ from app.services.document_door import (
     DocumentNotConvertible,
     DocumentTooLarge,
 )
-from app.services.document_ingest import DocumentHashConflict, compute_content_hash
+from app.services.document_ingest import (
+    DocumentHashConflict, compute_content_hash, prune_revisions,
+)
 from app.services.embedder_registry import child_table
 from app.services.events import record_event
 from app.services.page_attachments import (
@@ -564,6 +566,13 @@ async def _mutate(session, llm, *, document_id, apply, touched_embed, verb,
                 project=meta["project"],
                 payload=payload,
             )
+            if owner.kind == "document":
+                # A converted document is refused every later content filing,
+                # so without this its revisions would never age out.
+                await prune_revisions(
+                    session, UUID(document_id), project=meta["project"],
+                    actor=None, api_key_id=None, source=None,
+                )
     except IntegrityError as exc:
         # The check above sees only committed rows under this owner's lock; an
         # insert of the same id into another owner is not serialised by it, so
