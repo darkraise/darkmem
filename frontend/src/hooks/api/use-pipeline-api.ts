@@ -18,6 +18,9 @@ export interface HealthStatus {
   services: { pgvector: boolean; llm: boolean }
   /** A stored `classifier_kind=local` this install cannot load (no torch). */
   classifier_unavailable: boolean
+  /** `failed_at_boot`: the boot's LLM setup raised, so no pipeline exists and
+   *  captures queue until a configuration save builds one. */
+  pipeline_state: "ok" | "not_configured" | "failed_at_boot" | "read_only" | "unknown"
 }
 
 export interface PipelineLog {

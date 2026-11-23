@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { Alert, AlertDescription } from "darkraise-ui/components/alert"
+import { Banner } from "darkraise-ui/components/banner"
 import { Button } from "darkraise-ui/components/button"
 import { Skeleton } from "darkraise-ui/components/skeleton"
 import {
@@ -133,19 +134,33 @@ function PurposesPanel() {
   )
 }
 
+function StoppedProcessingBanner() {
+  const { pipelineState } = useLLMTabBinding()
+  if (pipelineState !== "failed_at_boot") return null
+  return (
+    <Banner variant="warning" className="mb-4">
+      Processing is stopped: the model setup failed at startup. Captures are
+      still queued. Save a working model configuration to start it.
+    </Banner>
+  )
+}
+
 export function LLMTab() {
   return (
-    <Tabs defaultValue="purposes">
-      <TabsList>
-        <TabsTrigger value="providers">Providers</TabsTrigger>
-        <TabsTrigger value="purposes">Purposes</TabsTrigger>
-      </TabsList>
-      <TabsContent value="providers" className="pt-4">
-        <ProvidersPanel />
-      </TabsContent>
-      <TabsContent value="purposes" className="pt-4">
-        <PurposesPanel />
-      </TabsContent>
-    </Tabs>
+    <>
+      <StoppedProcessingBanner />
+      <Tabs defaultValue="purposes">
+        <TabsList>
+          <TabsTrigger value="providers">Providers</TabsTrigger>
+          <TabsTrigger value="purposes">Purposes</TabsTrigger>
+        </TabsList>
+        <TabsContent value="providers" className="pt-4">
+          <ProvidersPanel />
+        </TabsContent>
+        <TabsContent value="purposes" className="pt-4">
+          <PurposesPanel />
+        </TabsContent>
+      </Tabs>
+    </>
   )
 }

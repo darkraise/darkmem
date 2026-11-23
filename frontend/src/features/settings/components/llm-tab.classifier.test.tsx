@@ -38,15 +38,16 @@ function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>
 }
 
-function serveHealth(classifierUnavailable: boolean) {
+function serveHealth(classifierUnavailable: boolean, pipelineState = "ok") {
   return vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     if (String(input) === "/health") {
       return new Response(
         JSON.stringify({
           status: "ok",
-          pipeline: true,
+          pipeline: pipelineState === "ok",
           services: { pgvector: true, llm: true },
           classifier_unavailable: classifierUnavailable,
+          pipeline_state: pipelineState,
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       )
@@ -94,5 +95,48 @@ describe("the classification purpose's classifier notice", () => {
     await new Promise((resolve) => setTimeout(resolve, 50))
     expect(healthCalls(fetchSpy)).toHaveLength(0)
     expect(screen.queryByText(NOTICE)).not.toBeInTheDocument()
+  })
+})
+
+const STOPPED =
+  "Processing is stopped: the model setup failed at startup. Captures are still queued. Save a working model configuration to start it."
+
+describe("the stopped-processing banner", () => {
+  function serveConfig() {
+    vi.mocked(apiFetch).mockImplementation(async (path: string) =>
+      path.endsWith("/probe-models")
+        ? { models: [], fetched_via: "", error: null }
+        : CONFIG,
+    )
+  }
+
+  it("shows the stopped-processing banner while the boot setup failed", async () => {
+    serveConfig()
+    serveHealth(false, "failed_at_boot")
+    render(<LLMTab />, { wrapper })
+    expect(await screen.findByText(STOPPED)).toBeInTheDocument()
+  })
+
+  it.each(["ok", "not_configured", "read_only", "unknown"])(
+    "shows no banner while pipeline_state is %s",
+    async (state) => {
+      serveConfig()
+      const fetchSpy = serveHealth(false, state)
+      render(<LLMTab />, { wrapper })
+      await waitFor(() => expect(healthCalls(fetchSpy).length).toBeGreaterThan(0))
+      await waitFor(() =>
+        expect(screen.getAllByText("deepseek-v4-flash").length).toBeGreaterThan(0),
+      )
+      expect(screen.queryByText(STOPPED)).not.toBeInTheDocument()
+    },
+  )
+
+  it("makes no health request in demo mode", async () => {
+    flag.demo = true
+    const fetchSpy = serveHealth(false, "failed_at_boot")
+    render(<LLMTab />, { wrapper })
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(healthCalls(fetchSpy)).toHaveLength(0)
+    expect(screen.queryByText(STOPPED)).not.toBeInTheDocument()
   })
 })

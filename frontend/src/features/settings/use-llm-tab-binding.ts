@@ -11,6 +11,7 @@ import {
   useHealth,
   useLlmConfig,
   useUpdateLlmConfig,
+  type HealthStatus,
   type LlmPurposeConfig,
 } from "@/hooks/api"
 import { TIER_C_LLM_PURPOSES, type TierCLLMPurpose } from "./llm-tier-c-purposes"
@@ -114,6 +115,8 @@ export interface LLMTabBinding {
   /** `/health` says the stored `local` classifier cannot load here, so
    *  classification runs on the LLM classifier. Never true in demo mode. */
   classifierUnavailable: boolean
+  /** `/health`'s `pipeline_state`; null in demo mode and before it answers. */
+  pipelineState: HealthStatus["pipeline_state"] | null
   /** null = not live-bound in this mode (real mode has no buckets endpoint
    *  yet — there is no backend table for these, demo or otherwise). */
   buckets: DemoCodeBucket[] | null
@@ -173,6 +176,7 @@ export function useLLMTabBinding(): LLMTabBinding {
       })),
       classifierKind: demo.classifier_kind,
       classifierUnavailable: false,
+      pipelineState: null,
       buckets: demo.buckets,
       savePurpose: (purpose, patch) => {
         saveDemoPurpose(purpose, patch)
@@ -214,6 +218,7 @@ export function useLLMTabBinding(): LLMTabBinding {
     tierCPurposes,
     classifierKind,
     classifierUnavailable: health.data?.classifier_unavailable ?? false,
+    pipelineState: health.data?.pipeline_state ?? null,
     buckets: null,
     savePurpose: (purpose, patch) =>
       update
