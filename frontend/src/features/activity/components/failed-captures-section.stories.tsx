@@ -82,3 +82,17 @@ export const DiscardDialogWithMemory: S = {
     await userEvent.click(canvas.getByRole("button", { name: "Discard" }))
   },
 }
+
+/** The first row's requeue never settles, so both of its buttons stay held
+ *  while the second row's stay live. */
+export const RequeuePending: S = {
+  args: {
+    items: [row(0), row(1)],
+    total: 2,
+    onRequeue: () => new Promise<never>(() => {}),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await userEvent.click(canvas.getAllByRole("button", { name: "Requeue" })[0]!)
+  },
+}

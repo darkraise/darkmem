@@ -94,6 +94,49 @@ describe("FailedCapturesSection", () => {
     await waitFor(() => expect(requeue).toBeEnabled())
   })
 
+  it("a pending requeue disables both of its row's buttons", async () => {
+    let finish: () => void = () => {}
+    const onRequeue = vi.fn(() => new Promise<void>((resolve) => { finish = resolve }))
+    renderSection({ onRequeue })
+    const first = rowOf("the payments worker kept restarting")
+    const other = rowOf("we chose redis for the cache")
+
+    await userEvent.click(within(first).getByRole("button", { name: "Requeue" }))
+    expect(within(first).getByRole("button", { name: "Requeue" })).toBeDisabled()
+    expect(within(first).getByRole("button", { name: "Discard" })).toBeDisabled()
+    expect(within(other).getByRole("button", { name: "Requeue" })).toBeEnabled()
+    expect(within(other).getByRole("button", { name: "Discard" })).toBeEnabled()
+
+    finish()
+    await waitFor(() =>
+      expect(within(first).getByRole("button", { name: "Discard" })).toBeEnabled(),
+    )
+    expect(within(first).getByRole("button", { name: "Requeue" })).toBeEnabled()
+  })
+
+  it("a pending discard disables both of its row's buttons", async () => {
+    let finish: () => void = () => {}
+    const onDiscard = vi.fn(() => new Promise<void>((resolve) => { finish = resolve }))
+    renderSection({ onDiscard })
+    const first = rowOf("the payments worker kept restarting")
+    const other = rowOf("we chose redis for the cache")
+
+    await userEvent.click(within(first).getByRole("button", { name: "Discard" }))
+    await userEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Discard" }),
+    )
+    expect(onDiscard).toHaveBeenCalledTimes(1)
+    expect(within(first).getByRole("button", { name: "Requeue" })).toBeDisabled()
+    expect(within(first).getByRole("button", { name: "Discard" })).toBeDisabled()
+    expect(within(other).getByRole("button", { name: "Discard" })).toBeEnabled()
+
+    finish()
+    await waitFor(() =>
+      expect(within(first).getByRole("button", { name: "Discard" })).toBeEnabled(),
+    )
+    expect(within(first).getByRole("button", { name: "Requeue" })).toBeEnabled()
+  })
+
   it("lists failed captures with their error", () => {
     renderSection()
     expect(screen.getByText("Failed captures")).toBeInTheDocument()

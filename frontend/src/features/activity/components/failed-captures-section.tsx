@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { RefreshCw, Trash2 } from "lucide-react"
 import {
   AlertDialog,
@@ -43,6 +43,15 @@ function FailedCaptureRow({
 }) {
   const memory = item.memory_exists && item.memory_id ? item.memory_id : null
   const [busy, setBusy] = useState(false)
+  // The confirmed dialog closes while the Discard trigger is disabled, so it
+  // cannot take focus back then; it does so once the discard settles.
+  const discardTrigger = useRef<HTMLButtonElement>(null)
+  const refocusDiscard = useRef(false)
+  useEffect(() => {
+    if (busy || !refocusDiscard.current) return
+    refocusDiscard.current = false
+    discardTrigger.current?.focus()
+  }, [busy])
 
   const requeue = () => {
     if (busy) return
@@ -59,6 +68,7 @@ function FailedCaptureRow({
   }
   const discard = () => {
     if (busy) return
+    refocusDiscard.current = true
     setBusy(true)
     onDiscard(item.id).then(
       () =>
@@ -105,7 +115,7 @@ function FailedCaptureRow({
         </Button>
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <Button variant="outline">
+            <Button ref={discardTrigger} variant="outline" disabled={busy}>
               <Trash2 className="mr-1.5 size-3.5" />
               Discard
             </Button>

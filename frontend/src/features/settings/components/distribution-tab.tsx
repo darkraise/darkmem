@@ -1,4 +1,4 @@
-import { Clock, FileText, Plug } from "lucide-react"
+import { FileText, Plug } from "lucide-react"
 import { useState } from "react"
 import { Button } from "darkraise-ui/components/button"
 import { Card, CardContent, CardHeader } from "darkraise-ui/components/card"
@@ -10,8 +10,7 @@ import { McpConnectSnippets, mcpEndpoint } from "./mcp-connect-snippets"
 import { ModuleSurface } from "@/features/activity/components/module-surface"
 import { DEMO } from "@/lib/demo-flag"
 import { EmptyState, useDetailLevel } from "@/components/darkmem"
-import { useDistribution, useEvents } from "@/hooks/api"
-import { relativeTime } from "@/lib/format"
+import { useDistribution } from "@/hooks/api"
 
 function SectionHead({
   icon: Icon,
@@ -25,112 +24,6 @@ function SectionHead({
       <Icon aria-hidden className="text-muted-foreground h-4 w-4" />
       {children}
     </h3>
-  )
-}
-
-const RECENT_INJECT_LIMIT = 10
-
-/** The inject log, inline (T4.08).
- *
- * Two server-filtered queries rather than one page filtered here: a client
- * that fetched every `system` event and kept the inject ones would under-report
- * the moment the page bound truncated, and this list is the record doc 15 §7
- * asks push to leave.
- *
- * A push and a curb are different facts, which is why they are different event
- * types; they are merged here for display only, newest first, and each keeps
- * its own sentence.
- */
-function RecentInjects() {
-  const pushes = useEvents(
-    { event_type: "inject", limit: RECENT_INJECT_LIMIT },
-    { enabled: !DEMO },
-  )
-  const curbs = useEvents(
-    { event_type: "inject_curbed", limit: RECENT_INJECT_LIMIT },
-    { enabled: !DEMO },
-  )
-
-  const rows = [...(pushes.data?.items ?? []), ...(curbs.data?.items ?? [])]
-    .sort((a, b) => b.created_at.localeCompare(a.created_at))
-    .slice(0, RECENT_INJECT_LIMIT)
-
-  return (
-    <div className="flex flex-col gap-2">
-      <SectionHead icon={Clock}>Inject log</SectionHead>
-      {pushes.isError || curbs.isError ? (
-        <EmptyState
-          kind="failed"
-          title="The inject log could not be loaded"
-          description={(pushes.error ?? curbs.error)?.message}
-          action={
-            <Button
-              onClick={() => {
-                if (pushes.isError) void pushes.refetch()
-                if (curbs.isError) void curbs.refetch()
-              }}
-            >
-              Retry
-            </Button>
-          }
-        />
-      ) : pushes.isLoading || curbs.isLoading ? (
-        <p className="text-muted-foreground text-sm">loading…</p>
-      ) : rows.length === 0 ? (
-        <p className="text-muted-foreground text-sm">
-          No context has been pushed yet.
-        </p>
-      ) : (
-        rows.map((row) => {
-          const payload = row.payload as Record<string, unknown>
-          const tool =
-            typeof payload.tool === "string" ? payload.tool : "unknown target"
-          const trigger =
-            typeof payload.trigger === "string" ? payload.trigger : null
-          const used =
-            typeof payload.tokens_used === "number" ? payload.tokens_used : null
-          const budget =
-            typeof payload.budget_tokens === "number"
-              ? payload.budget_tokens
-              : null
-          const items = (
-            ["fact_ids", "article_ids", "memory_ids"] as const
-          ).reduce(
-            (n, key) =>
-              n +
-              (Array.isArray(payload[key])
-                ? (payload[key] as unknown[]).length
-                : 0),
-            0,
-          )
-          return (
-            <div
-              key={row.id}
-              className="border-inset flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-md border p-2.5 text-sm"
-            >
-              <b className="font-semibold">{tool}</b>
-              <span className="text-muted-foreground">
-                {row.event_type === "inject_curbed"
-                  ? "push curbed — nothing was pushed"
-                  : `${items} item${items === 1 ? "" : "s"}${
-                      used !== null && budget !== null
-                        ? ` · ${used.toLocaleString()} / ${budget.toLocaleString()} tokens`
-                        : ""
-                    }`}
-              </span>
-              {trigger && (
-                <span className="text-info-text">
-                  re-injected: {trigger} changed
-                </span>
-              )}
-              <span className="text-muted-foreground ml-auto font-mono text-sm">
-                {relativeTime(row.created_at)}
-              </span>
-            </div>
-          )
-        })
-      )}
-    </div>
   )
 }
 
@@ -198,8 +91,6 @@ function LiveDistribution() {
           ))}
         </div>
       )}
-
-      <RecentInjects />
 
     </div>
   )

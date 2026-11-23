@@ -90,12 +90,25 @@ describe("Distribution tab — live", () => {
     render(withQuery(<DistributionTab />))
     await liveHalfRendered()
 
-    // The inject log reads the journal, so its empty state is a measured
-    // absence rather than a placeholder, and it is awaited rather than read
-    // synchronously.
-    expect(await screen.findByText(/No context has been pushed yet/)).toBeInTheDocument()
     expect(screen.queryByText(/handshake ok/)).not.toBeInTheDocument()
     expect(screen.queryByText(/last inject/)).not.toBeInTheDocument()
+  })
+
+  it("renders no inject log", async () => {
+    // Nothing writes the inject or inject_curbed event types any more, so a
+    // log of them could only ever read as an empty record.
+    vi.mocked(apiFetch).mockResolvedValue(STATE)
+
+    render(withQuery(<DistributionTab />))
+    await liveHalfRendered()
+
+    expect(screen.queryByText("Inject log")).not.toBeInTheDocument()
+    expect(screen.queryByText(/No context has been pushed yet/)).not.toBeInTheDocument()
+    const eventReads = vi
+      .mocked(apiFetch)
+      .mock.calls.map(([path]) => String(path))
+      .filter((path) => /event_type=inject(_curbed)?\b/.test(path))
+    expect(eventReads).toEqual([])
   })
 
   it("names a configured target the registry refused", async () => {
@@ -170,99 +183,4 @@ describe("Distribution tab — live", () => {
     expect(await screen.findByText(/mcp: \.alpha\/mcp\.json/)).toBeInTheDocument()
   })
 
-})
-
-// ─────────────── T4.08: the inject log ───────────────
-
-describe("Distribution tab — the inject log (T4.08)", () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    useDetailLevel.setState({ level: "simple" })
-  })
-
-  /** Routes by path so the targets read and the inject log never answer for
-   *  each other — a single `mockResolvedValue` makes the log render the
-   *  distribution state, which is a passing test about nothing. */
-  function route(state: unknown, injects: unknown[] = [], curbs: unknown[] = []) {
-    vi.mocked(apiFetch).mockImplementation(async (path: string) => {
-      if (path.includes("event_type=inject_curbed")) {
-        return { items: curbs, total: curbs.length } as never
-      }
-      if (path.includes("event_type=inject")) {
-        return { items: injects, total: injects.length } as never
-      }
-      return state as never
-    })
-  }
-
-  function injectEvent(over: Record<string, unknown> = {}) {
-    return {
-      id: 41,
-      created_at: "2026-08-11T11:20:00Z",
-      event_type: "inject",
-      object_type: "system",
-      object_id: null,
-      project: "darkmem",
-      actor: null,
-      api_key_id: null,
-      source: null,
-      payload: {
-        tool: "test-tool-alpha",
-        context_file: "ALPHA_CONTEXT.md",
-        fact_ids: ["a", "b"],
-        article_ids: [],
-        memory_ids: ["c"],
-        budget_tokens: 1200,
-        tokens_used: 640,
-      },
-      ...over,
-    }
-  }
-
-  it("lists recent injects inline with their items and budget", async () => {
-    route(STATE, [injectEvent()])
-    render(withQuery(<DistributionTab />))
-    await liveHalfRendered()
-
-    expect(await screen.findByText(/3 items · 640 \/ 1,200 tokens/)).toBeInTheDocument()
-  })
-
-  it("names what shifted on a watch re-inject", async () => {
-    route(STATE, [
-      injectEvent({ payload: { ...injectEvent().payload, trigger: "project_changed" } }),
-    ])
-    render(withQuery(<DistributionTab />))
-    await liveHalfRendered()
-
-    expect(
-      await screen.findByText(/re-injected: project_changed changed/),
-    ).toBeInTheDocument()
-  })
-
-  it("merges curbs into the log as curbs, not as pushes of nothing", async () => {
-    route(STATE, [], [
-      injectEvent({ id: 42, event_type: "inject_curbed", payload: { tool: "test-tool-alpha" } }),
-    ])
-    render(withQuery(<DistributionTab />))
-    await liveHalfRendered()
-
-    expect(
-      await screen.findByText(/push curbed — nothing was pushed/),
-    ).toBeInTheDocument()
-    expect(screen.queryByText(/0 items/)).not.toBeInTheDocument()
-  })
-
-  it("an unreadable log says so rather than reading as no push", async () => {
-    vi.mocked(apiFetch).mockImplementation(async (path: string) => {
-      if (path.includes("event_type=")) throw new Error("journal down")
-      return STATE as never
-    })
-    render(withQuery(<DistributionTab />))
-    await liveHalfRendered()
-
-    expect(
-      await screen.findByText(/The inject log could not be loaded/),
-    ).toBeInTheDocument()
-    expect(screen.queryByText(/No context has been pushed yet/)).not.toBeInTheDocument()
-  })
 })
