@@ -79,14 +79,7 @@ retry_locks = RetryLockSet()
 
 def derive_memory_failed_step(status: dict) -> str | None:
     """Return the failed_step for a memory pipeline status dict, or None
-    if the memory fully succeeded.
-
-    Hard step errors take priority. A *degraded* extraction (``extract ==
-    'partial'``, e.g. a truncated or unparseable LLM response) is reported
-    as ``extraction_partial`` so it lands in the Unresolved Failures
-    worklist and can be reprocessed — the memory's vector and content are
-    still written, but its entity/relationship graph is missing. A
-    successful reprocess resolves the row automatically."""
+    if the memory fully succeeded."""
     if status.get("embed") == "error":
         return "content_embedding"
     if status.get("extract") == "error":
@@ -97,8 +90,6 @@ def derive_memory_failed_step(status: dict) -> str | None:
         return "graph_write"
     if status.get("supersession") == "error":
         return "batch_supersession"
-    if status.get("extract") == "partial":
-        return "extraction_partial"
     return None
 
 

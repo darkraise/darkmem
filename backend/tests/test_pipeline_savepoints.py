@@ -16,6 +16,7 @@ the session-end schema reset is its only cleanup.
 """
 from __future__ import annotations
 
+import copy
 import json
 import uuid
 from contextlib import asynccontextmanager
@@ -48,6 +49,7 @@ EXTRACTION = {
 }
 
 EXTRACTION_ENTITY_NAMES = ("pgvector", "faiss")
+_PRISTINE_EXTRACTION = copy.deepcopy(EXTRACTION)
 
 
 @dataclass
@@ -59,7 +61,7 @@ class Bed:
     memory_ids: list[uuid.UUID]
     fingerprint: str
     broadcasts: list[tuple[str, dict]] = field(default_factory=list)
-    extraction: dict = field(default_factory=lambda: dict(EXTRACTION))
+    extraction: dict = field(default_factory=lambda: copy.deepcopy(EXTRACTION))
 
     @property
     def memory_id(self) -> uuid.UUID:
@@ -132,10 +134,10 @@ async def savepoint_bed(
     bed.pipe._broadcast = _capture
 
     if extraction is not None:
-        bed.extraction = dict(extraction)
+        bed.extraction = copy.deepcopy(extraction)
 
     async def _extract(content, system_prompt=None, **kwargs):
-        return dict(bed.extraction)
+        return copy.deepcopy(bed.extraction)
 
     bed.pipe.extraction.extract = _extract  # type: ignore[method-assign]
 
@@ -168,7 +170,7 @@ async def test_graph_failure_keeps_embedding_and_records_graph_step(
         status = await bed.pipe._write_memory(
             bed.entry(content="pgvector replaces faiss"),
             VECTOR, bed.fingerprint, bed.fingerprint,
-            dict(EXTRACTION), None, {}, {},
+            copy.deepcopy(EXTRACTION), None, {}, {},
         )
 
         assert status["embed"] == "ok"
@@ -449,7 +451,7 @@ async def test_extraction_failure_never_strips_the_prior_graph(setup_database, f
         ["extraction fails on the second pass"], f"savepoint-extfail-{kind}|4",
     ) as bed:
         del bed.pipe.extraction.extract
-        llm = _ExtractionLLM(EXTRACTION)
+        llm = _ExtractionLLM(copy.deepcopy(EXTRACTION))
         bed.pipe.extraction.llm = llm
         first = (await bed.pipe.process_batch([bed.entry()]))[0]
         assert first["graph"] == "ok"
@@ -466,6 +468,20 @@ async def test_extraction_failure_never_strips_the_prior_graph(setup_database, f
         assert status["graph"] == "skipped"
         assert await bed.entity_names() == {"pgvector", "faiss"}
         assert await bed.technologies() == ["faiss", "pgvector"]
+
+
+@pytest.mark.asyncio
+async def test_the_shared_extraction_is_unchanged_by_a_run(setup_database):
+    """The fake embedder gives every entity the same direction, so Phase 4
+    canonicalises one extracted name onto the other; a run must not write that
+    back into the fixture every other test reads."""
+    async with savepoint_bed(["pgvector replaces faiss"], "savepoint-pristine|4") as bed:
+        for _ in range(2):
+            status = (await bed.pipe.process_batch([bed.entry()]))[0]
+            assert status["vector"] == "ok", status
+
+    assert EXTRACTION == _PRISTINE_EXTRACTION
+    assert EXTRACTION["entities"][0]["name"] == "Pgvector"
 
 
 CANON_FP = "savepoint-canon|4"

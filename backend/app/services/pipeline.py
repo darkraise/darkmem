@@ -1373,6 +1373,20 @@ class ProcessingPipeline:
                         status = statuses[memory_id]
                         status["supersession"] = "error"
                         status["error"] = status["error"] or f"Same-batch reconciliation failed: {error}"
+                # The batch's `extracted` events were written in the failed
+                # session; each member still owes its one journal row.
+                try:
+                    async with self.session_factory() as session:
+                        for entry, status in zip(entries, normalized):
+                            await record_event(
+                                session, event_type="extracted", object_type="memory",
+                                object_id=UUID(str(entry["memory_id"])),
+                                project=entry.get("project"),
+                                payload={**status, "outcome": _derive_outcome(status)},
+                            )
+                        await session.commit()
+                except Exception:
+                    logger.exception("Journalling a batch whose reconciliation failed also failed")
 
         return normalized
 

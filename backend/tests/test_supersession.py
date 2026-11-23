@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import uuid
 import asyncio
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -103,6 +104,35 @@ async def test_batch_reconciliation_failure_reports_matching_journal_and_outcome
             ), {"ids": bed.memory_ids})).scalars().all()
         assert outcomes == ["partial", "partial"]
 
+
+
+@pytest.mark.asyncio
+async def test_a_failed_reconciliation_keeps_the_extracted_journal(setup_database):
+    async with savepoint_bed(["older", "newer"], "supersession-reconcile-read|4") as bed:
+        real_factory = bed.pipe.session_factory
+
+        @asynccontextmanager
+        async def failing_read_factory():
+            async with real_factory() as session:
+                real_execute = session.execute
+
+                async def execute(statement, *args, **kwargs):
+                    if "ORDER BY memories.created_at, memories.id" in str(statement):
+                        raise RuntimeError("reconciliation read failed")
+                    return await real_execute(statement, *args, **kwargs)
+
+                session.execute = execute
+                yield session
+
+        bed.pipe.session_factory = failing_read_factory
+        results = await bed.pipe.process_batch([bed.entry(index) for index in range(2)])
+        assert [result["vector"] for result in results] == ["ok", "ok"]
+
+        async with real_factory() as session:
+            journalled = (await session.execute(text(
+                "SELECT object_id FROM events WHERE event_type = 'extracted' AND object_id = ANY(:ids)"
+            ), {"ids": bed.memory_ids})).scalars().all()
+        assert sorted(journalled) == sorted(bed.memory_ids)
 
 def _mem(**overrides) -> Memory:
     base = dict(
