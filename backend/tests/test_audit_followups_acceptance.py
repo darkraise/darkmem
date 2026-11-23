@@ -1282,6 +1282,8 @@ def _run_file_with_probe(tmp_path, test_file: str, *, seed: bool):
         "PYTHONPATH": f"{tmp_path}{os.pathsep}{os.environ.get('PYTHONPATH', '')}",
         "FOLLOWUPS_LEAK_FILE": str(leak),
         "FOLLOWUPS_SEED_ENTITY": "1" if seed else "0",
+        # the child's conftest drops and re-migrates its database: keep it off this run's own
+        "PYTEST_XDIST_WORKER": "gw9",
     }
     out = subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "-p", "followups_probe", test_file],
