@@ -709,8 +709,9 @@ async def run_contradiction_scan(
                 fact_id = (row["payload"] or {}).get("fact_id")
                 if not fact_id:
                     # Unreachable from any producer — `fact_lift`,
-                    # `fact_provenance`, the Tier-C citation re-verifier (named in words: a tree-wide scan owns its
-                    # module basename) and the repository entity merge's fact
+                    # `fact_provenance`, the Tier-C citation re-verifier
+                    # (named in words: a tree-wide scan owns its module
+                    # basename) and the repository entity merge's fact
                     # fold all write the key — so this is a guard,
                     # not a counter: a bucket that can only ever read zero would
                     # dilute `misses` rather than inform it. It is loud instead,

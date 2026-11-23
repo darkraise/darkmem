@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """List, and on request restore, the `project/` tags a past refine removed.
 
 Until refine became a summary-only rewrite, the dreaming pass replaced a
@@ -18,9 +18,9 @@ app container, so `--apply` there also needs `--i-am-the-owner`.
 
 Usage (from backend/):
 
-    python scripts/restore_refine_project_tags.py
-    python scripts/restore_refine_project_tags.py --apply --i-am-the-owner
-    python scripts/restore_refine_project_tags.py --database-url URL --apply
+    .venv/bin/python scripts/restore_refine_project_tags.py
+    .venv/bin/python scripts/restore_refine_project_tags.py --apply --i-am-the-owner
+    .venv/bin/python scripts/restore_refine_project_tags.py --database-url URL --apply
 """
 from __future__ import annotations
 

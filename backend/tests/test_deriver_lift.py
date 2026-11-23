@@ -861,8 +861,9 @@ async def test_the_restore_reads_the_stored_kinds_not_a_callers_word(session):
 async def test_a_suspected_contradiction_does_not_withhold_the_born_rung(session):
     """T2.109 — the model arm may flag; it may not withhold.
 
-    Doc 08 §4.2's amendment takes the model scan off the veto, and the consult
-    above is a veto consult. If the scan's journalled verdict still refused a
+    Doc 08 §4.2's amendment takes the model scan off the veto, which is the
+    deterministic scan alone (``open_contradiction=True`` below). If the
+    scan's journalled verdict still refused a
     born rung, the arm would keep exercising veto-adjacent power through a side
     door — withholding a label rather than removing one, which is the same
     instrument aimed downward. It does not: the rung is restored, and the

@@ -616,6 +616,15 @@ class TestJudge:
 
         assert [call["purpose"] for call in stub.calls] == ["reasoning"]
 
+    def test_the_refine_prompt_carries_no_tags(self):
+        messages = dream.build_refine_messages(
+            _row("a memory", summary="s", tags=("project/x", "secret-tag"))
+        )
+
+        for message in messages:
+            for needle in ("CURRENT TAGS", "project/x", "secret-tag"):
+                assert needle not in message["content"]
+
     async def test_the_seed_is_deterministic_and_input_sensitive(self):
         older, newer = _row("older"), _row("newer")
         assert dream.pair_seed(older, newer) == dream.pair_seed(older, newer)

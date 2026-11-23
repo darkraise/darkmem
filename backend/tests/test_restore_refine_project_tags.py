@@ -117,8 +117,6 @@ async def test_apply_restores_only_the_lost_project_tags(lost, capsys):
 
 
 def test_script_refuses_production_without_the_flag(monkeypatch, capsys):
-    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@127.0.0.1:5432/darkmem")
-
     def no_connection(*args, **kwargs):
         raise AssertionError("the script connected before refusing")
 

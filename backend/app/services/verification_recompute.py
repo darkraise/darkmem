@@ -790,9 +790,9 @@ async def run_recompute(
 ) -> RecomputeOutcome:
     """One recompute tick: the fast drain, then the slow arm if it is due.
 
-    Does not commit -- transaction control is the caller's, matching
-    ``run_lift``'s contract. ``now`` is a seam for tests that need to force
-    or suppress the slow arm without sleeping real wall-clock time.
+    Does not commit -- transaction control is the caller's. ``now`` is a seam
+    for tests that need to force or suppress the slow arm without sleeping
+    real wall-clock time.
     """
     moment = now or datetime.now(timezone.utc)
     state = await _load_state(session)

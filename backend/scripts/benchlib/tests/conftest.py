@@ -1,6 +1,19 @@
 import pytest
 import pytest_asyncio
 
+
+def pytest_configure(config):
+    # Every test here shares the one bench database `_bench_db` drops and
+    # migrates once per session, so xdist workers would reset it under each
+    # other. Refused in the controller so the message lands in the run's output.
+    if config.getoption("numprocesses", None) and not hasattr(config, "workerinput"):
+        pytest.exit(
+            "scripts/benchlib/tests share one bench database and cannot run under "
+            "pytest-xdist; run them serially: "
+            ".venv/bin/python -m pytest scripts/benchlib/tests -q",
+            returncode=4,
+        )
+
 # Opt-in via `pytestmark = pytest.mark.usefixtures("_bench_db")`, not autouse:
 # modules with no database dependency (e.g. ledger) must stay collectible and
 # runnable without a reachable Postgres.

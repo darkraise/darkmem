@@ -1974,8 +1974,8 @@ _SQL_STATEMENT = re.compile(r"\bfrom\b", re.IGNORECASE)
 # - `article_eligibility` counts a subject's verified facts to decide whether
 #   it clears doc 09 §4.1's synthesis floor. **Ungated on purpose, and the
 #   reason is that it serves nobody**: the module has no route, no door and no
-#   caller outside the synthesis selection path, and its consumer (T3.02) is
-#   held shut by G-D. It counts the stored rungs because the question it asks
+#   caller outside the synthesis selection path, which renders no count. It
+#   counts the stored rungs because the question it asks
 #   is what the vault holds, not what it may currently say out loud — see its
 #   module docstring. **The obligation this entry records:** the returned
 #   `verified_fact_count` is a stored-vocabulary number, so the first surface

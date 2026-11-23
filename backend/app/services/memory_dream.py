@@ -722,15 +722,13 @@ def build_pair_messages(older: MemoryRow, newer: MemoryRow) -> list[dict]:
 
 def build_refine_messages(memory: MemoryRow) -> list[dict]:
     current = memory.summary or "(none)"
-    tags = ", ".join(memory.tags) or "(none)"
     return [
         {"role": "system", "content": REFINE_SYSTEM_PROMPT},
         {
             "role": "user",
             "content": (
                 f"CONTENT:\n{_fence('content', memory.content)}\n\n"
-                f"CURRENT SUMMARY:\n{current}\n\n"
-                f"CURRENT TAGS:\n{tags}"
+                f"CURRENT SUMMARY:\n{current}"
             ),
         },
     ]
