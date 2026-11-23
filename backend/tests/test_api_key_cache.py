@@ -25,6 +25,19 @@ class _Clock:
         return self.now
 
 
+def _clear_caches() -> None:
+    api_keys._verified.clear()
+    api_keys._revoked_ids.clear()
+    api_keys._last_marked.clear()
+
+
+@pytest.fixture(autouse=True)
+def _fresh_caches():
+    _clear_caches()
+    yield
+    _clear_caches()
+
+
 @pytest.fixture
 def bcrypt_calls(monkeypatch):
     calls = {"n": 0}
@@ -107,14 +120,25 @@ async def test_revoked_key_is_refused_on_next_call(door, mint_key, bcrypt_calls)
     assert bcrypt_calls["n"] == before
 
 
-async def test_expired_key_is_refused_on_a_cache_hit(door, mint_key):
+async def test_expired_key_is_refused_on_a_cache_hit(door, mint_key, bcrypt_calls, monkeypatch):
     row_id, credential = await mint_key(
         scopes=["read"], expires_at=datetime.now(timezone.utc) + timedelta(seconds=30),
     )
     assert (await _tools_list(door, credential)).status_code == 200
+    verified = bcrypt_calls["n"]
 
     later = datetime.now(timezone.utc) + timedelta(seconds=45)
-    assert await _authenticate(credential, now=later) is None
+
+    class _Later(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return later if tz is not None else later.replace(tzinfo=None)
+
+    monkeypatch.setattr(api_keys, "datetime", _Later)
+    refused = await _tools_list(door, credential)
+
+    assert refused.status_code == 401
+    assert bcrypt_calls["n"] == verified
 
 
 async def test_verify_in_flight_during_revoke_caches_nothing(mint_key, monkeypatch):

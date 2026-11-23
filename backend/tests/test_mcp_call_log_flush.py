@@ -87,6 +87,67 @@ async def test_failed_flush_keeps_its_batch(committed, monkeypatch):
     assert mcp_call_log.dropped_calls() == 0
 
 
+class _InsertAlways(_InsertFailsOnce):
+    """A factory whose session's every call-log INSERT runs ``on_insert``."""
+
+    def __init__(self, factory, on_insert):
+        super().__init__(factory)
+        self.on_insert = on_insert
+
+    def __call__(self):
+        session = self.factory()
+        real_execute = session.execute
+
+        async def execute(statement, *args, **kwargs):
+            if statement is mcp_call_log._INSERT_SQL:
+                await self.on_insert()
+            return await real_execute(statement, *args, **kwargs)
+
+        session.execute = execute
+        return session
+
+
+@pytest.mark.asyncio
+async def test_a_pool_timeout_puts_the_batch_back(committed):
+    from sqlalchemy.exc import TimeoutError as PoolTimeout
+
+    tool = f"flush-probe-{uuid.uuid4().hex[:8]}"
+    _queue(5, tool=tool)
+
+    async def pool_exhausted():
+        raise PoolTimeout("QueuePool limit reached, connection timed out")
+
+    assert await mcp_call_log.flush_once(_InsertAlways(committed, pool_exhausted)) == 0
+
+    assert len(mcp_call_log._buffer) == 5
+    assert all(p.tool == tool for p in mcp_call_log._buffer)
+    assert mcp_call_log._backoff_seconds > 0
+    assert mcp_call_log.dropped_calls() == 0
+    assert await _count(committed, tool) == 0
+
+
+@pytest.mark.asyncio
+async def test_a_cancelled_flush_puts_the_batch_back(committed):
+    tool = f"flush-probe-{uuid.uuid4().hex[:8]}"
+    _queue(5, tool=tool)
+    inserting = asyncio.Event()
+
+    async def hang():
+        inserting.set()
+        await asyncio.Event().wait()
+
+    task = asyncio.create_task(mcp_call_log.flush_once(_InsertAlways(committed, hang)))
+    await asyncio.wait_for(inserting.wait(), timeout=10)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert len(mcp_call_log._buffer) == 5
+    assert all(p.tool == tool for p in mcp_call_log._buffer)
+    assert mcp_call_log.dropped_calls() == 0
+    assert await _count(committed, tool) == 0
+
+
 @pytest.mark.asyncio
 async def test_a_row_the_database_refuses_is_dropped_alone(committed):
     tool = f"flush-probe-{uuid.uuid4().hex[:8]}"

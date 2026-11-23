@@ -13,7 +13,9 @@ slow or fail the tool call it describes, so every failure here is swallowed and
 logged. A buffer that outgrows ``_BUFFER_MAX`` drops its oldest entries and
 counts them (``dropped_calls``, served by the summary route). A failed flush
 puts its batch back at the front and the next attempt waits, doubling up to
-``_BACKOFF_MAX_SECONDS``, for as long as the connection itself is failing.
+``_BACKOFF_MAX_SECONDS``, for as long as the connection itself is failing or
+the pool has none to give; a cancelled flush puts back a batch it had not yet
+written.
 Any other failure is settled row by row: an entry that cannot become a row,
 or a row refused on its own, is dropped and counted, so one bad call can
 neither hold the log back nor take its neighbours with it.
@@ -235,6 +237,7 @@ async def flush_once(session_factory=None) -> int:
     batch = [_buffer.popleft() for _ in range(min(len(_buffer), _FLUSH_BATCH))]
     if session_factory is None:
         from app.database import async_session_factory as session_factory
+    written = False
     try:
         async with session_factory() as session:
             log_query_text = await _log_query_text(session)
@@ -249,6 +252,7 @@ async def flush_once(session_factory=None) -> int:
                     raise
                 await session.rollback()
                 refused = await _write_row_by_row(session, rows)
+            written = True
         # Counted only once the write is durable: an outage before this
         # point puts the whole batch back, and its rows are judged again.
         _dropped += unbuildable + refused
@@ -259,6 +263,10 @@ async def flush_once(session_factory=None) -> int:
             )
             _dropped_logged = _dropped
         return len(rows) - refused
+    except asyncio.CancelledError:
+        if not written:
+            _requeue(batch)
+        raise
     except Exception:
         _requeue(batch)
         _backoff_seconds = min(_BACKOFF_MAX_SECONDS, _backoff_seconds * 2 or 1)
@@ -283,14 +291,17 @@ def _build_rows(batch: list[_Pending], *, log_query_text: bool) -> tuple[list[di
 
 
 def _is_outage(exc: BaseException) -> bool:
-    """True only when the connection itself failed.
+    """True only when the connection itself failed, or none could be had.
 
     Anything else is the database (or the driver) refusing this statement,
     which the row-by-row pass settles row by row, so no entry can be put back
     for ever.
     """
     from sqlalchemy.exc import DBAPIError, OperationalError
+    from sqlalchemy.exc import TimeoutError as PoolTimeout
 
+    if isinstance(exc, PoolTimeout):
+        return True
     if isinstance(exc, DBAPIError):
         return exc.connection_invalidated or isinstance(exc, OperationalError)
     return isinstance(exc, OSError)
