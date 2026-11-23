@@ -892,3 +892,199 @@ async def test_a13_a_cancelled_flush_leaves_the_batch_in_the_buffer(setup_databa
     assert len(mcp_call_log._buffer) == 5
     assert all(p.tool == tool for p in mcp_call_log._buffer)
     assert mcp_call_log.dropped_calls() == 0
+
+
+# ------------------------------------------------------------------ A14 - A17
+
+from sqlalchemy import delete, select  # noqa: E402
+from sqlalchemy.ext.asyncio import async_sessionmaker  # noqa: E402
+
+import app.services.repo_manager as repo_manager_module  # noqa: E402
+from app.models.code import Repository  # noqa: E402
+from app.services.repo_manager import RepoManager  # noqa: E402
+
+
+@pytest.mark.asyncio
+async def test_a14_a_failed_clone_of_a_url_with_a_token_leaks_it_to_no_log_row_or_payload(
+    session, session_factory, tmp_path, monkeypatch, caplog
+):
+    from app.api.routes import repos as repos_route
+    from app.api.websocket import event_manager
+    from app.services.code_pipeline import CodePipeline
+
+    secret = "tok-A14-5e1f0a9c"
+    base = tmp_path / "clones"
+    base.mkdir()
+    monkeypatch.setattr(repo_manager_module, "REPOS_BASE_DIR", base)
+    repo = Repository(
+        name=f"a14-{uuid.uuid4().hex[:6]}",
+        url=f"https://u:{secret}@127.0.0.1:9/o/r.git",
+        default_branch="main", provider="github", status="indexing",
+    )
+    session.add(repo)
+    await session.flush()
+
+    broadcasts: list = []
+
+    async def record(event_type, data):
+        broadcasts.append((event_type, data))
+
+    monkeypatch.setattr(event_manager, "broadcast", record)
+    caplog.set_level(logging.DEBUG)
+
+    await repos_route._spawn_repo_index(
+        repo.id, CodePipeline(session, None, None, RepoManager(session)), session_factory, kind="reindex",
+    )
+
+    row = (await session.execute(
+        select(Repository.status, Repository.status_message).where(Repository.id == repo.id)
+    )).one()
+    assert row.status == "error", row
+    assert secret not in (row.status_message or "")
+    assert secret not in repr(broadcasts)
+    assert secret not in caplog.text
+    assert secret not in "".join(str(r.exc_text or "") + str(r.getMessage()) for r in caplog.records)
+
+
+@pytest.mark.parametrize(
+    "url, origin",
+    [
+        ("https://git.lan:8443/o/r.git", "https://git.lan:8443/"),
+        ("https://github.com/o/r.git", "https://github.com/"),
+    ],
+)
+def test_a15_the_git_auth_header_is_scoped_to_the_origin_port_included(url, origin):
+    env = RepoManager._auth_env("T", "github", url=url)
+    keys = [v for k, v in env.items() if k.startswith("GIT_CONFIG_KEY_")]
+    assert keys == [f"http.{origin}.extraHeader"]
+    assert "http.extraHeader" not in keys
+    assert int(env["GIT_CONFIG_COUNT"]) == 1
+
+
+async def _managed_clone(session, tmp_path, monkeypatch):
+    base = tmp_path / "clones"
+    base.mkdir()
+    monkeypatch.setattr(repo_manager_module, "REPOS_BASE_DIR", base)
+    upstream = tmp_path / "upstream"
+    upstream.mkdir()
+
+    def git(cwd, *args):
+        subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", *args], cwd=cwd, check=True, capture_output=True)
+
+    git(upstream, "init", "-q", "-b", "main")
+    (upstream / "a.py").write_text("x = 1\n")
+    git(upstream, "add", "a.py")
+    git(upstream, "commit", "-qm", "init")
+    repo = Repository(
+        name=f"a16-{uuid.uuid4().hex[:6]}", url="https://example.invalid/o/r.git",
+        default_branch="main", provider="github", status="ready",
+    )
+    session.add(repo)
+    await session.flush()
+    clone = base / str(repo.id)
+    git(tmp_path, "clone", "-q", str(upstream), str(clone))
+    return repo, clone
+
+
+@pytest.mark.asyncio
+async def test_a16_a_reclone_that_raises_leaves_the_repository_error_and_its_claim_released(
+    setup_database, tmp_path, monkeypatch
+):
+    from tests.conftest import test_engine
+
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    async with factory() as own:
+        repo, clone = await _managed_clone(own, tmp_path, monkeypatch)
+        await own.commit()
+        repo_id = repo.id
+        try:
+            (clone / ".git" / "HEAD").unlink()
+
+            async def failing_clone(self, _repo):
+                await self.session.execute(select(Repository.id).where(Repository.id == _repo.id))
+                raise RuntimeError("clone failed")
+
+            monkeypatch.setattr(RepoManager, "_clone_repo", failing_clone)
+            with pytest.raises(RuntimeError, match="clone failed"):
+                await RepoManager(own).pull_repo(repo, take_claim=True)
+
+            status = (await own.execute(select(Repository.status).where(Repository.id == repo_id))).scalar_one()
+            assert status == "error"
+            assert await RepoManager(own).claim_for_indexing(repo_id, message="next run")
+        finally:
+            await own.rollback()
+            await own.execute(delete(Repository).where(Repository.id == repo_id))
+            await own.commit()
+
+
+@pytest.mark.asyncio
+async def test_a16_a_cancelled_reclone_restores_the_prior_status(session, tmp_path, monkeypatch):
+    repo, clone = await _managed_clone(session, tmp_path, monkeypatch)
+    (clone / ".git" / "HEAD").unlink()
+    cloning = asyncio.Event()
+
+    async def hanging_clone(self, _repo):
+        cloning.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(RepoManager, "_clone_repo", hanging_clone)
+    task = asyncio.create_task(RepoManager(session).pull_repo(repo, take_claim=True))
+    await asyncio.wait_for(cloning.wait(), timeout=10)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    status = (await session.execute(select(Repository.status).where(Repository.id == repo.id))).scalar_one()
+    assert status == "ready"
+
+
+@pytest.mark.asyncio
+async def test_a17_raising_the_deriver_version_rederives_a_repository_whose_head_has_not_moved(
+    session, session_factory, monkeypatch
+):
+    from app.services import code_deriver
+    from app.services import code_deriver_job
+    from app.services.job_runners import make_code_deriver_runner
+
+    repo = Repository(name=f"a17-{uuid.uuid4().hex[:8]}", status="ready", last_indexed_commit="sha-a17")
+    session.add(repo)
+    await session.flush()
+    derived: list = []
+
+    async def spy(repo_session, repo_id):
+        derived.append(repo_id)
+        return {"entities": 0, "relations": 0}
+
+    monkeypatch.setattr(code_deriver, "assert_repo_graph", spy)
+    runner = make_code_deriver_runner(session_factory)
+
+    await runner()
+    assert derived.count(repo.id) == 1
+    await runner()
+    assert derived.count(repo.id) == 1, "unchanged HEAD and version must not re-derive"
+
+    monkeypatch.setattr(code_deriver_job, "CODE_DERIVER_VERSION", code_deriver_job.CODE_DERIVER_VERSION + 1)
+    await runner()
+    assert derived.count(repo.id) == 2
+
+
+@pytest.mark.asyncio
+async def test_a17_a_deriver_tick_that_derived_nothing_triggers_no_code_reconcile(session, monkeypatch):
+    import app.services.fact_lift as fact_lift_module
+
+    reconciles: list = []
+    real = fact_lift_module.reconcile_code_sources
+
+    async def counting(s):
+        reconciles.append(1)
+        return await real(s)
+
+    monkeypatch.setattr(fact_lift_module, "reconcile_code_sources", counting)
+    await fact_lift_module.run_code_lift(session)
+    reconciles.clear()
+    await session.execute(text(
+        "INSERT INTO job_runs (job_key, outcome, started_at, duration_seconds) "
+        "VALUES ('code_deriver', 'ok', clock_timestamp(), 0)"
+    ))
+    await fact_lift_module.run_code_lift(session)
+    await fact_lift_module.run_code_lift(session)
+    assert reconciles == []
