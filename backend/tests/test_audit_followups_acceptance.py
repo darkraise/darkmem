@@ -690,3 +690,205 @@ async def test_a40_a_raising_inline_flush_answers_the_ack_and_logs_the_failure_o
         and ("a40 claim exploded" in r.getMessage() or (r.exc_info and "a40 claim exploded" in str(r.exc_info[1])))
     ]
     assert len(reports) == 1, [r.getMessage() for r in reports]
+
+
+# ------------------------------------------------------------------ A10
+
+
+@pytest.mark.asyncio
+async def test_a10_login_refused_only_for_in_flight_attempts_does_not_say_failed(client, session, monkeypatch):
+    import threading
+
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from app.api.auth import hash_password
+    from app.api.routes import auth as auth_routes
+    from app.models.config import Config
+    from app.services.login_rate_limit import LoginRateLimiter
+    from tests.conftest import test_engine
+
+    monkeypatch.setattr(
+        auth_routes, "async_session_factory", async_sessionmaker(test_engine, expire_on_commit=False)
+    )
+    limiter = LoginRateLimiter(max_failures=5, lockout_seconds=300)
+    monkeypatch.setattr(auth_routes, "login_rate_limiter", limiter)
+    session.add(Config(key="admin_password_hash", value={"hash": hash_password("correct")}))
+    await session.commit()
+
+    release = threading.Event()
+
+    def held_verify(password, hashed):
+        release.wait(10)
+        return False
+
+    monkeypatch.setattr(auth_routes, "verify_password", held_verify)
+    held = [
+        asyncio.create_task(client.post("/api/v1/auth/login", json={"password": "wrong"})) for _ in range(5)
+    ]
+    try:
+        for _ in range(500):
+            if sum(limiter.in_flight(ip) for ip in list(limiter._state)) == 5:
+                break
+            await asyncio.sleep(0.01)
+        refused = await client.post("/api/v1/auth/login", json={"password": "wrong"})
+    finally:
+        release.set()
+        await asyncio.gather(*held)
+
+    assert refused.status_code == 429
+    detail = refused.json()["detail"]
+    assert "failed login attempts" not in detail
+    assert "retry in" in detail
+
+
+# ------------------------------------------------------------------ A11 / A12
+
+import time  # noqa: E402
+
+import jwt  # noqa: E402
+
+from app.api import websocket  # noqa: E402
+from app.api.auth import ALGORITHM  # noqa: E402
+from app.config import settings  # noqa: E402
+from tests.test_websocket import INTERVAL, _open, _presented, _shut, _token, manager  # noqa: E402,F401
+
+
+@pytest.mark.asyncio
+async def test_a11_a_blocklist_row_written_to_the_database_closes_the_open_socket_after_60_seconds(
+    manager, monkeypatch
+):
+    from datetime import datetime, timezone
+
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from tests.conftest import test_engine
+
+    clock = [1000.0]
+    monkeypatch.setattr(websocket, "_now", lambda: clock[0], raising=False)
+    token = _token()
+    claims = jwt.decode(token, settings.jwt_secret, algorithms=[ALGORITHM])
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    socket, task = await _open(token)
+    try:
+        async with factory() as s:
+            await s.execute(
+                text("INSERT INTO token_blocklist (id, jti, expires_at) VALUES (gen_random_uuid(), :jti, :exp)"),
+                {"jti": claims["jti"], "exp": datetime.fromtimestamp(claims["exp"], tz=timezone.utc)},
+            )
+            await s.commit()
+        await asyncio.sleep(INTERVAL * 4)
+        assert not socket.closed.is_set()
+
+        clock[0] += 61
+        await asyncio.wait_for(socket.closed.wait(), 3)
+    finally:
+        await _shut(task)
+        async with factory() as s:
+            await s.execute(text("DELETE FROM token_blocklist WHERE jti = :jti"), {"jti": claims["jti"]})
+            await s.commit()
+
+
+@pytest.mark.asyncio
+async def test_a12_cancelling_a_refresh_while_it_waits_to_close_sockets_leaves_the_token_not_renewed(
+    manager, client, auth_headers
+):
+    presented = _presented(auth_headers)
+    jti = jwt.decode(presented, settings.jwt_secret, algorithms=[ALGORITHM])["jti"]
+    socket, task = await _open(presented)
+    try:
+        async with manager._send_lock:
+            answer = asyncio.create_task(client.post("/api/v1/auth/refresh", headers=auth_headers))
+            for _ in range(200):
+                if jti in websocket.session_revocations._renewed:
+                    break
+                await asyncio.sleep(0.01)
+            answer.cancel()
+            await asyncio.gather(answer, return_exceptions=True)
+        assert jti not in websocket.session_revocations._renewed
+        assert not socket.closed.is_set()
+    finally:
+        await _shut(task)
+
+
+# ------------------------------------------------------------------ A13
+
+import app.services.mcp_call_log as mcp_call_log  # noqa: E402
+
+
+@pytest.fixture
+def _call_log(monkeypatch):
+    monkeypatch.setattr(mcp_call_log, "_auto_flush", False)
+    mcp_call_log._reset_for_tests()
+    yield
+    mcp_call_log._reset_for_tests()
+
+
+def _queue_calls(n: int, tool: str) -> None:
+    for _ in range(n):
+        mcp_call_log.record_call(
+            tool=tool, scope="read", status="ok", duration_ms=1,
+            api_key_id=None, key_name=None, client=None, arguments={},
+        )
+
+
+class _FailingSessions:
+    def __init__(self, factory, on_execute):
+        self.factory = factory
+        self.on_execute = on_execute
+
+    def __call__(self):
+        session = self.factory()
+        real = session.execute
+
+        async def execute(statement, *args, **kwargs):
+            if "mcp_tool_calls" in str(statement):
+                await self.on_execute()
+            return await real(statement, *args, **kwargs)
+
+        session.execute = execute
+        return session
+
+
+@pytest.mark.asyncio
+async def test_a13_a_pool_timeout_at_the_insert_leaves_the_batch_in_the_buffer(setup_database, _call_log):
+    from sqlalchemy.exc import TimeoutError as PoolTimeout
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from tests.conftest import test_engine
+
+    tool = f"a13-pool-{uuid.uuid4().hex[:8]}"
+    _queue_calls(5, tool)
+
+    async def pool_exhausted():
+        raise PoolTimeout("QueuePool limit reached, connection timed out")
+
+    factory = _FailingSessions(async_sessionmaker(test_engine, expire_on_commit=False), pool_exhausted)
+    assert await mcp_call_log.flush_once(factory) == 0
+    assert len(mcp_call_log._buffer) == 5
+    assert all(p.tool == tool for p in mcp_call_log._buffer)
+    assert mcp_call_log.dropped_calls() == 0
+
+
+@pytest.mark.asyncio
+async def test_a13_a_cancelled_flush_leaves_the_batch_in_the_buffer(setup_database, _call_log):
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from tests.conftest import test_engine
+
+    tool = f"a13-cancel-{uuid.uuid4().hex[:8]}"
+    _queue_calls(5, tool)
+    inserting = asyncio.Event()
+
+    async def hang():
+        inserting.set()
+        await asyncio.Event().wait()
+
+    factory = _FailingSessions(async_sessionmaker(test_engine, expire_on_commit=False), hang)
+    task = asyncio.create_task(mcp_call_log.flush_once(factory))
+    await asyncio.wait_for(inserting.wait(), timeout=10)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert len(mcp_call_log._buffer) == 5
+    assert all(p.tool == tool for p in mcp_call_log._buffer)
+    assert mcp_call_log.dropped_calls() == 0
