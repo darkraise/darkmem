@@ -715,6 +715,14 @@ describe("ReviewTab: a successful ratify or reject is confirmed, not silent", ()
     // element only; the demo adapter test asserts the target id.
     expect(screen.getByText("Open fact").closest("a")).not.toBeNull()
   })
+
+  it("a fact row puts no block element inside a paragraph", async () => {
+    serveQueue()
+    const { container } = render(withQuery(<ReviewTab />))
+    await screen.findByText("darkmem uses postgres")
+    expect(screen.getByText("USES")).toBeInTheDocument()
+    expect(container.querySelectorAll("p div")).toHaveLength(0)
+  })
 })
 
 describe("ReviewTab: the reject door reports a failed apply, not silence (N3 / F2)", () => {

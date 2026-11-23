@@ -145,13 +145,13 @@ function FactRow({
       {fact.subject_name != null &&
       fact.rel_type != null &&
       fact.object_name != null ? (
-        <p className="text-sm">
+        <div className="text-sm">
           <b className="font-semibold">{fact.subject_name}</b>{" "}
           <Badge variant="outline" size="sm" className="rounded-sm font-mono">
             {fact.rel_type}
           </Badge>{" "}
           <b className="font-semibold">{fact.object_name}</b>
-        </p>
+        </div>
       ) : null}
       <p className="text-sm">{fact.fact_text}</p>
       <SuspicionBlock fact={fact} />

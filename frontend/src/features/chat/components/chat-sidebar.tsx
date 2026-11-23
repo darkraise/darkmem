@@ -116,29 +116,24 @@ export function ChatSidebar({
         {filtered.map((conv) => (
           <div
             key={conv.id}
-            role="button"
-            tabIndex={0}
-            aria-pressed={conv.id === activeId}
-            className={`group flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2.5 text-sm transition-all ${
+            className={`group flex items-center gap-2 rounded-lg border pr-3 text-sm transition-all ${
               conv.id === activeId
                 ? "border-primary/15 bg-primary/10 text-foreground"
                 : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"
             }`}
-            onClick={() => onSelect(conv.id)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault()
-                onSelect(conv.id)
-              }
-            }}
           >
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-medium">
+            <button
+              type="button"
+              aria-pressed={conv.id === activeId}
+              className="min-w-0 flex-1 cursor-pointer rounded-lg py-2.5 pl-3 text-left"
+              onClick={() => onSelect(conv.id)}
+            >
+              <span className="block truncate text-sm font-medium">
                 {conv.title || "Untitled"}
-              </div>
+              </span>
               {/* Plain muted text (about 7:1 on the card): at 40-50% opacity
                   this meta measured near 2:1. */}
-              <div className="text-muted-foreground mt-0.5 flex items-center gap-2 text-sm">
+              <span className="text-muted-foreground mt-0.5 flex items-center gap-2 text-sm">
                 <span>{relativeTime(conv.updated_at)}</span>
                 {(conv.message_count ?? 0) > 0 && (
                   <span>
@@ -146,8 +141,8 @@ export function ChatSidebar({
                     {conv.message_count !== 1 ? "s" : ""}
                   </span>
                 )}
-              </div>
-            </div>
+              </span>
+            </button>
             {/* Revealed on hover, and on keyboard focus anywhere in the row,
                 so a keyboard user never lands on an invisible control. The
                 press only asks; the confirmation dialog deletes. */}
@@ -156,11 +151,7 @@ export function ChatSidebar({
               size="icon"
               aria-label={`Delete conversation ${conv.title || "Untitled"}`}
               className="text-muted-foreground hover:text-destructive-text h-8 w-8 shrink-0 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100 max-lg:opacity-100"
-              onClick={(e) => {
-                e.stopPropagation()
-                setPendingDelete(conv)
-              }}
-              onKeyDown={(e) => e.stopPropagation()}
+              onClick={() => setPendingDelete(conv)}
             >
               <Trash2 className="h-3.5 w-3.5" />
             </Button>

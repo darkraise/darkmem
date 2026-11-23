@@ -53,6 +53,33 @@ describe("ChatSidebar delete", () => {
     expect(onDelete).toHaveBeenCalledWith("c1")
   })
 
+  it("a conversation row holds select and Delete as siblings", async () => {
+    const onSelect = vi.fn()
+    render(
+      <ChatSidebar
+        conversations={conversations}
+        activeId={null}
+        onSelect={onSelect}
+        onCreate={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    )
+    const select = screen.getByRole("button", { name: /^Reranker defaults/ })
+    const remove = screen.getByRole("button", {
+      name: "Delete conversation Reranker defaults",
+    })
+    expect(select.tagName).toBe("BUTTON")
+    expect(select.contains(remove)).toBe(false)
+
+    select.focus()
+    await userEvent.keyboard("{Enter}")
+    expect(onSelect).toHaveBeenCalledTimes(1)
+    expect(onSelect).toHaveBeenCalledWith("c1")
+
+    await userEvent.click(remove)
+    expect(onSelect).toHaveBeenCalledTimes(1)
+  })
+
   it("Enter on the delete button does not select the row", async () => {
     const onSelect = vi.fn()
     render(

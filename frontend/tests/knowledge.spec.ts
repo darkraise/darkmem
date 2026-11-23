@@ -127,3 +127,28 @@ test.describe("knowledge/facts", () => {
     await expect(page).toHaveURL(/\/knowledge\/facts$/)
   })
 })
+
+test.describe("knowledge/review", () => {
+  test("the review queue's fact rows pass axe's list, label and nesting rules", async ({
+    page,
+  }) => {
+    await page.goto("/knowledge/review")
+    await expect(page.getByRole("button", { name: "Ratify → confirmed" }).first()).toBeVisible()
+    await page.addScriptTag({ path: "node_modules/axe-core/axe.min.js" })
+    const violations = await page.evaluate(async () => {
+      const axe = (window as unknown as {
+        axe: {
+          run(
+            context: Document,
+            options: { runOnly: string[] },
+          ): Promise<{ violations: { id: string; nodes: { target: string[] }[] }[] }>
+        }
+      }).axe
+      const result = await axe.run(document, {
+        runOnly: ["list", "listitem", "target-size", "nested-interactive", "aria-valid-attr-value", "label"],
+      })
+      return result.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`)
+    })
+    expect(violations).toEqual([])
+  })
+})
