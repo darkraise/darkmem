@@ -332,9 +332,9 @@ def _spawn_repo_index(
     carries one, so this only ever matters to a test that overrides
     ``get_code_pipeline`` with ``vector_repo=None`` (the established pattern
     for a deterministic run with no live embedder) -- that override has to
-    reach the background closure too, not just the request-scoped object,
-    or a background run silently falls back to a real
-    ``PostgresVectorRepository`` regardless of what the caller asked for.
+    reach the background closure too, not just the per-request
+    (function-scoped) object, or a background run silently falls back to a
+    real ``PostgresVectorRepository`` regardless of what the caller asked for.
     """
     collection_name = pipeline.vector_repo.collection_name if pipeline.vector_repo else None
     has_vector_repo = pipeline.vector_repo is not None

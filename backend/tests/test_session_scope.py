@@ -7,12 +7,15 @@ open past the handler, through request-scoped twins.
 """
 from __future__ import annotations
 
+import ast
 import inspect
+import textwrap
 import uuid
 
 import jwt
 import pytest
 import pytest_asyncio
+from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from fastapi.routing import APIRoute
 from httpx import ASGITransport, AsyncClient
@@ -52,11 +55,50 @@ def _resolved(dependant):
         yield from _resolved(sub)
 
 
+def _declares_stream(route: APIRoute) -> bool:
+    annotation = inspect.signature(route.endpoint, eval_str=True).return_annotation
+    return inspect.isclass(annotation) and issubclass(annotation, StreamingResponse)
+
+
+def _called_names(node: ast.AST) -> set[str]:
+    names = set()
+    for call in ast.walk(node):
+        if isinstance(call, ast.Call):
+            if isinstance(call.func, ast.Name):
+                names.add(call.func.id)
+            elif isinstance(call.func, ast.Attribute):
+                names.add(call.func.attr)
+    return names
+
+
+def _builds_stream(endpoint) -> bool:
+    """The endpoint, or a module-level function it calls by name, constructs one."""
+    module_tree = ast.parse(inspect.getsource(inspect.getmodule(endpoint)))
+    helpers = {
+        node.name: node for node in module_tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    pending = [ast.parse(textwrap.dedent(inspect.getsource(endpoint)))]
+    seen: set[str] = set()
+    while pending:
+        called = _called_names(pending.pop())
+        if StreamingResponse.__name__ in called:
+            return True
+        for name in called & helpers.keys() - seen:
+            seen.add(name)
+            pending.append(helpers[name])
+    return False
+
+
 def _streams(route: APIRoute) -> bool:
-    annotation = inspect.signature(route.endpoint).return_annotation
-    if inspect.isclass(annotation) and issubclass(annotation, StreamingResponse):
-        return True
-    return "StreamingResponse(" in inspect.getsource(route.endpoint)
+    return _declares_stream(route) or _builds_stream(route.endpoint)
+
+
+def _undeclared_streams(routes) -> list[str]:
+    return [
+        route.path for route in routes
+        if _builds_stream(route.endpoint) and not _declares_stream(route)
+    ]
 
 
 def _api_routes():
@@ -81,6 +123,26 @@ async def test_no_streaming_handler_resolves_a_function_scoped_dependency():
         assert sessions and all(d.computed_scope == "request" for d in sessions), route.path
 
 
+def _build_helper_stream():
+    return StreamingResponse(iter([b""]))
+
+
+async def _helper_built_stream_endpoint():
+    return _build_helper_stream()
+
+
+def test_a_helper_built_stream_must_declare_itself():
+    router = APIRouter()
+    router.add_api_route("/helper-stream", _helper_built_stream_endpoint, methods=["GET"])
+    (route,) = [r for r in router.routes if isinstance(r, APIRoute)]
+
+    assert _undeclared_streams([route]) == ["/helper-stream"]
+
+
+def test_every_streaming_route_declares_its_response_class():
+    assert _undeclared_streams(_api_routes()) == []
+
+
 async def test_every_write_route_takes_the_function_scoped_session():
     checked = 0
     for route in _api_routes():
@@ -96,6 +158,8 @@ async def test_every_write_route_takes_the_function_scoped_session():
             assert not late, (method, route.path, late)
             if any(d.call is get_session for d in resolved):
                 checked += 1
+    # Guards against a vacuous pass: if dependency resolution stopped finding
+    # get_session, every route would skip the check above and the test would pass.
     assert checked > 100
 
 

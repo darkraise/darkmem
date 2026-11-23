@@ -94,7 +94,6 @@ __all__ = [
     "LAYER",
     "NAME_ARM",
     "SEMANTIC_ARM",
-    "SEMANTIC_ARM_OWNER",
 ]
 
 LAYER = "L2"
@@ -104,11 +103,6 @@ DISPUTED = "disputed"
 KEYWORD_ARM = "keyword"
 NAME_ARM = "name"
 SEMANTIC_ARM = "semantic"
-
-# The task that ships the ``triple_embeddings`` writer, named as a value the way
-# ``RankArm.activation`` names an arm's activation task, so a channel running
-# without its semantic modality can never be mistaken for a channel that has one.
-SEMANTIC_ARM_OWNER = "T2.33"
 
 # The two arms split the channel's weight evenly, and the even split is a
 # deliberate non-claim: no measurement says fact text outranks an endpoint name
@@ -156,7 +150,6 @@ class FactChannelTrace:
     keyword_failed: bool = False
     name_failed: bool = False
     modalities: tuple[str, ...] = (KEYWORD_ARM, NAME_ARM)
-    semantic_deferred_to: str = SEMANTIC_ARM_OWNER
 
     def channel_status(self) -> dict[str, ChannelStatus]:
         """This channel's contribution to doc 07 §8's ``channels`` envelope.

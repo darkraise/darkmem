@@ -30,11 +30,11 @@ it: `undo()` issues `SET LOCAL lock_timeout`, which is scoped to the
 transaction afterwards inherits that timeout on every later statement until it
 commits or rolls back. Harmless for the HTTP door, whose transaction ends with
 the request; worth knowing for a bulk caller doing more work on the same
-session. The HTTP door inherits the obligation from its request-scoped
-session dependency, which is exactly why the gap is invisible from this lane's
-own route tests — an in-process caller inherits nothing, and a bulk loop
-catching broadly per item and continuing on one session would commit a
-partial, unjournalled undo.
+session. The HTTP door inherits the obligation from its per-request
+(function-scoped) session dependency, which is exactly why the gap is
+invisible from this lane's own route tests — an in-process caller inherits
+nothing, and a bulk loop catching broadly per item and continuing on one
+session would commit a partial, unjournalled undo.
 
 **Undoability is a compare-and-swap against the live row**, not the ``events``
 watermark doc 08 §7 names. §7's own parenthetical states the property — *"the

@@ -8,8 +8,8 @@ and creates them on demand. Application code routes reads and writes by
 asking the registry for the right table name.
 
 Invariant: ``register`` is idempotent. The first caller inserts the row in
-``embedders`` and creates the four child tables; later callers find the row,
-hit the in-process cache, and return without DDL.
+``embedders`` and creates one child table per family in ``_TABLE_TEMPLATES``;
+later callers find the row, hit the in-process cache, and return without DDL.
 """
 from __future__ import annotations
 

@@ -4,8 +4,8 @@ Doc 16 §3 makes block embedding part of the document ingestion variant: parse,
 strip-before-rewrite, then embed each block into the per-fingerprint
 ``block_embeddings__<slug>`` partition. This module is that write, following
 the shape ``relation_embeddings.embed_relations`` already established for
-a sibling target-new family — a batch embed call, a register-before-insert partition
-guarantee, and an upsert keyed on ``(block_id, fingerprint)``.
+a sibling target-new family — a batch embed call, a register-before-insert
+partition guarantee, and an upsert keyed on ``(block_id, fingerprint)``.
 
 **Register-before-insert is not advisory.** ``ensure_registered`` runs before
 the first statement that names the child table; skip it and the insert fails
@@ -36,13 +36,15 @@ predicate that could leak a comparison across two partitions even by mistake.
 
 **This module does not decide *when* a block gets embedded.** ``embed_blocks``
 takes the ids to embed and embeds exactly those; nothing here re-derives a
-missing-vectors work set or hooks into ``file_document`` / ``block_pipeline``.
-Wiring this into the ingestion hot path (or a refresh job, if that turns out
-to be the right shape) is downstream work, not this task's.
+missing-vectors work set. Its callers decide: ``document_door`` embeds a
+filing's blocks after the filing commits, the block verbs embed the block
+they touched, and the hourly ``block_embedding_refresh`` sweep embeds every
+block still missing a vector.
 
 **This may commit the caller's transaction**, for the same reason
-``relation_embeddings.embed_relations`` records: first contact with an unknown fingerprint runs the child-table
-DDL through ``embedder_registry.ensure_registered``, which commits on this session so
+``relation_embeddings.embed_relations`` records: first contact with an
+unknown fingerprint runs the child-table DDL through
+``embedder_registry.ensure_registered``, which commits on this session so
 the partition's inline ``REFERENCES blocks`` FK can take a lock that would
 otherwise conflict with row locks the caller already holds on its own
 uncommitted block inserts. A caller that needs the surrounding work to stay

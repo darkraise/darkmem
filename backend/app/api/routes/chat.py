@@ -129,7 +129,7 @@ async def chat_completion(
     _user=Depends(require_auth_for_stream),
     _read_only=Depends(refuse_when_read_only),
     service: ChatService = Depends(get_chat_service_for_stream),
-):
+) -> StreamingResponse:
     context = body.context.model_dump(exclude_none=True) if body.context else None
 
     async def event_stream():

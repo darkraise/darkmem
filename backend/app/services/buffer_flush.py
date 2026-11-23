@@ -209,11 +209,12 @@ class _ReuseSessionFactory:
     """Adapts one already-open `AsyncSession` to the zero-arg,
     async-context-manager-returning shape `session_factory()` calls expect.
 
-    Doc 05 §2.2's `wait_process` bypass has only the caller's request-scoped
-    session, not a session_factory — but the claim and replay code below is
-    written once, against that call shape, and shared verbatim with the
-    scheduled `buffer_flush` job (Ruling 3: a second claim implementation is
-    exactly how a concurrent scheduled flush ends up double-processing a row).
+    Doc 05 §2.2's `wait_process` bypass has only the caller's per-request
+    (function-scoped) session, not a session_factory — but the claim and
+    replay code below is written once, against that call shape, and shared
+    verbatim with the scheduled `buffer_flush` job (Ruling 3: a second claim
+    implementation is exactly how a concurrent scheduled flush ends up
+    double-processing a row).
     This wrapper closes that gap without forking the code: it never closes or
     commits the wrapped session on its own, since it is still the caller's.
     """

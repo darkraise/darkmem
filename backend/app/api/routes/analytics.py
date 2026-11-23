@@ -56,7 +56,7 @@ async def reprocess_all_stream(
     _read_only=Depends(refuse_when_read_only),
     _user=Depends(require_auth_for_stream),
     service: AnalyticsService = Depends(get_analytics_service_for_stream),
-):
+) -> StreamingResponse:
     return StreamingResponse(
         _sse_generator(service.reprocess_all_stream(), service.session),
         media_type="text/event-stream",

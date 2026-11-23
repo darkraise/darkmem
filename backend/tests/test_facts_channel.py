@@ -42,7 +42,6 @@ from app.services.facts_channel import (
     LAYER,
     NAME_ARM,
     SEMANTIC_ARM,
-    SEMANTIC_ARM_OWNER,
     FactsChannel,
 )
 from app.services.rank_fusion import normalize_row_id
@@ -401,7 +400,6 @@ async def test_the_trace_reports_the_channel_as_keyword_only(session):
 
     assert trace.modalities == (KEYWORD_ARM, NAME_ARM)
     assert SEMANTIC_ARM not in trace.modalities
-    assert trace.semantic_deferred_to == SEMANTIC_ARM_OWNER
 
 
 @pytest.mark.asyncio
