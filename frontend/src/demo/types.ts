@@ -558,7 +558,7 @@ export interface DemoDayEvent {
    *  prose until 2026-08-11, which meant the mockup and the real branch
    *  rendered the same event from different shapes — the demo could only be
    *  read, never expanded, and the two could disagree without any test
-   *  noticing. The fields mirror `inject_journal`'s payload. */
+   *  noticing. The fields mirror the payload older builds journalled. */
   inject?: DemoInjectDetail
 }
 

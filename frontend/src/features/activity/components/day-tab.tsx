@@ -128,7 +128,7 @@ function InjectDetail({ inject }: { inject: InjectRecordData }) {
   )
 }
 
-// Watch's closed trigger vocabulary (`inject_watch.WATCH_TRIGGERS`), read out
+// The closed watch-trigger vocabulary older builds journalled, read out
 // in words. An unknown value renders verbatim rather than being dropped: the
 // swap happened, and hiding its cause because this map is stale is worse than
 // showing a raw token.

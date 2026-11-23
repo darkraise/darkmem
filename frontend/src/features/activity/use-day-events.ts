@@ -23,7 +23,7 @@ export interface DayRowData {
 
 /** One inject record, normalised from the journal payload.
  *
- * The three id lists stay separate exactly as `inject_journal` writes them:
+ * The three id lists stay separate exactly as older builds journalled them:
  * a reader asking whether a *fact* was pushed cannot recover the layer from a
  * merged list without querying every table for every id.
  *

@@ -6,9 +6,8 @@ import type { FeedCategory } from "@/features/activity/types"
  * This is a UI convenience, not a taxonomy the backend enforces — an
  * event_type absent from every bucket below still shows under "all", it
  * just has no dedicated tab. (This once cited inject/inject_curbed as the
- * open example; T3.12 landed the writer module and both are recorded in
- * EVENT_TYPES_WITHOUT_TAB below, resolving that deferral. Only `inject_curbed`
- * has a caller today — see there.)
+ * open example; both are recorded in EVENT_TYPES_WITHOUT_TAB below, and
+ * neither inject event has a producer any more — see there.)
  *
  * T2.102 (2026-08-07) closed the gap that let three straight rounds each
  * find one value missing here and fix only that one (`contradiction_scanned`
@@ -100,8 +99,8 @@ const EVENT_TYPE_CATEGORY: Record<string, FeedCategory> = {
  * close). Each reason is why it does not fit one of the five tabs, not why
  * it lacks an emitter.
  *
- * Membership here does NOT mean a value is emitted today. `inject` is listed
- * and has no producer at all (below); it is here because the exclusion
+ * Membership here does NOT mean a value is emitted today. `inject` and
+ * `inject_curbed` are listed and have no producer (below); they are here because the exclusion
  * decision was made, not because rows exist. Reading this list as "these are
  * all live" is invariant 23's mis-triage. The sentence that used to sit here
  * — "all four below are emitted for real" — was true when written (`19a19695`,

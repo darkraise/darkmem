@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import {
   createRouter,
   createRootRoute,
+  createRoute,
   createMemoryHistory,
   RouterProvider,
   Outlet,
@@ -17,8 +18,14 @@ import "../src/styles/globals.css"
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
 const rootRoute = createRootRoute({ component: () => <Outlet /> })
+// Without a route at "/" the router renders its Not Found above every story.
+const indexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/",
+  component: () => null,
+})
 const router = createRouter({
-  routeTree: rootRoute,
+  routeTree: rootRoute.addChildren([indexRoute]),
   history: createMemoryHistory({ initialEntries: ["/"] }),
 })
 

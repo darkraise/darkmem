@@ -1,5 +1,8 @@
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, vi } from "vitest"
+import Graph from "graphology"
 import {
+  createCoreMirror,
+  fitCoreInPlace,
   classify,
   coreRadius,
   placeOuterRing,
@@ -215,5 +218,50 @@ describe("fitCore", () => {
 
   it("leaves a single node at the origin", () => {
     expect(fitCoreToFarthest(new Map([["a", { x: 5, y: 9 }]]), 10).get("a")).toEqual({ x: 0, y: 0 })
+  })
+  it("the in-place fit matches fitCoreToFarthest", () => {
+    for (const seed of [1, 7, 42]) {
+      const next = rng(seed)
+      const pos = new Map<string, Point>()
+      for (let i = 0; i < 40; i++) pos.set(`n${i}`, { x: next() * 900 - 300, y: next() * 500 - 100 })
+      const expected = fitCoreToFarthest(pos, 12)
+      const xs = new Float64Array([...pos.values()].map((p) => p.x))
+      const ys = new Float64Array([...pos.values()].map((p) => p.y))
+      fitCoreInPlace(xs, ys, 12)
+      ;[...expected.values()].forEach((p, i) => {
+        expect(Math.abs(xs[i]! - p.x)).toBeLessThan(1e-9)
+        expect(Math.abs(ys[i]! - p.y)).toBeLessThan(1e-9)
+      })
+    }
+  })
+
+  it("the runner's mirror reuses its arrays across frames", () => {
+    const ids = ["a", "b", "c"]
+    const core = new Graph()
+    const target = new Graph()
+    ids.forEach((id, i) => {
+      core.addNode(id, { x: i * 10, y: i * i })
+      target.addNode(id, { x: 0, y: 0 })
+    })
+    target.addNode("outer", { x: 99, y: 99 })
+    const mirror = createCoreMirror(ids, 10)
+    const { xs, ys } = mirror
+    mirror.apply(core, target)
+    const firstB = target.getNodeAttribute("b", "x") as number
+    expect(firstB).toBeCloseTo(xs[1]!)
+
+    core.setNodeAttribute("c", "x", 500)
+    const MapSpy = vi.spyOn(globalThis, "Map")
+    try {
+      mirror.apply(core, target)
+      expect(MapSpy).not.toHaveBeenCalled()
+    } finally {
+      MapSpy.mockRestore()
+    }
+    expect(mirror.xs).toBe(xs)
+    expect(mirror.ys).toBe(ys)
+    expect(target.getNodeAttribute("b", "x")).toBeCloseTo(xs[1]!)
+    expect(target.getNodeAttribute("b", "x")).not.toBeCloseTo(firstB)
+    expect(target.getNodeAttributes("outer")).toMatchObject({ x: 99, y: 99 })
   })
 })

@@ -1,3 +1,4 @@
+import type Graph from "graphology"
 import { seededUnit } from "./code-graph-theme"
 
 export type ConstellationRole = "core" | "satellite" | "halo"
@@ -245,4 +246,56 @@ export function fitCoreToFarthest(
     out.set(id, { x: (p.x - cx) * scale, y: (p.y - cy) * scale })
   }
   return out
+}
+
+/** `fitCoreToFarthest` over parallel coordinate arrays, rewritten in place,
+ *  for the per-frame path that must not allocate. */
+export function fitCoreInPlace(xs: Float64Array, ys: Float64Array, R: number): void {
+  const n = xs.length
+  let cx = 0
+  let cy = 0
+  for (let i = 0; i < n; i++) {
+    cx += xs[i]!
+    cy += ys[i]!
+  }
+  cx /= n || 1
+  cy /= n || 1
+  let far = 0
+  for (let i = 0; i < n; i++) far = Math.max(far, Math.hypot(xs[i]! - cx, ys[i]! - cy))
+  const scale = far > 0 ? R / far : 0
+  for (let i = 0; i < n; i++) {
+    xs[i] = (xs[i]! - cx) * scale
+    ys[i] = (ys[i]! - cy) * scale
+  }
+}
+
+/** Copies the simulated core's positions, fitted to R, onto the drawn graph
+ *  each frame through arrays and an index built once. */
+export function createCoreMirror(ids: readonly string[], R: number) {
+  const index = new Map<string, number>()
+  ids.forEach((id, i) => index.set(id, i))
+  const xs = new Float64Array(ids.length)
+  const ys = new Float64Array(ids.length)
+  return {
+    xs,
+    ys,
+    apply(core: Graph, target: Graph) {
+      for (let i = 0; i < ids.length; i++) {
+        xs[i] = core.getNodeAttribute(ids[i]!, "x") as number
+        ys[i] = core.getNodeAttribute(ids[i]!, "y") as number
+      }
+      fitCoreInPlace(xs, ys, R)
+      target.updateEachNodeAttributes(
+        (id, attrs) => {
+          const i = index.get(id)
+          if (i !== undefined) {
+            attrs.x = xs[i]
+            attrs.y = ys[i]
+          }
+          return attrs
+        },
+        { attributes: ["x", "y"] },
+      )
+    },
+  }
 }

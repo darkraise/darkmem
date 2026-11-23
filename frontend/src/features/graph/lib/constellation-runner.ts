@@ -5,6 +5,7 @@ import { seededUnit } from "./code-graph-theme"
 import {
   classify,
   coreRadius as computeCoreRadius,
+  createCoreMirror,
   fitCoreToFarthest,
   HALO_SIZE,
   placeOuterRing,
@@ -96,24 +97,12 @@ export function createConstellationRunner(
   })
 
   let coreGraph: Graph | null = null
+  // In place: a copy per core node per frame is garbage at 20k nodes.
+  const coreMirror = createCoreMirror(simulated, R)
 
   const mirror = () => {
     if (!coreGraph) return
-    const pos = new Map<string, Point>()
-    coreGraph.forEachNode((id, a) => pos.set(id, { x: a.x as number, y: a.y as number }))
-    const fitted = fitCoreToFarthest(pos, R)
-    graph.updateEachNodeAttributes(
-      (id, attrs) => {
-        const p = fitted.get(id)
-        // In place: a copy per core node per frame is garbage at 20k nodes.
-        if (p) {
-          attrs.x = p.x
-          attrs.y = p.y
-        }
-        return attrs
-      },
-      { attributes: ["x", "y"] },
-    )
+    coreMirror.apply(coreGraph, graph)
   }
   const loop = createLayoutLoop({
     layoutMs: opts.layoutMs,
