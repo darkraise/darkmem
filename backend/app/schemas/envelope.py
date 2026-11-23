@@ -1,7 +1,7 @@
 """The one response envelope, shared by every surface (doc 12 §4, T1.42a).
 
 There is exactly one class defining ``schema_version``, ``partial``,
-``excluded``, ``page`` and ``context``: :class:`ResponseEnvelope`. Every
+``excluded`` and ``page``: :class:`ResponseEnvelope`. Every
 surface-specific envelope **extends** it — T1.33's ``RetrievalEnvelope`` is
 its retrieval specialisation — because a second, parallel envelope is the
 failure this module exists to prevent. ``tests/test_envelope.py`` fails the
@@ -29,14 +29,11 @@ from __future__ import annotations
 
 import importlib
 import pkgutil
-from typing import Iterator, Literal
+from typing import Iterator
 
 from pydantic import BaseModel, Field, computed_field
 
 ENVELOPE_SCHEMA_VERSION = 1
-
-DeclaredByTier = Literal["arg", "header", "project_default"]
-
 
 class PageInfo(BaseModel):
     """Pagination, stated once on the envelope.
@@ -58,29 +55,10 @@ class PageInfo(BaseModel):
         return cls(limit=limit, offset=offset, total=total, next_offset=nxt if nxt < total else None)
 
 
-class ContextEcho(BaseModel):
-    """What the request declared as its context, and which tier declared it.
-
-    Both fields are **required**, so a vacuous echo is not constructible —
-    the same discipline ``DeclaredContext`` enforces by raising on an empty
-    axis set. Undeclared is represented by ``ResponseEnvelope.context`` being
-    ``None``, never by an echo carrying ``{}``, and never by the project
-    name: an undeclared context that renders as a default is the exact
-    confusion T1.65 exists to guard against.
-
-    ``provenance`` is always ``human`` and is not settable from the request.
-    """
-
-    declared: dict[str, str]
-    declared_by: DeclaredByTier
-    provenance: Literal["human"] = "human"
-
-
 class ResponseEnvelope(BaseModel):
     schema_version: int = ENVELOPE_SCHEMA_VERSION
     excluded: dict[str, int] = Field(default_factory=dict)
     page: PageInfo | None = None
-    context: ContextEcho | None = None
 
     model_config = {"extra": "ignore"}
 

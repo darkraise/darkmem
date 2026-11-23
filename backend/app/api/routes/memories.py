@@ -280,12 +280,11 @@ async def search_memories(
 @router.post("/search/paginated", response_model=PaginatedMemoryResponse)
 async def search_memories_paginated(
     body: MemorySearchRequest,
-    request: Request,
     _user=Depends(_require_read),
     service: MemoryService = MemoryServiceDep,
 ):
     with subject_scope(UsageSubject("search", str(uuid4()), body.project)):
-        result = await service.search_memories_paginated(body, headers=request.headers)
+        result = await service.search_memories_paginated(body)
     if body.with_trace:
         items = []
         for row in result["items"]:

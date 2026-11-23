@@ -660,7 +660,7 @@ PARITY_TABLE: tuple[Surface, ...] = (
         note=(
             "Stated wire asymmetry, settled by T1.42a and T1.42c: the tool "
             "answers a bare JSON array, which has nowhere to carry the "
-            "envelope's ContextEcho or excluded counts. Giving it one is a "
+            "envelope's excluded counts. Giving it one is a "
             "breaking change that doc 12 section 3 says ships as a new tool "
             "name, never as a silent mutation of this one. The ranking, the "
             "filters and the SQL pushdown are the same service call."

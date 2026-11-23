@@ -96,8 +96,8 @@ async def test_memory_search_returns_a_bare_list_by_design(mcp_session):
     inherits the reasoning instead of rediscovering it: this is a **stated
     asymmetry between routes that can report a resolution and routes that
     cannot**, not an asymmetry between doors. The REST twin's envelope can
-    carry a ContextEcho and the excluded counts; a bare array has nowhere to
-    put them, and giving it somewhere means changing the wire shape every
+    carry the excluded counts; a bare array has nowhere to put them, and
+    giving it somewhere means changing the wire shape every
     existing MCP consumer already parses -- a breaking change, which doc 12
     section 3 says ships as a NEW tool name, never as a silent mutation of
     this one.

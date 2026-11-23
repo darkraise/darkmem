@@ -33,7 +33,7 @@ class RetrievalEnvelope(ResponseEnvelope):
     (invariant 14).
 
     The retrieval specialisation of the one ``ResponseEnvelope``, from which
-    it inherits ``schema_version``, ``excluded``, ``page`` and ``context``.
+    it inherits ``schema_version``, ``excluded`` and ``page``.
     """
 
     query: str

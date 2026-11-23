@@ -3,7 +3,7 @@
 Section 1 is the characterisation net: the literal wire key sets of every
 surface this task touches, so a change to any of them is a visible diff here
 rather than a discovery downstream. The remaining sections pin the envelope
-itself, the `source` chain on both doors, and the declared-context chain.
+itself, the `source` chain on both doors, and the absence of declared context.
 """
 from __future__ import annotations
 
@@ -69,10 +69,8 @@ async def test_rest_search_returns_a_bare_list(client, session, auth_headers):
 
     ``POST /memories/search`` has no slot for an envelope — the same
     structural reason T1.33 wired ``with_trace`` only onto the paginated
-    route. It accepts ``context`` so the wire format is uniform across both
-    read routes, but it cannot echo the resolution and so does not spend a
-    project-registry read producing one. Conforming the return type is
-    T1.42b's, where the whole REST surface moves at once.
+    route. Conforming the return type is T1.42b's, where the whole REST
+    surface moves at once.
     """
     session.add(Memory(content="envelope search probe", source="api"))
     await session.flush()
@@ -107,7 +105,7 @@ async def test_rest_paginated_shape_with_and_without_trace(client, session, auth
     )
     assert set(traced.json()) == {"items", "total", "limit", "offset", "envelope"}
     assert set(traced.json()["envelope"]) == {
-        "schema_version", "partial", "excluded", "page", "context",
+        "schema_version", "partial", "excluded", "page",
         "query", "channels", "reranked", "weights", "fused",
     }
     # F4: memory search offers no fuse/sectioned choice at all, so `fused`
@@ -625,229 +623,39 @@ def test_origin_key_resolution_is_untouched_and_deterministic():
 
 
 # --------------------------------------------------------------------------
-# 6. The declared-context chain
+# 6. No declared context
 # --------------------------------------------------------------------------
 
 
-def test_context_precedence_is_arg_then_header_then_project_default():
-    from app.api.context_resolution import resolve_declared_context
+async def test_the_search_door_takes_and_echoes_no_declared_context(client, session, auth_headers):
+    """Declared context is gone from the memory search door: no request
+    field, no header, no envelope echo and nothing in the contract."""
+    from app.main import app
+    from app.schemas.memory import MemorySearchRequest
 
-    header = {"x-darkmem-context": json.dumps({"env": "staging"})}
-    project_default = {"env": "dev"}
+    assert "context" not in MemorySearchRequest.model_fields
 
-    declared, tier = resolve_declared_context(
-        {"env": "PROD"}, headers=header, project_default=project_default,
-    )
-    assert (declared.axes, tier) == ({"env": "prod"}, "arg")
-
-    declared, tier = resolve_declared_context(
-        None, headers=header, project_default=project_default,
-    )
-    assert (declared.axes, tier) == ({"env": "staging"}, "header")
-
-    declared, tier = resolve_declared_context(None, project_default=project_default)
-    assert (declared.axes, tier) == ({"env": "dev"}, "project_default")
-
-    assert resolve_declared_context(None) == (None, None)
-
-
-def test_a_winning_tier_is_never_merged_with_a_lower_one():
-    from app.api.context_resolution import resolve_declared_context
-
-    declared, tier = resolve_declared_context(
-        {"env": "prod"}, project_default={"version": "15", "situation": "incident"},
-    )
-    assert declared.axes == {"env": "prod"}
-    assert tier == "arg"
-
-
-def test_an_empty_tier_falls_through():
-    from app.api.context_resolution import resolve_declared_context
-
-    declared, tier = resolve_declared_context(
-        {}, headers={"x-darkmem-context": "{}"}, project_default={"env": "dev"},
-    )
-    assert (declared.axes, tier) == ({"env": "dev"}, "project_default")
-
-    assert resolve_declared_context({}, project_default={}) == (None, None)
-
-
-def test_a_malformed_context_header_falls_through_without_raising():
-    from app.api.context_resolution import resolve_declared_context
-
-    for value in ("not json", "[1,2]", '"a string"', "{", "null", ""):
-        declared, tier = resolve_declared_context(
-            None, headers={"x-darkmem-context": value}, project_default={"env": "dev"},
-        )
-        assert (declared.axes, tier) == ({"env": "dev"}, "project_default"), value
-
-
-def test_project_is_never_a_context_axis():
-    """T1.34 ruling 3: the isolation boundary is not the context hint."""
-    from app.api.context_resolution import resolve_declared_context
-
-    declared, tier = resolve_declared_context({"project": "darkmem", "env": "prod"})
-    assert declared.axes == {"env": "prod"}
-    assert "project" not in declared.axes
-
-    # A tier carrying only `project` declares nothing at all.
-    assert resolve_declared_context({"project": "darkmem"}) == (None, None)
-    assert resolve_declared_context(
-        None, headers={"x-darkmem-context": json.dumps({"Project": "darkmem"})},
-    ) == (None, None)
-
-
-def test_every_declaration_comes_from_the_shared_seam(monkeypatch):
-    """The chain resolves precedence; ``normalize_axes`` owns everything after
-    it, and an empty normalised set is undeclared, never a live object."""
-    import pytest
-
-    import app.api.context_resolution as module
-
-    calls = []
-    original = module.normalize_axes
-
-    def _spy(raw):
-        calls.append(dict(raw))
-        return original(raw)
-
-    monkeypatch.setattr(module, "normalize_axes", _spy)
-
-    declared, _ = module.resolve_declared_context({"env": "PROD", "project": "x"})
-    assert declared == module.DeclaredContext({"env": "prod"})
-    assert calls == [{"env": "PROD"}]
-
-    assert module.resolve_declared_context({"env": "  "}) == (None, None)
-    with pytest.raises(ValueError):
-        module.DeclaredContext({})
-
-
-def test_declaration_provenance_is_not_caller_settable():
-    """Doc 01 §3.4: a declaration is human input by definition, so a caller
-    cannot self-declare ``llm_guessed``."""
-    from app.api.context_resolution import context_echo, resolve_declared_context
-
-    declared, tier = resolve_declared_context(
-        {"env": "prod", "provenance": "llm_guessed"},
-    )
-    echo = context_echo(declared, tier)
-    assert echo.provenance == "human"
-    assert echo.model_dump()["provenance"] == "human"
-
-    declared, tier = resolve_declared_context(
-        None, headers={"x-darkmem-context": json.dumps({"env": "prod", "provenance": "llm_guessed"})},
-    )
-    assert context_echo(declared, tier).provenance == "human"
-
-
-def test_an_undeclared_context_cannot_be_echoed_as_a_declaration():
-    from pydantic import ValidationError
-
-    from app.api.context_resolution import context_echo
-    from app.schemas.envelope import ContextEcho
-
-    assert context_echo(None, None) is None
-    # A vacuous echo is not constructible, the same way DeclaredContext
-    # refuses an empty axis set.
-    try:
-        ContextEcho()
-    except ValidationError:
-        pass
-    else:
-        raise AssertionError("ContextEcho must require a real declaration")
-
-
-async def test_project_default_tier_reads_the_projects_table(session):
-    from sqlalchemy import text
-
-    from app.repositories.project_registry import get_applies_when_default
-
-    assert await get_applies_when_default(session, "no-such-project") is None
-    assert await get_applies_when_default(session, None) is None
-
-    await session.execute(
-        text("INSERT INTO projects (name, properties) VALUES (:n, CAST(:p AS jsonb))"),
-        {"n": "ctx-declared", "p": json.dumps({"applies_when_default": {"env": "prod"}})},
-    )
-    await session.execute(
-        text("INSERT INTO projects (name, properties) VALUES (:n, CAST(:p AS jsonb))"),
-        {"n": "ctx-empty", "p": "{}"},
-    )
+    session.add(Memory(content="no declared context probe", source="api", project="ctx-gone"))
     await session.flush()
-
-    assert await get_applies_when_default(session, "ctx-declared") == {"env": "prod"}
-    # A project row that exists but declares nothing must not become a
-    # declaration.
-    assert await get_applies_when_default(session, "ctx-empty") is None
-
-
-async def test_undeclared_context_echoes_as_null_never_as_a_default(client, session, auth_headers):
-    """T1.65's guard, and the single most important assertion in the context
-    half of this task."""
-    session.add(Memory(content="undeclared context probe", source="api", project="ctx-none"))
-    await session.flush()
-
     resp = await client.post(
         "/api/v1/memories/search/paginated",
-        json={"project": "ctx-none", "limit": 5, "with_trace": True},
-        headers=auth_headers,
+        json={"project": "ctx-gone", "limit": 5, "with_trace": True},
+        headers={**auth_headers, "X-Darkmem-Context": json.dumps({"env": "staging"})},
     )
-    envelope = resp.json()["envelope"]
-    assert envelope["context"] is None
-    assert envelope["context"] != {}
-    assert envelope["context"] != {"declared": {}}
-    assert "ctx-none" not in json.dumps(envelope["context"])
+    assert resp.status_code == 200
+    assert "context" not in resp.json()["envelope"]
 
-
-async def test_declared_context_echoes_its_winning_tier(client, session, auth_headers):
-    from sqlalchemy import text
-
-    session.add(Memory(content="declared context probe", source="api", project="ctx-proj"))
-    await session.execute(
-        text("INSERT INTO projects (name, properties) VALUES (:n, CAST(:p AS jsonb))"),
-        {"n": "ctx-proj", "p": json.dumps({"applies_when_default": {"situation": "Migration"}})},
-    )
-    await session.flush()
-
-    async def _echo(body, headers=None):
-        resp = await client.post(
-            "/api/v1/memories/search/paginated",
-            json={"project": "ctx-proj", "limit": 5, "with_trace": True, **body},
-            headers={**auth_headers, **(headers or {})},
-        )
-        return resp.json()["envelope"]["context"]
-
-    by_arg = await _echo({"context": {"env": "PROD", "version": "15.3"}},
-                         {"X-Darkmem-Context": json.dumps({"env": "staging"})})
-    assert by_arg == {"declared": {"env": "prod", "version": "15.3"},
-                      "declared_by": "arg", "provenance": "human"}
-
-    by_header = await _echo({}, {"X-Darkmem-Context": json.dumps({"env": "Staging"})})
-    assert by_header == {"declared": {"env": "staging"},
-                         "declared_by": "header", "provenance": "human"}
-
-    by_project = await _echo({})
-    assert by_project == {"declared": {"situation": "migration"},
-                          "declared_by": "project_default", "provenance": "human"}
-
-
-async def test_a_declaration_that_matched_nothing_is_still_a_declaration(client, session, auth_headers):
-    """"Nothing declared" and "declared and matched nothing" are different
-    facts about the request, and the envelope states which one happened."""
-    session.add(Memory(content="unmatched context probe", source="api", project="ctx-unmatched"))
-    await session.flush()
-
-    resp = await client.post(
-        "/api/v1/memories/search/paginated",
-        json={"project": "ctx-unmatched", "limit": 5, "with_trace": True,
-              "context": {"env": "prod"}},
-        headers=auth_headers,
-    )
-    body = resp.json()
-    assert body["envelope"]["context"]["declared"] == {"env": "prod"}
-    # No row carries an applies_when, so nothing matched — and the
-    # declaration is still on the wire.
-    assert body["total"] >= 1
+    document = app.openapi()
+    assert "ContextEcho" not in document["components"]["schemas"]
+    parameters = [
+        parameter["name"].lower()
+        for path in document["paths"].values()
+        for operation in path.values()
+        if isinstance(operation, dict)
+        for parameter in operation.get("parameters", [])
+    ]
+    assert "x-darkmem-context" not in parameters
+    assert "x-darkmem-context" not in json.dumps(document).lower()
 
 
 # --------------------------------------------------------------------------

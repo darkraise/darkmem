@@ -230,11 +230,6 @@ class MemorySearchRequest(BaseModel):
     # per-row trace to the paginated search response. Structurally
     # zero-cost when unset — the trace-assembly path is never entered.
     with_trace: bool = False
-    # Tier 1 of doc 12 §5's declared-context chain: the per-call argument,
-    # which outranks the X-Darkmem-Context header and the project default.
-    # `project` is not an axis and is stripped before the declaration is
-    # built — the isolation boundary is not the context hint (T1.65).
-    context: dict | None = None
 
 
 class MemoryBatchCreate(BaseModel):

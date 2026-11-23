@@ -555,31 +555,6 @@ class MemoryService:
                 reasons.append("tags")
         return reasons
 
-    async def resolve_request_context(
-        self, params: MemorySearchRequest, headers=None,
-    ) -> tuple[object | None, str | None]:
-        """Doc 12 §5's chain, run on the read paths that can report it.
-
-        Resolved in the service rather than per route so no two surfaces can
-        answer the same request differently. The winner is echoed on the
-        envelope only; nothing ranks by it.
-
-        Deliberately **not** called from ``search_memories``: that route
-        returns a bare list with nowhere to put an envelope, so resolving
-        there would spend a project-registry read per request on a value the
-        response cannot carry and nothing yet consumes. The route still
-        accepts ``context`` — the wire format is uniform — and conforming its
-        return type is T1.42b's.
-        """
-        from app.api.context_resolution import resolve_declared_context_for_request
-
-        return await resolve_declared_context_for_request(
-            self.session,
-            explicit=params.context,
-            headers=headers,
-            project=params.project,
-        )
-
     async def search_memories(self, params: MemorySearchRequest) -> list[Memory]:
         # If we have a query and pipeline, try semantic search first
         if params.query and self.pipeline:
@@ -611,9 +586,9 @@ limit=params.limit,
             source_any=params.source_any, memory_type_any=params.memory_type_any,
         )
 
-    async def search_memories_paginated(self, params: MemorySearchRequest, headers=None) -> dict:
+    async def search_memories_paginated(self, params: MemorySearchRequest) -> dict:
         if params.with_trace:
-            return await self._search_memories_paginated_traced(params, headers)
+            return await self._search_memories_paginated_traced(params)
 
         if params.query and self.pipeline:
             semantic_results = await self.pipeline.semantic_search(
@@ -642,9 +617,7 @@ limit=params.limit, offset=params.offset,
         )
         return {"items": items, "total": total, "limit": params.limit, "offset": params.offset}
 
-    async def _search_memories_paginated_traced(
-        self, params: MemorySearchRequest, headers=None,
-    ) -> dict:
+    async def _search_memories_paginated_traced(self, params: MemorySearchRequest) -> dict:
         """The ``with_trace=True`` path (T1.33): a parallel method, not a
         branch threaded through the ordinary one, so a caller that never
         asks for a trace never enters this function and never pays for the
@@ -655,13 +628,8 @@ limit=params.limit, offset=params.offset,
         effect, and every exclusion this request made) plus a per-row
         ``MemoryTraceRow`` explaining each surviving result.
         """
-        from app.api.context_resolution import context_echo
-
-        declared, declared_by = await self.resolve_request_context(params, headers)
-        context = context_echo(declared, declared_by)
-
         if not params.query or not self.pipeline:
-            return await self._traced_sql_results(params, context)
+            return await self._traced_sql_results(params)
 
         from app.services.hybrid_search import HybridSearchService
 
@@ -674,7 +642,7 @@ limit=params.limit, offset=params.offset,
         )
         fused = channel_trace.results
         if not fused:
-            return await self._traced_sql_results(params, context, channel_trace)
+            return await self._traced_sql_results(params, channel_trace)
         reranked = channel_trace.reranked
 
         memory_ids = [row["memory_id"] for row in fused]
@@ -734,14 +702,13 @@ limit=params.limit, offset=params.offset,
             weights=weights,
             excluded=excluded,
             page=PageInfo.build(limit=params.limit, offset=params.offset, total=total),
-            context=context,
         )
         return {
             "items": items, "total": total,
             "limit": params.limit, "offset": params.offset, "envelope": envelope,
         }
 
-    async def _traced_sql_results(self, params, context, channel_trace=None) -> dict:
+    async def _traced_sql_results(self, params, channel_trace=None) -> dict:
         items, total = await self.memory_repo.search_by_tags_paginated(
             query=params.query, tags_any=params.tags_any, tags_all=params.tags_all,
             memory_type=params.memory_type, source=params.source,
@@ -764,7 +731,6 @@ limit=params.limit, offset=params.offset,
             query=params.query or "", channels=channels,
             weights={"semantic_weight": params.semantic_weight},
             page=PageInfo.build(limit=params.limit, offset=params.offset, total=total),
-            context=context,
         )
         return {
             "items": [MemoryTraceRow(memory=memory, scores={}, rank_fusion_factor=1.0, rank_fusion_breakdown={}) for memory in items],
