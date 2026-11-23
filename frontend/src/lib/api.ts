@@ -45,6 +45,23 @@ export class ApiError extends Error {
   }
 }
 
+interface ErrorBody {
+  detail?: unknown
+  error?: {
+    message?: unknown
+    details?: unknown[]
+    code?: string
+    candidates?: unknown[]
+  }
+}
+
+function errorMessage(body: ErrorBody | null | undefined, status: number): string {
+  const message = body?.error?.message
+  if (typeof message === "string" && message) return message
+  if (typeof body?.detail === "string" && body.detail) return body.detail
+  return `API error: ${status}`
+}
+
 export interface ApiFetchOptions extends RequestInit {
   /** What a 401 from this endpoint means.
    *
@@ -98,12 +115,9 @@ async function request<T>(
     const error = await response
       .json()
       .catch(() => ({ detail: response.statusText }))
-    const body = error as {
-      detail?: string
-      error?: { details?: unknown[]; code?: string; candidates?: unknown[] }
-    }
+    const body = (error ?? {}) as ErrorBody
     throw new ApiError(
-      body.detail || `API error: ${response.status}`,
+      errorMessage(body, response.status),
       response.status,
       body.error?.details,
       body.error?.code,
@@ -193,11 +207,8 @@ export function apiUpload<T>(
       let details: unknown[] | undefined
       let code: string | undefined
       try {
-        const parsed = JSON.parse(xhr.responseText) as {
-          detail?: string
-          error?: { details?: unknown[]; code?: string }
-        }
-        message = parsed.detail || message
+        const parsed = JSON.parse(xhr.responseText) as ErrorBody
+        message = errorMessage(parsed, xhr.status)
         details = parsed.error?.details
         code = parsed.error?.code
       } catch {

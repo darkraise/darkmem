@@ -6,6 +6,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import type { ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
@@ -389,6 +390,62 @@ describe("ProvidersPanel (DEMO off — read-only rendering)", () => {
     expect(
       vi.mocked(apiFetch).mock.calls.some(([, init]) => init?.method === "PUT"),
     ).toBe(false)
+  })
+
+  describe("a keyed provider's changed address asks for the key again", () => {
+    const KEYED = {
+      providers: [
+        {
+          name: "deepseek",
+          api_kind: "deepseek",
+          base_url: "https://api.deepseek.com/v1",
+          api_key: "***",
+          used_by: ["extraction"],
+          serves_verification: false,
+        },
+      ],
+    }
+    const HINT = "The address or API kind changed. Enter the API key again."
+    const puts = () =>
+      vi.mocked(apiFetch).mock.calls.filter(([, init]) => init?.method === "PUT")
+
+    it("after a base URL change", async () => {
+      vi.mocked(apiFetch).mockResolvedValue(KEYED)
+      render(<ProvidersPanel />, { wrapper })
+      const baseUrl = await openEditor("deepseek")
+      expect(screen.queryByText(HINT)).not.toBeInTheDocument()
+
+      fireEvent.change(baseUrl, { target: { value: "https://moved.example/v1" } })
+      const save = screen.getByRole("button", { name: "Save" })
+      expect(save).toBeDisabled()
+      const key = screen.getByLabelText("deepseek api_key")
+      expect(screen.getByText(HINT)).toBeInTheDocument()
+      expect(key).toHaveAccessibleDescription(HINT)
+      fireEvent.click(save)
+      expect(puts()).toHaveLength(0)
+
+      fireEvent.change(key, { target: { value: "sk-new" } })
+      expect(screen.queryByText(HINT)).not.toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "Save" })).toBeEnabled()
+    })
+
+    it("after an API kind change", async () => {
+      const user = userEvent.setup()
+      vi.mocked(apiFetch).mockResolvedValue(KEYED)
+      render(<ProvidersPanel />, { wrapper })
+      await openEditor("deepseek")
+
+      await user.click(screen.getByRole("combobox", { name: "deepseek api_kind" }))
+      await user.click(await screen.findByRole("option", { name: /OpenAI-compatible/ }))
+      expect(screen.getByRole("button", { name: "Save" })).toBeDisabled()
+      expect(screen.getByText(HINT)).toBeInTheDocument()
+      expect(puts()).toHaveLength(0)
+
+      fireEvent.change(screen.getByLabelText("deepseek api_key"), {
+        target: { value: "sk-new" },
+      })
+      expect(screen.getByRole("button", { name: "Save" })).toBeEnabled()
+    })
   })
 
   it("shows no editable connection field until the editor is opened", async () => {

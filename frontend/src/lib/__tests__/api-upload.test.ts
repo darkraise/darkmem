@@ -191,4 +191,30 @@ describe("apiUpload", () => {
       message: "too large",
     })
   })
+
+  it("takes the message from the envelope's error.message when no detail is sent", async () => {
+    FakeXhr.handler = (xhr) => {
+      xhr.status = 422
+      xhr.responseText = JSON.stringify({
+        error: { code: "invalid", message: "Base URL is not reachable" },
+      })
+      xhr.onload?.()
+    }
+    await expect(apiUpload("/x", new Blob(["x"]))).rejects.toMatchObject({
+      status: 422,
+      message: "Base URL is not reachable",
+    })
+  })
+
+  it("answers API error: <status> when the body carries no message", async () => {
+    FakeXhr.handler = (xhr) => {
+      xhr.status = 422
+      xhr.responseText = JSON.stringify({ error: { code: "invalid" } })
+      xhr.onload?.()
+    }
+    await expect(apiUpload("/x", new Blob(["x"]))).rejects.toMatchObject({
+      status: 422,
+      message: "API error: 422",
+    })
+  })
 })

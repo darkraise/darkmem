@@ -182,10 +182,22 @@ export function ProviderDialog({
   // A frozen provider resends the server's own base_url, so the field it
   // cannot edit is never the reason Save is refused.
   const baseUrlError = frozen ? null : providerBaseUrlError(draft.base_url)
+  // The server refuses to keep a stored key across an address or API kind
+  // change (it would send the key to the new endpoint), so ask before Save.
+  const keyOwed =
+    isEdit &&
+    !frozen &&
+    provider.api_key !== null &&
+    !draft.keyCleared &&
+    draft.api_key === provider.api_key &&
+    (draft.base_url !== provider.base_url ||
+      draft.api_kind !== provider.api_kind)
+  const keyHintId = `provider-key-hint-${provider?.name ?? "new"}`
   const canSubmit =
     !pending &&
     !nameError &&
     !baseUrlError &&
+    !keyOwed &&
     (isEdit || (Boolean(draft.name) && Boolean(draft.base_url)))
 
   return (
@@ -260,6 +272,8 @@ export function ProviderDialog({
                 aria-label={
                   isEdit ? `${provider.name} api_key` : "new provider api_key"
                 }
+                aria-describedby={keyOwed ? keyHintId : undefined}
+                aria-invalid={keyOwed ? true : undefined}
                 onChange={(e) =>
                   patch({ api_key: e.target.value, keyCleared: false })
                 }
@@ -286,6 +300,11 @@ export function ProviderDialog({
                 </Button>
               )}
             </div>
+            {keyOwed && (
+              <span id={keyHintId} className="text-destructive-text text-sm">
+                The address or API kind changed. Enter the API key again.
+              </span>
+            )}
           </Field>
         </div>
 

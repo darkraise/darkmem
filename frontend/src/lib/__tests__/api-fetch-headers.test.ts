@@ -116,6 +116,26 @@ describe("ApiError from an error envelope", () => {
     })
   })
 
+  it("a refusal's message is the envelope's error.message", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      respond({
+        status: 422,
+        body: { error: { code: "invalid", message: "Base URL is not reachable" } },
+      }),
+    )
+    const refused = apiFetch("/config/llm-providers/p")
+    await expect(refused).rejects.toBeInstanceOf(ApiError)
+    await expect(refused).rejects.toMatchObject({
+      status: 422,
+      message: "Base URL is not reachable",
+    })
+  })
+
+  it("answers API error: <status> when the body carries neither message nor detail", async () => {
+    vi.mocked(fetch).mockResolvedValue(respond({ status: 422, body: { error: { code: "invalid" } } }))
+    await expect(apiFetch("/x")).rejects.toMatchObject({ status: 422, message: "API error: 422" })
+  })
+
   it("leaves the code undefined when the body is not an envelope", async () => {
     vi.mocked(fetch).mockResolvedValue(respond({ status: 500, body: { detail: "boom" } }))
     await expect(apiFetch("/x")).rejects.toMatchObject({ status: 500, code: undefined })
