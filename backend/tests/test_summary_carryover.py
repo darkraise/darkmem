@@ -9,7 +9,7 @@ Editing one function in a 40-symbol file wiped and re-billed the other 39's
 enrichment on the next enrich pass for zero content change.
 
 ``CodePipeline._snapshot_symbol_enrichment`` keys the old file's symbols by
-``(name, kind, owner, source-hash)`` before ``_delete_file_data`` deletes them;
+``(name, kind, owner, source-hash)`` before ``_delete_files_data`` deletes them;
 after ``_store_symbol`` recreates the fresh set, any new row whose key matches
 a snapshot entry carries that old summary and enrichment status onto itself.
 The source-hash in the key is what makes this safe: a renamed or edited

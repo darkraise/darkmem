@@ -2,7 +2,7 @@
 
 Phase 02 parses only changed files, so a caller in an unchanged file that
 targets a renamed/moved symbol in a changed file loses its call edge
-(_delete_file_data drops it) and never regains it until a full reindex.
+(_delete_files_data drops it) and never regains it until a full reindex.
 _find_dependent_caller_files identifies those callers so they get added to the
 changed set and re-traced.
 """

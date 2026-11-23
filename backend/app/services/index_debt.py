@@ -2,7 +2,7 @@
 drop it (doc 10 §3, T2).
 
 An incremental reindex re-traces the callers of every changed file because
-``_delete_file_data`` drops every edge pointing into a changed file, so a caller
+``_delete_files_data`` drops every edge pointing into a changed file, so a caller
 that is not re-traced loses that edge until someone forces a full reindex. The
 re-trace is capped so one change to a widely-called utility cannot balloon an
 incremental run into a near-full one — and the callers past that cap used to be

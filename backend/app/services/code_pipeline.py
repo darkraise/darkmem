@@ -138,11 +138,26 @@ _CALL_GRAPH_DIGEST_SQL = """
           AND NOT (edge_type = 'calls'
                    AND COALESCE((properties->>'confidence')::float, 1.0) < 0.3)
     ), s AS (
+        -- A function's rank by line within its file, never the raw line: the
+        -- process tracer starts a route file's processes from its first
+        -- functions, so reordering them changes the layer while moving them
+        -- down a line does not.
         SELECT hashtextextended(
                    key || '|' || COALESCE(properties->>'kind', '') || '|'
-                   || COALESCE(properties->>'visibility', ''), 0) AS h
-        FROM code_graph_nodes
-        WHERE repo_id = :repo_id AND kind = 'symbol'
+                   || COALESCE(properties->>'visibility', '') || '|'
+                   || COALESCE(CAST(fn_rank AS text), ''), 0) AS h
+        FROM (
+            SELECT key, properties,
+                   CASE WHEN properties->>'kind' IN ('function', 'method') THEN
+                       row_number() OVER (
+                           PARTITION BY properties->>'file_path',
+                                        properties->>'kind' IN ('function', 'method')
+                           ORDER BY (properties->>'line_start')::int, key
+                       )
+                   END AS fn_rank
+            FROM code_graph_nodes
+            WHERE repo_id = :repo_id AND kind = 'symbol'
+        ) ranked
     )
     SELECT (SELECT count(*) FROM e) AS edges,
            (SELECT COALESCE(sum(h), 0) FROM e) AS edge_digest,
@@ -1027,32 +1042,34 @@ class CodePipeline:
         return [fp for fp in rows if fp not in current_set]
 
     async def _snapshot_symbol_enrichment(
-        self, file_id: UUID,
-    ) -> dict[tuple[str, str, str | None, str], tuple[str | None, str]]:
-        """Enrichment state of ``file_id``'s current symbols, keyed by
-        ``(name, kind, owner, source-hash)``, read before ``_delete_files_data``
-        deletes them (doc 10 §3, T4).
+        self, file_ids: list[UUID],
+    ) -> dict[UUID, dict[tuple[str, str, str | None, str], tuple[str | None, str]]]:
+        """Enrichment state of each file's current symbols, by file, keyed by
+        ``(name, kind, owner, source-hash)``, read in one query before
+        ``_delete_files_data`` deletes them (doc 10 §3, T4).
 
         The source-hash in the key is what makes carry-over safe: a symbol
         whose body changed, or was renamed or moved to a different owner,
         misses the match and is correctly re-enriched rather than keeping a
         summary describing code that no longer exists.
         """
+        if not file_ids:
+            return {}
         rows = (await self.session.execute(
             select(
-                CodeSymbol.id, CodeSymbol.name, CodeSymbol.kind,
+                CodeSymbol.file_id, CodeSymbol.id, CodeSymbol.name, CodeSymbol.kind,
                 CodeSymbol.parent_symbol_id, CodeSymbol.source_code,
                 CodeSymbol.summary, CodeSymbol.enrichment_status,
-            ).where(CodeSymbol.file_id == file_id)
+            ).where(CodeSymbol.file_id.in_(file_ids))
         )).all()
         id_to_name = {row.id: row.name for row in rows}
 
-        snapshot: dict[tuple[str, str, str | None, str], tuple[str | None, str]] = {}
+        snapshots: dict[UUID, dict[tuple[str, str, str | None, str], tuple[str | None, str]]] = {}
         for row in rows:
             owner = id_to_name.get(row.parent_symbol_id) if row.parent_symbol_id else None
             key = (row.name, row.kind, owner, _symbol_source_hash(row.source_code))
-            snapshot[key] = (row.summary, row.enrichment_status)
-        return snapshot
+            snapshots.setdefault(row.file_id, {})[key] = (row.summary, row.enrichment_status)
+        return snapshots
 
     async def phase_02_parsing(self) -> None:
         t0 = await self._phase_log("02_parsing")
@@ -1218,7 +1235,7 @@ class CodePipeline:
                 stored_hashes[fp] = (file_id, content_hash, language)
 
         rewrites: list[str] = []
-        snapshots: dict[str, dict] = {}
+        rewritten_ids: dict[str, UUID] = {}
         for fp, parsed in self._parsed.items():
             pr = parsed["parse_result"]
             stored = stored_hashes.get(fp)
@@ -1237,8 +1254,10 @@ class CodePipeline:
                 self._stats["files_skipped"] += 1
                 continue
             if stored:
-                snapshots[fp] = await self._snapshot_symbol_enrichment(stored[0])
+                rewritten_ids[fp] = stored[0]
             rewrites.append(fp)
+        by_file = await self._snapshot_symbol_enrichment(list(rewritten_ids.values()))
+        snapshots = {fp: by_file.get(file_id, {}) for fp, file_id in rewritten_ids.items()}
 
         # An unchanged file whose parse failed keeps what is indexed for it,
         # even on a full run: the failure may be a passing timeout.

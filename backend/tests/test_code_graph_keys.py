@@ -143,7 +143,7 @@ async def test_reindexing_one_file_keeps_another_files_property(session, tmp_pat
     assert [row.source_key for row in owners] == ["A::a.ts", "B::b.ts"]
 
 
-async def test_community_keys_are_stable_across_runs(session, tmp_path):
+async def test_community_keys_are_stable_across_runs(session, tmp_path, monkeypatch):
     repo = await _indexed(session, tmp_path, CLUSTERED)
     community_sql = (
         "SELECT key FROM code_graph_nodes WHERE repo_id = :r AND kind = 'community' ORDER BY key"
@@ -162,11 +162,37 @@ async def test_community_keys_are_stable_across_runs(session, tmp_path):
 
     # A new cluster whose members sort first renumbers Leiden's communities;
     # the existing communities keep their keys.
+    raw: list[list[int]] = []
+    real_partition = community_detector.partition_graph
+
+    async def _spy_partition(*args, **kwargs):
+        result = await real_partition(*args, **kwargs)
+        raw.append(list(result.membership or []))
+        return result
+
+    # The detector's node order: the repository's clusterable symbols by key.
+    node_sql = (
+        "SELECT key FROM code_graph_nodes WHERE repo_id = :r AND kind = 'symbol' "
+        "AND properties->>'kind' IN ('function', 'method', 'class', 'interface', 'struct', "
+        "'trait') ORDER BY key"
+    )
+
+    async def _raw_ids() -> dict[str, int]:
+        keys = [row.key for row in await _rows(session, node_sql, repo)]
+        return dict(zip(keys, raw[-1], strict=True))
+
+    monkeypatch.setattr(community_detector, "partition_graph", _spy_partition)
+    await _run(session, repo, full=True)
+    before = await _raw_ids()
     _write(tmp_path, {"a0.py": CLUSTERED["y.py"].replace("b", "c")})
     _git(tmp_path, "add", "a0.py")
     _git(tmp_path, "commit", "-qm", "third cluster")
     with _Statements() as statements:
         await _run(session, repo)
+    renumbered = await _raw_ids()
+    assert any(renumbered[key] != cid for key, cid in before.items()), (
+        "adding a0.py no longer renumbers Leiden's raw communities"
+    )
     # The pattern above still names the membership writes a real change makes.
     assert statements.matching(member_writes)
     after = [row.key for row in await _rows(session, community_sql, repo)]
@@ -408,3 +434,50 @@ async def test_citation_symbol_keys_survive_the_rekey(session, tmp_path):
             {"f": fact_id},
         )).scalars().all()
         assert STALE_DETAIL_KEY not in detail
+
+
+_ROUTE_FILE = (
+    "from fastapi import APIRouter\n"
+    "from helpers import a1, b1, c1, d1\n\n"
+    "router = APIRouter()\n\n\n"
+    "@router.get(\"/items\")\n"
+    "def alpha():\n    return a1()\n\n\n"
+    "def beta():\n    return b1()\n\n\n"
+    "def gamma():\n    return c1()\n\n\n"
+    "def delta():\n    return d1()\n"
+)
+_HELPERS = "".join(f"def {n}():\n    return 1\n\n\n" for n in ("a1", "b1", "c1", "d1"))
+
+
+async def test_reordering_functions_reruns_the_process_tracer(session, tmp_path, monkeypatch):
+    repo = await _indexed(session, tmp_path, {"api.py": _ROUTE_FILE, "helpers.py": _HELPERS})
+    step_sql = (
+        "SELECT source_key FROM code_edges WHERE repo_id = :r AND edge_type = 'step_in_process'"
+    )
+    steps = {row.source_key for row in await _rows(session, step_sql, repo)}
+    assert "gamma::api.py" in steps and "delta::api.py" not in steps
+    ran: list[str] = []
+    real_trace = ProcessTracer.trace
+
+    async def _trace(self, *args, **kwargs):
+        ran.append("processes")
+        return await real_trace(self, *args, **kwargs)
+
+    monkeypatch.setattr(ProcessTracer, "trace", _trace)
+
+    # Every function moves down a line; their order, and so the tracer's
+    # choice of entry functions, does not.
+    await _commit_and_run(session, tmp_path, repo, {
+        "api.py": _ROUTE_FILE.replace("\ndef ", "\n# note\ndef "),
+    })
+    assert ran == []
+
+    swapped = _ROUTE_FILE.replace(
+        "def gamma():\n    return c1()\n\n\ndef delta():\n    return d1()\n",
+        "def delta():\n    return d1()\n\n\ndef gamma():\n    return c1()\n",
+    )
+    await _commit_and_run(session, tmp_path, repo, {"api.py": swapped})
+    assert ran == ["processes"]
+    steps = {row.source_key for row in await _rows(session, step_sql, repo)}
+    assert "delta::api.py" in steps and "gamma::api.py" not in steps
+

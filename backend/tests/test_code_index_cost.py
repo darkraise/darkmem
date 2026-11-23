@@ -423,3 +423,28 @@ async def test_a_file_that_parses_on_retry_gains_its_symbols(session, tmp_path, 
     )).one()
     assert row.language == "python"
     assert row.symbols == 1
+
+
+async def test_the_enrichment_snapshot_is_one_read(session, tmp_path):
+    files = {f"s{i}.py": f"def f{i}():\n    return {i}\n" for i in range(3)}
+    _write(tmp_path, files)
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-qm", "one")
+    repo = await _local_repo(session, tmp_path)
+    pipeline = CodePipeline(session, None, None, RepoManager(session))
+    assert (await pipeline.run(repo.id, pull=False))["status"] == "indexed"
+
+    _write(tmp_path, {fp: body + "\n\ndef extra():\n    return 0\n" for fp, body in files.items()})
+    _git(tmp_path, "commit", "-qam", "two")
+    with _Statements() as statements:
+        stats = await CodePipeline(session, None, None, RepoManager(session)).run(
+            repo.id, pull=False,
+        )
+
+    assert stats["files_changed"] == 3
+    snapshot_reads = statements.matching(
+        r"^SELECT .*code_symbols\.parent_symbol_id, code_symbols\.source_code, "
+        r"code_symbols\.summary, code_symbols\.enrichment_status"
+    )
+    assert len(snapshot_reads) == 1
