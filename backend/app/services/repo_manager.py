@@ -615,8 +615,8 @@ class RepoManager:
         try:
             return await self._replace_clone(repo, cwd)
         except Exception as exc:
-            await self.session.rollback()
             release_status, release_message = "error", _sanitize_url(str(exc))[:500]
+            await self.session.rollback()
             raise
         except BaseException:
             await self.session.rollback()

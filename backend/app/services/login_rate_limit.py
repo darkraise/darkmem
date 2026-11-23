@@ -11,16 +11,17 @@ or HA deployment would back this with Redis instead.
 from __future__ import annotations
 
 import time
-from typing import Callable, NamedTuple
+from typing import Callable, Literal, NamedTuple
 
 
-REFUSED_FAILURES = "failures"
-REFUSED_IN_FLIGHT = "in_flight"
+RefusalGate = Literal["failures", "in_flight"]
+REFUSED_FAILURES: RefusalGate = "failures"
+REFUSED_IN_FLIGHT: RefusalGate = "in_flight"
 
 
 class LoginRefusal(NamedTuple):
     retry_after: int
-    gate: str
+    gate: RefusalGate
 
 
 class LoginRateLimiter:

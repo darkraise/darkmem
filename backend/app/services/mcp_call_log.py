@@ -15,7 +15,9 @@ counts them (``dropped_calls``, served by the summary route). A failed flush
 puts its batch back at the front and the next attempt waits, doubling up to
 ``_BACKOFF_MAX_SECONDS``, for as long as the connection itself is failing or
 the pool has none to give; a cancelled flush puts back a batch it had not yet
-written.
+written. Delivery is at least once: a cancel that lands inside the commit,
+after the server applied it, puts back a batch that was written, and the next
+flush writes those calls a second time.
 Any other failure is settled row by row: an entry that cannot become a row,
 or a row refused on its own, is dropped and counted, so one bad call can
 neither hold the log back nor take its neighbours with it.

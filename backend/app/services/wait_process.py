@@ -44,7 +44,8 @@ MAX_CONTINUING_FLUSHES = 8
 
 _SETTLED_BUFFER_STATUSES = ("done", "error")
 
-# Every wait_process flush in flight, from its spawn to its end. In-process
+# Every wait_process flush in flight, from its spawn to its end: "continuing"
+# here means still running, inside its request's window or past it. In-process
 # tracking is enough because the app runs one worker (invariant 13).
 _continuing: set[asyncio.Task] = set()
 
