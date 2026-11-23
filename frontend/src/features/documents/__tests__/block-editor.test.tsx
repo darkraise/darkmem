@@ -649,3 +649,30 @@ describe("BlockEditor", () => {
     expect(nested.style.paddingLeft).toBe("18px")
   })
 })
+
+describe("opening a block for edit", () => {
+  it("opening a block puts the caret at the end", async () => {
+    // React mounts a textarea by setting defaultValue, then the same value,
+    // and Chromium leaves the caret at 0 after that (measured); happy-dom puts
+    // it at the end. Start each focus from Chromium's state.
+    const focus = HTMLTextAreaElement.prototype.focus
+    const spy = vi
+      .spyOn(HTMLTextAreaElement.prototype, "focus")
+      .mockImplementation(function (this: HTMLTextAreaElement, options?: FocusOptions) {
+        this.setSelectionRange(0, 0)
+        focus.call(this, options)
+      })
+    render(
+      <BlockEditor
+        documentId="d1"
+        blocks={[block({ text: "hello world", source: "hello world" })]}
+      />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: /hello world/ }))
+    const box = (await screen.findByRole("textbox")) as HTMLTextAreaElement
+    expect(box).toHaveFocus()
+    expect(box.selectionStart).toBe(11)
+    expect(box.selectionEnd).toBe(11)
+    spy.mockRestore()
+  })
+})

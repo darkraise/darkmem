@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import {
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+  type Ref,
+} from "react"
 import { Button } from "darkraise-ui/components/button"
 import { Textarea } from "darkraise-ui/components/textarea"
 import { cn } from "darkraise-ui/lib"
@@ -134,6 +141,19 @@ interface HeldWrite {
   busy: boolean
 }
 
+/** What the editor still holds: `refused` covers writes queued behind a
+ *  refused one, since the document's queue sends nothing until it is
+ *  retried or discarded. */
+export type HeldWrites = "none" | "saving" | "refused"
+
+/** Actions a parent outside the editor (the leave guard) can take. */
+export interface BlockEditorControls {
+  /** Focus the refused block's edit box, or the block when it has none. */
+  restoreFocus: () => void
+  /** Discard the refused writes as the block's own Discard button does. */
+  discardHeld: () => void
+}
+
 function failureMessage(error: unknown): string {
   return error instanceof ApiError ? error.message : "Could not save"
 }
@@ -148,9 +168,13 @@ function failureMessage(error: unknown): string {
 export function BlockEditor({
   documentId,
   blocks,
+  onHeldWritesChange,
+  controls,
 }: {
   documentId: string
   blocks: BlockRow[]
+  onHeldWritesChange?: (state: HeldWrites) => void
+  controls?: Ref<BlockEditorControls>
 }) {
   const [focused, setFocused] = useState<string | null>(null)
   const [draft, setDraft] = useState("")
@@ -166,6 +190,7 @@ export function BlockEditor({
   const remove = useBlockDelete(documentId)
   const recovery = useBlockWriteRecovery(documentId)
   const area = useRef<HTMLTextAreaElement | null>(null)
+  const container = useRef<HTMLDivElement | null>(null)
   /** Set by Escape so the blur that follows closing the textarea does not
    *  commit the draft Escape just discarded. */
   const discarding = useRef(false)
@@ -174,8 +199,38 @@ export function BlockEditor({
   const depths = useMemo(() => listDepths(blocks), [blocks])
 
   useEffect(() => {
-    if (focused) area.current?.focus()
+    const box = area.current
+    if (!focused || !box) return
+    box.focus()
+    box.setSelectionRange(box.value.length, box.value.length)
   }, [focused])
+
+  const heldState: HeldWrites = Object.values(held).some(
+    (write) => write.message !== null,
+  )
+    ? "refused"
+    : Object.keys(held).length > 0
+      ? "saving"
+      : "none"
+
+  const reportHeld = useRef(onHeldWritesChange)
+  useEffect(() => {
+    reportHeld.current = onHeldWritesChange
+  }, [onHeldWritesChange])
+  useEffect(() => {
+    reportHeld.current?.(heldState)
+  }, [heldState])
+
+  // A write in flight is lost with the tab as surely as a refused one.
+  useEffect(() => {
+    if (heldState === "none") return
+    const onLeave = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ""
+    }
+    window.addEventListener("beforeunload", onLeave)
+    return () => window.removeEventListener("beforeunload", onLeave)
+  }, [heldState])
 
   const sourceOf = (block: BlockRow) => block.source ?? block.text
 
@@ -287,13 +342,37 @@ export function BlockEditor({
       )
   }
 
-  const discardHeld = (block: BlockRow, write: HeldWrite) => {
+  const discardHeld = (blockId: string, write: HeldWrite) => {
     recovery.discard()
-    release(block.block_id, write.kind)
+    release(blockId, write.kind)
   }
 
+  useImperativeHandle(
+    controls,
+    () => ({
+      restoreFocus: () => {
+        const refused = Object.entries(held).find(
+          ([, write]) => write.message !== null,
+        )
+        if (!refused) return
+        const node = container.current?.querySelector<HTMLElement>(
+          `[id="${refused[0]}"]`,
+        )
+        const target =
+          node?.querySelector<HTMLElement>("textarea") ??
+          node?.querySelector<HTMLElement>("button")
+        target?.focus()
+      },
+      discardHeld: () => {
+        for (const [id, write] of Object.entries(held)) {
+          if (write.message !== null) discardHeld(id, write)
+        }
+      },
+    }),
+  )
+
   return (
-    <div className="space-y-1.5">
+    <div ref={container} className="space-y-1.5">
       <p className="text-muted-foreground pb-1 text-xs">
         Click a block to edit its markdown · Esc cancels (twice over unsaved
         text) · Ctrl+Enter adds a block below · Backspace twice on an empty
@@ -440,7 +519,7 @@ export function BlockEditor({
                 size="sm"
                 variant="ghost"
                 disabled={write.busy}
-                onClick={() => discardHeld(block, write)}
+                onClick={() => discardHeld(block.block_id, write)}
               >
                 Discard
               </Button>
