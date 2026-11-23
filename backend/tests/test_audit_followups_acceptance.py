@@ -196,3 +196,282 @@ def test_a37_register_check_passes_and_no_row_is_open_planned_or_doing():
             states.append((cells[0], cells[header.index("State")]))
     assert len(states) >= 413 - 1
     assert [row for row, state in states if state in {"open", "planned", "doing"}] == []
+
+
+# ================================================================== backend DB groups
+
+import asyncio  # noqa: E402
+import contextlib  # noqa: E402
+import copy  # noqa: E402
+import logging  # noqa: E402
+import uuid  # noqa: E402
+
+from sqlalchemy import text  # noqa: E402
+from sqlalchemy.exc import DBAPIError  # noqa: E402
+
+from app.repositories.graph import PostgresGraphRepository  # noqa: E402
+from tests.test_pipeline_savepoints import VECTOR, savepoint_bed  # noqa: E402
+
+
+class _Deadlock(Exception):
+    sqlstate = "40P01"
+    pgcode = "40P01"
+
+
+def _entities_only(names):
+    return {"entities": [{"name": n, "type": "tool"} for n in names], "relationships": [], "memory_type": "fact"}
+
+
+# ------------------------------------------------------------------ A1
+
+
+@pytest.mark.asyncio
+async def test_a1_swapped_prior_and_new_sets_both_end_graph_ok_with_no_failure_row(setup_database, monkeypatch):
+    names = ("a1-entity-one", "a1-entity-two")
+    async with savepoint_bed(["writer a", "writer b"], "a1-swap|4", entity_names=names) as bed:
+        for index, prior in enumerate(((names[1],), (names[0],))):
+            status = await bed.pipe._write_memory(
+                bed.entry(index), VECTOR, bed.fingerprint, bed.fingerprint,
+                _entities_only(prior), None, {}, {},
+            )
+            assert status["graph"] == "ok", status
+
+        holding = {m: asyncio.Event() for m in bed.memory_ids}
+        real_strip = PostgresGraphRepository.delete_by_memory_id
+
+        async def strip_then_wait_for_the_other(self, memory_id):
+            result = await real_strip(self, memory_id)
+            mine = holding[memory_id]
+            if not mine.is_set():
+                mine.set()
+                other = next(e for m, e in holding.items() if m != memory_id)
+                with contextlib.suppress(asyncio.TimeoutError):
+                    await asyncio.wait_for(other.wait(), 3)
+            return result
+
+        monkeypatch.setattr(PostgresGraphRepository, "delete_by_memory_id", strip_then_wait_for_the_other)
+
+        statuses = await asyncio.gather(*[
+            bed.pipe._write_memory(
+                bed.entry(i), VECTOR, bed.fingerprint, bed.fingerprint,
+                _entities_only(names), None, {}, {},
+            )
+            for i in range(2)
+        ])
+
+        assert [s["graph"] for s in statuses] == ["ok", "ok"], statuses
+        async with bed.factory() as s:
+            failures = (await s.execute(
+                text("SELECT count(*) FROM pipeline_failures WHERE entity_id = ANY(CAST(:ids AS uuid[]))"),
+                {"ids": [str(m) for m in bed.memory_ids]},
+            )).scalar_one()
+        assert failures == 0
+        for i in range(2):
+            assert await bed.entity_names(i) == set(names)
+
+
+# ------------------------------------------------------------------ A2
+
+
+@pytest.mark.asyncio
+async def test_a2_three_deadlocks_end_graph_error_vector_kept_prior_graph_intact(setup_database, monkeypatch):
+    async with savepoint_bed(["deadlocked writer"], "a2-dead|4") as bed:
+        seeded = await bed.pipe._write_memory(
+            bed.entry(), VECTOR, bed.fingerprint, bed.fingerprint, dict(bed.extraction), None, {}, {},
+        )
+        assert seeded["graph"] == "ok", seeded
+        prior_entities = await bed.entity_names()
+        prior_relations = await bed.relation_types()
+        assert prior_entities
+
+        calls = 0
+
+        async def always_deadlocks(self, memory_id):
+            nonlocal calls
+            calls += 1
+            raise DBAPIError("UPDATE entities", {}, _Deadlock("deadlock detected"))
+
+        monkeypatch.setattr(PostgresGraphRepository, "delete_by_memory_id", always_deadlocks)
+
+        status = await bed.pipe._write_memory(
+            bed.entry(), VECTOR, bed.fingerprint, bed.fingerprint,
+            _entities_only(("a2-new-entity",)), None, {}, {},
+        )
+
+        assert status["graph"] == "error", status
+        assert calls == 3
+        assert await bed.embedding_rows() == 1
+        assert await bed.entity_names() == prior_entities
+        assert await bed.relation_types() == prior_relations
+
+
+# ------------------------------------------------------------------ A3
+
+
+@pytest.mark.asyncio
+async def test_a3_delete_losing_one_deadlock_still_removes_graph_and_vectors(setup_database, monkeypatch):
+    async with savepoint_bed(["memory to delete"], "a3-del|4") as bed:
+        seeded = await bed.pipe._write_memory(
+            bed.entry(), VECTOR, bed.fingerprint, bed.fingerprint, dict(bed.extraction), None, {}, {},
+        )
+        assert seeded["graph"] == "ok", seeded
+        assert await bed.embedding_rows() == 1
+        assert await bed.entity_names()
+
+        real_strip = PostgresGraphRepository.delete_by_memory_id
+        calls = 0
+
+        async def lose_first_deadlock(self, memory_id):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise DBAPIError("UPDATE entities", {}, _Deadlock("deadlock detected"))
+            return await real_strip(self, memory_id)
+
+        monkeypatch.setattr(PostgresGraphRepository, "delete_by_memory_id", lose_first_deadlock)
+
+        await bed.pipe.delete_memory(bed.memory_id, broadcast=False)
+
+        assert calls == 2
+        assert await bed.embedding_rows() == 0
+        assert await bed.entity_names() == set()
+        assert await bed.relation_types() == set()
+
+
+@pytest.mark.asyncio
+async def test_a3_delete_whose_source_withdrawal_times_out_still_commits_the_strip(setup_database, monkeypatch):
+    import app.services.pipeline as pipeline_module
+
+    async with savepoint_bed(["memory to delete"], "a3-wd|4") as bed:
+        seeded = await bed.pipe._write_memory(
+            bed.entry(), VECTOR, bed.fingerprint, bed.fingerprint, dict(bed.extraction), None, {}, {},
+        )
+        assert seeded["graph"] == "ok", seeded
+        assert await bed.entity_names()
+
+        class _LockNotAvailable(Exception):
+            sqlstate = "55P03"
+            pgcode = "55P03"
+
+        async def withdrawal_times_out(*args, **kwargs):
+            raise DBAPIError("SELECT ... FOR UPDATE", {}, _LockNotAvailable("lock timeout"))
+
+        monkeypatch.setattr(pipeline_module, "withdraw_memory_sources", withdrawal_times_out)
+
+        await bed.pipe.delete_memory(bed.memory_id, broadcast=False)
+
+        assert await bed.embedding_rows() == 0
+        assert await bed.entity_names() == set()
+        assert await bed.relation_types() == set()
+
+
+# ------------------------------------------------------------------ A4 / A5 / A6
+
+from app.config import FEATURE_FLAGS_DEFAULTS  # noqa: E402
+from app.models.memory import Memory  # noqa: E402
+from app.services.embedder_registry import child_table  # noqa: E402
+from app.services.hybrid_search import HybridSearchService  # noqa: E402
+from app.services.rank_fusion import RankedList, rrf_fuse  # noqa: E402
+from tests.test_hybrid_search import _FakeLLM, _seed_embedding_partition  # noqa: E402
+
+_LOW = uuid.UUID("00000000-0000-4000-8000-0000000000a1")
+_HIGH = uuid.UUID("00000000-0000-4000-8000-0000000000b2")
+
+
+def _rl(name, *ids):
+    return RankedList(name=name, rows=[{"memory_id": str(i)} for i in ids], weight=1.0)
+
+
+def test_a4_rrf_fuse_orders_equal_scores_by_row_key():
+    equal = rrf_fuse([_rl("x", _HIGH, _LOW), _rl("y", _LOW, _HIGH)], limit=10)
+    assert equal[0]["rrf_score"] == pytest.approx(equal[1]["rrf_score"])
+    assert [str(r["memory_id"]) for r in equal] == [str(_LOW), str(_HIGH)]
+    flipped = rrf_fuse([_rl("x", _LOW, _HIGH), _rl("y", _HIGH, _LOW)], limit=10)
+    assert [str(r["memory_id"]) for r in flipped] == [str(_LOW), str(_HIGH)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("hybrid", [True, False])
+async def test_a4_identical_memories_return_in_the_same_order_whichever_was_inserted_first(session, hybrid):
+    fingerprint = "a4-embedder|4"
+    vector = [1.0, 0.0, 0.0, 0.0]
+    await _seed_embedding_partition(session, fingerprint, 4)
+    child = child_table("memory_embeddings", fingerprint)
+    flags = {**FEATURE_FLAGS_DEFAULTS, "hybrid_search_enabled": hybrid}
+    svc = HybridSearchService(_FakeLLM(vector, fingerprint), session)
+
+    seen = []
+    for order in ((_HIGH, _LOW), (_LOW, _HIGH)):
+        await session.execute(
+            text("DELETE FROM memories WHERE id = ANY(CAST(:ids AS uuid[]))"), {"ids": [str(_LOW), str(_HIGH)]}
+        )
+        for mem_id in order:
+            session.add(Memory(id=mem_id, content="vorpal glimmerstone a4 note", source="test", project="a4-proj"))
+            await session.flush()
+            await session.execute(
+                text(
+                    f"INSERT INTO {child} (memory_id, fingerprint, embedding, payload) "
+                    "VALUES (:mid, :fp, CAST(:vec AS vector), '{}'::jsonb)"
+                ),
+                {"mid": mem_id, "fp": fingerprint, "vec": str(vector)},
+            )
+        await session.flush()
+        session.expunge_all()
+        for _ in range(4):
+            results = await svc.search_ranked("vorpal glimmerstone", flags=flags, limit=10)
+            seen.append(tuple(str(r["memory_id"]) for r in results[:2]))
+    assert len(set(seen)) == 1, seen
+    assert set(seen[0]) == {str(_LOW), str(_HIGH)}
+
+
+class _DownEmbedder(_FakeLLM):
+    def __init__(self):
+        super().__init__([1.0, 0.0, 0.0, 0.0], "a5|4")
+        self.calls = 0
+
+    async def embed(self, query: str):
+        self.calls += 1
+        raise ConnectionError("embedder is down")
+
+
+@pytest.mark.asyncio
+async def test_a5_hybrid_off_two_searches_during_an_embedder_outage_make_one_embed_call(session):
+    llm = _DownEmbedder()
+    flags = {**FEATURE_FLAGS_DEFAULTS, "hybrid_search_enabled": False}
+    svc = HybridSearchService(llm, session)
+    for _ in range(2):
+        with contextlib.suppress(Exception):
+            await svc.search_ranked("anything at all", flags=flags, limit=5)
+    assert llm.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_a6_neighbour_context_applies_the_limit_after_the_scope_filter(session):
+    from app.services.graph import GraphService
+
+    seed = Memory(id=uuid.UUID("00000000-0000-4000-8000-00000000ff00"), content="seed", source="t", project="a6-in")
+    session.add(seed)
+    neighbours = []
+    for i in range(25):
+        in_scope = i >= 10
+        neighbours.append(Memory(
+            id=uuid.UUID(f"00000000-0000-4000-8000-0000000001{i:02x}"),
+            content=f"neighbour {i}", source="t", project="a6-in" if in_scope else "a6-out",
+        ))
+    session.add_all(neighbours)
+    await session.flush()
+    await session.execute(
+        text(
+            "INSERT INTO entities (id, name, entity_type, memory_ids) "
+            "VALUES (gen_random_uuid(), 'a6-hub', 'tool', CAST(:mids AS uuid[]))"
+        ),
+        {"mids": [str(seed.id), *[str(n.id) for n in neighbours]]},
+    )
+    await session.flush()
+
+    svc = GraphService(session, graph_repo=PostgresGraphRepository(session))
+    context = await svc.get_memory_context(str(seed.id))
+
+    returned = {n["id"] for n in context["neighbors"]}
+    assert returned == {str(n.id) for n in neighbours[10:]}
+    assert len(returned) == 15
