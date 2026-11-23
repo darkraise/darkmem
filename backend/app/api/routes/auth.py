@@ -220,8 +220,8 @@ async def auth_change_password(
     ))
     # Before the commit, so the caller's own socket is told it was renewed
     # rather than revoked; other sessions' sockets close on the epoch.
-    await close_renewed_sockets(payload.jti, float(payload.exp))
     try:
+        await close_renewed_sockets(payload.jti, float(payload.exp))
         await session.commit()
     except BaseException:
         session_revocations.forget_renewed(payload.jti)
@@ -254,17 +254,18 @@ async def auth_refresh(
     # The presented token's sockets close as renewed before the commit, so a
     # client never reads a rotation as a revocation; it reconnects once it
     # holds the new cookie. The read-only posture closes them too.
-    await close_renewed_sockets(payload.jti, float(payload.exp))
-    if not settings.read_only:
-        session.add(TokenBlocklist(
-            jti=payload.jti,
-            expires_at=datetime.fromtimestamp(payload.exp, tz=timezone.utc),
-        ))
-        try:
+    try:
+        await close_renewed_sockets(payload.jti, float(payload.exp))
+        if not settings.read_only:
+            session.add(TokenBlocklist(
+                jti=payload.jti,
+                expires_at=datetime.fromtimestamp(payload.exp, tz=timezone.utc),
+            ))
             await session.commit()
-        except BaseException:
-            session_revocations.forget_renewed(payload.jti)
-            raise
+    except BaseException:
+        session_revocations.forget_renewed(payload.jti)
+        raise
+    if not settings.read_only:
         session_revocations.revoke(payload.jti, float(payload.exp))
 
     token = create_access_token({"sub": payload.sub})

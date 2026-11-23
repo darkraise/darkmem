@@ -69,19 +69,25 @@ async def test_renewal_and_password_change_over_a_real_socket(
     await _receives_a_broadcast(api_client, e2e_base_url, renewed)
 
     interim = "e2e-rotated-password-1"
-    changed = await _rotate(
-        api_client, e2e_base_url,
-        lambda: api_client.post(
+    answers = []
+
+    async def _change():
+        answer = await api_client.post(
             "/api/v1/auth/change-password",
             json={"current_password": e2e_admin_password, "new_password": interim},
-        ),
-    )
+        )
+        answers.append(answer)
+        return answer
+
     try:
+        changed = await _rotate(api_client, e2e_base_url, _change)
         await _receives_a_broadcast(api_client, e2e_base_url, changed)
     finally:
-        # Later e2e tests log in with the stack's own password.
-        restored = await api_client.post(
-            "/api/v1/auth/change-password",
-            json={"current_password": interim, "new_password": e2e_admin_password},
-        )
-        assert restored.status_code == 200, restored.text
+        # Later e2e tests log in with the stack's own password; it moved only
+        # if the change answered 200.
+        if answers and answers[0].status_code == 200:
+            restored = await api_client.post(
+                "/api/v1/auth/change-password",
+                json={"current_password": interim, "new_password": e2e_admin_password},
+            )
+            assert restored.status_code == 200, restored.text

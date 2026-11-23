@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 # on TCP backpressure behind the slowest consumer.
 SEND_TIMEOUT_SECONDS = 5.0
 AUTH_CHECK_INTERVAL_SECONDS = 1.0
+REVOCATION_RELOAD_SECONDS = 60.0
+_now = time.monotonic
 REVOKED_CLOSE = (1008, "Session expired or revoked")
 RENEWED_CLOSE = (4001, "Session renewed")
 
@@ -46,11 +48,12 @@ class SessionRevocations:
     """The blocklisted token ids and the password-change epoch, in process.
 
     An open socket revalidates every second; reading these from memory keeps
-    that check off the database. It is exact only because there is a single
-    worker (invariant 13) whose own auth routes are the only writers, each
-    updating this after its commit, and because the backup worker's restore
-    cycle stops the app before it swaps the database, so a restored snapshot
-    is always read by a fresh process.
+    that check off the database. The app's auth routes update the copy after
+    their commit, and it is re-read from the database once it is
+    ``REVOCATION_RELOAD_SECONDS`` old, so a revocation written outside the app
+    (a hand-run SQL statement, a restore) reaches open sockets within that
+    window. One copy serves every socket only because there is a single
+    worker (invariant 13).
     """
 
     def __init__(self) -> None:
@@ -60,37 +63,69 @@ class SessionRevocations:
         # it was renewed rather than accepted and later closed as revoked.
         self._renewed: dict[str, float] = {}
         self._epoch: int | None = None
-        self._loaded = False
+        self._read_at: float | None = None
+        self._read_failing = False
         self._lock = asyncio.Lock()
 
     def reset(self) -> None:
         self._revoked.clear()
         self._renewed.clear()
         self._epoch = None
-        self._loaded = False
+        self._read_at = None
+        self._read_failing = False
 
     async def load(self, session_factory) -> None:
+        async with self._lock:
+            if self._read_at is None:
+                await self._read(session_factory)
+
+    async def refresh_if_stale(self, session_factory) -> None:
+        """Re-read the copy once it is stale; concurrent callers share one read.
+
+        A failed read keeps the copy and is tried again once the window has
+        passed, logging once until a read succeeds."""
+        if not self._stale():
+            return
+        async with self._lock:
+            if not self._stale():
+                return
+            try:
+                await self._read(session_factory)
+            except Exception:
+                self._read_at = _now()
+                if not self._read_failing:
+                    self._read_failing = True
+                    logger.warning(
+                        "Reloading session revocations failed; keeping the in-process copy",
+                        exc_info=True,
+                    )
+                return
+            self._read_failing = False
+
+    def _stale(self) -> bool:
+        return self._read_at is None or _now() - self._read_at >= REVOCATION_RELOAD_SECONDS
+
+    async def _read(self, session_factory) -> None:
         from sqlalchemy import text
 
         from app.api.auth import PASSWORD_CHANGED_AT_KEY
 
-        async with self._lock:
-            if self._loaded:
-                return
-            async with session_factory() as session:
-                rows = (await session.execute(text(
-                    "SELECT jti, expires_at FROM token_blocklist WHERE expires_at > now()"
-                ))).all()
-                stamp = (await session.execute(
-                    text("SELECT value FROM config WHERE key = :k"),
-                    {"k": PASSWORD_CHANGED_AT_KEY},
-                )).scalar_one_or_none()
-            for jti, expires_at in rows:
-                self._revoked.setdefault(jti, expires_at.timestamp())
-            ts = stamp.get("ts") if isinstance(stamp, dict) else None
-            if isinstance(ts, int):
-                self.set_epoch(ts)
-            self._loaded = True
+        async with session_factory() as session:
+            rows = (await session.execute(text(
+                "SELECT jti, expires_at FROM token_blocklist WHERE expires_at > now()"
+            ))).all()
+            stamp = (await session.execute(
+                text("SELECT value FROM config WHERE key = :k"),
+                {"k": PASSWORD_CHANGED_AT_KEY},
+            )).scalar_one_or_none()
+        # Merged, never replaced: a revocation recorded while this read was
+        # in flight must survive it.
+        for jti, expires_at in rows:
+            self._revoked.setdefault(jti, expires_at.timestamp())
+        ts = stamp.get("ts") if isinstance(stamp, dict) else None
+        if isinstance(ts, int):
+            self.set_epoch(ts)
+        self._read_at = _now()
 
     def revoke(self, jti: str, expires_at: float) -> None:
         now = time.time()
@@ -310,6 +345,7 @@ async def websocket_endpoint(ws: WebSocket):
             # close again.
             if ws not in manager.connections:
                 return
+            await session_revocations.refresh_if_stale(async_session_factory)
             validate()
             if done:
                 receive_task.result()

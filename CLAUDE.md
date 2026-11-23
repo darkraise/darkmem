@@ -1097,8 +1097,10 @@ the tool's own body.
   and at one-second idle intervals for expiry, epoch change and revocation,
   from an in-process copy of the blocklist and the password-change epoch
   (`websocket.session_revocations`) that logout, refresh and change-password
-  update after their commit, so an idle socket costs no query and a
-  broadcast validates outside its send lock.
+  update after their commit and that is re-read from the database once it is
+  60 seconds old (one query a minute per process), so a revocation written
+  outside the app reaches open sockets within a minute and a broadcast
+  validates outside its send lock.
 - `DATABASE_URL` is derived from the `DB_*` vars (percent-encoded); an
   explicit `DATABASE_URL` overrides. LLM config lives in the database via
   the setup wizard. The `Settings.llm_<purpose>` fields (settable as an

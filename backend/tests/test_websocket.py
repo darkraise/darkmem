@@ -301,6 +301,7 @@ async def test_read_only_refresh_also_closes_with_4001(
 async def test_a_new_socket_with_the_new_cookie_connects(manager, client, auth_headers):
     presented = _presented(auth_headers)
     first, first_task = await _open(presented)
+    renewed_task = None
     try:
         answer = await client.post("/api/v1/auth/refresh", headers=auth_headers)
         assert answer.status_code == 200
@@ -316,9 +317,10 @@ async def test_a_new_socket_with_the_new_cookie_connects(manager, client, auth_h
         await manager.broadcast("unknown.test", {"n": 1})
         assert len(renewed.sent) == 1
         assert not renewed.closed.is_set()
-        await _shut(renewed_task)
     finally:
         await _shut(first_task)
+        if renewed_task is not None:
+            await _shut(renewed_task)
 
 
 async def test_a_socket_opened_inside_the_rotation_window_is_told_renewed(
@@ -380,3 +382,112 @@ async def test_a_frozen_tab_cannot_hold_a_rotation_on_its_close(monkeypatch):
 
     assert frozen not in manager.connections
     assert len(healthy.sent) == 1
+
+
+# ── The in-process copy is re-read from the database ─────────────────────
+
+
+async def test_an_out_of_band_revocation_closes_the_socket_after_reload(manager, monkeypatch):
+    from datetime import datetime, timezone
+
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from tests.conftest import test_engine
+
+    clock = [1000.0]
+    monkeypatch.setattr(websocket, "_now", lambda: clock[0], raising=False)
+    token = _token()
+    claims = jwt.decode(token, settings.jwt_secret, algorithms=[ALGORITHM])
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    socket, task = await _open(token)
+    try:
+        async with factory() as s:
+            await s.execute(
+                text("INSERT INTO token_blocklist (id, jti, expires_at) "
+                     "VALUES (gen_random_uuid(), :jti, :exp)"),
+                {"jti": claims["jti"], "exp": datetime.fromtimestamp(claims["exp"], tz=timezone.utc)},
+            )
+            await s.commit()
+        await asyncio.sleep(INTERVAL * 4)
+        assert not socket.closed.is_set()
+
+        clock[0] += 61
+        await asyncio.wait_for(socket.closed.wait(), 2)
+        assert socket.close_reason == "Session expired or revoked"
+    finally:
+        await _shut(task)
+        async with factory() as s:
+            await s.execute(text("DELETE FROM token_blocklist WHERE jti = :jti"), {"jti": claims["jti"]})
+            await s.commit()
+
+
+async def test_reload_is_single_flight_merges_and_survives_a_failed_read(
+    monkeypatch, caplog, setup_database,
+):
+    import logging
+    from contextlib import asynccontextmanager
+
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from tests.conftest import test_engine
+
+    clock = [1000.0]
+    monkeypatch.setattr(websocket, "_now", lambda: clock[0], raising=False)
+    real = async_sessionmaker(test_engine, expire_on_commit=False)
+    revocations = websocket.SessionRevocations()
+    await revocations.load(real)
+    clock[0] += 61
+
+    reads = 0
+    gate = asyncio.Event()
+
+    @asynccontextmanager
+    async def counting_factory():
+        nonlocal reads
+        reads += 1
+        await gate.wait()
+        async with real() as s:
+            yield s
+
+    calls = [asyncio.create_task(revocations.refresh_if_stale(counting_factory)) for _ in range(20)]
+    await asyncio.sleep(0.05)
+    revocations.revoke("revoked-during-the-read", time.time() + 3600)
+    gate.set()
+    await asyncio.gather(*calls)
+    assert reads == 1
+    assert "revoked-during-the-read" in revocations._revoked
+
+    @asynccontextmanager
+    async def failing_factory():
+        raise RuntimeError("database down")
+        yield
+
+    caplog.set_level(logging.WARNING, logger="app.api.websocket")
+    for _ in range(2):
+        clock[0] += 61
+        await revocations.refresh_if_stale(failing_factory)
+    assert "revoked-during-the-read" in revocations._revoked
+    warnings = [
+        r for r in caplog.records if r.name == "app.api.websocket" and r.levelno == logging.WARNING
+    ]
+    assert len(warnings) == 1, [r.getMessage() for r in warnings]
+
+
+async def test_a_cancelled_refresh_forgets_the_renewed_mark(manager, client, auth_headers):
+    presented = _presented(auth_headers)
+    jti = jwt.decode(presented, settings.jwt_secret, algorithms=[ALGORITHM])["jti"]
+    socket, task = await _open(presented)
+    try:
+        async with manager._send_lock:
+            answer = asyncio.create_task(client.post("/api/v1/auth/refresh", headers=auth_headers))
+            for _ in range(200):
+                if jti in websocket.session_revocations._renewed:
+                    break
+                await asyncio.sleep(0.01)
+            assert jti in websocket.session_revocations._renewed
+            answer.cancel()
+            await asyncio.gather(answer, return_exceptions=True)
+        assert jti not in websocket.session_revocations._renewed
+    finally:
+        await _shut(task)
