@@ -157,6 +157,55 @@ async def test_a_memory_locked_past_the_wait_defers_its_candidate(
             await _cleanup(factory, [busy_project, free_project], [busy, free])
 
 
+async def test_a_held_fact_lock_defers_the_candidate(setup_database, monkeypatch, caplog):
+    monkeypatch.setattr(fact_lift, "MEMORY_LOCK_WAIT_SECONDS", 0.3)
+    caplog.set_level(logging.INFO, logger=fact_lift.logger.name)
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    project = f"lift-fact-held-{uuid4()}"
+    first = await _seed_asserting(factory, project, "first")
+    async with factory() as seed:
+        await run_lift(seed)
+        await seed.commit()
+    second = await _seed_asserting(factory, project, "second")
+
+    async with factory() as holder, factory() as lifting, factory() as observer:
+        try:
+            fact_id = (await facts(observer, project))[0]["id"]
+            await holder.execute(
+                text("SELECT id FROM knowledge_triples WHERE id = CAST(:id AS uuid) FOR UPDATE"),
+                {"id": str(fact_id)},
+            )
+
+            outcome = await asyncio.wait_for(run_lift(lifting), 0.3 + 2)
+            await lifting.commit()
+
+            assert outcome.deferred == 1
+            assert outcome.failed == 0
+            lift_records = [r for r in caplog.records if r.name == fact_lift.logger.name]
+            assert any(
+                r.levelno == logging.INFO and "fact lifting deferred" in r.getMessage()
+                for r in lift_records
+            )
+            assert not [r for r in lift_records if r.levelno >= logging.ERROR]
+            await observer.rollback()
+            assert {r["source_ref"] for r in await sources(observer, fact_id)} == {
+                memory_source_ref(first)
+            }
+
+            await holder.commit()
+            await run_lift(lifting)
+            await lifting.commit()
+            await observer.rollback()
+            assert {r["source_ref"] for r in await sources(observer, fact_id)} == {
+                memory_source_ref(first), memory_source_ref(second),
+            }
+        finally:
+            await holder.rollback()
+            await lifting.rollback()
+            await observer.rollback()
+            await _cleanup(factory, [project], [first, second])
+
+
 async def test_a_tick_spends_one_lock_wait_budget(setup_database, monkeypatch):
     monkeypatch.setattr(fact_lift, "MEMORY_LOCK_WAIT_SECONDS", 1.0)
     factory = async_sessionmaker(test_engine, expire_on_commit=False)

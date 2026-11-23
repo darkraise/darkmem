@@ -359,8 +359,18 @@ MEMORY_LOCK_WAIT_SECONDS = 5.0
 _MEMORY_LOCK_POLL_SECONDS = 0.05
 
 
-class MemoriesBusy(Exception):
-    """A candidate's memories stayed locked past the wait; it lifts next tick."""
+class LiftBusy(Exception):
+    """A lock the candidate needs stayed held past the wait; it lifts next tick."""
+
+    reason = "a lock it needs is held"
+
+
+class MemoriesBusy(LiftBusy):
+    reason = "an asserting memory is being re-extracted"
+
+
+class FactBusy(LiftBusy):
+    reason = "its open fact is locked by another writer"
 
 
 def _memory_lock_deadline() -> float:
@@ -370,7 +380,7 @@ def _memory_lock_deadline() -> float:
 # FOR UPDATE, not a bare read: the Tier-B withdrawal sweep expires a fact under
 # the same lock, so holding it from this read through the provenance write is
 # what stops a source landing on a row that is being expired out from under it.
-_OPEN_FACT = text("""
+_OPEN_FACT_SQL = """
     SELECT id
     FROM knowledge_triples
     WHERE triple_key = CAST(:key AS text)
@@ -379,7 +389,12 @@ _OPEN_FACT = text("""
     ORDER BY created_at, id
     LIMIT 1
     FOR UPDATE
-""")
+"""
+_OPEN_FACT = text(_OPEN_FACT_SQL)
+# The memory lift holds earlier candidates' fact locks to its batch commit while
+# a source reconcile locks facts in id order, so a blocking wait here can close
+# a cycle the deadlock detector breaks with an ERROR; NOWAIT defers instead.
+_OPEN_FACT_NOWAIT = text(_OPEN_FACT_SQL + "    NOWAIT\n")
 
 _EXISTING_REFS = text("""
     SELECT source_ref
@@ -423,8 +438,8 @@ class LiftOutcome:
     facts_created: int = 0
     sources_added: int = 0
     events_emitted: int = 0
-    # Candidates left for the next tick: an asserting memory was being
-    # re-extracted, or the candidate's own savepoint failed.
+    # Candidates left for the next tick: an asserting memory, or the open
+    # fact the candidate lifts into, stayed locked past the wait.
     deferred: int = 0
     failed: int = 0
 
@@ -483,10 +498,30 @@ async def _pending_candidates(
     return list(by_key.values())
 
 
-async def _open_fact_id(session: AsyncSession, triple_key: str) -> str | None:
-    result = await session.execute(_OPEN_FACT, {"key": triple_key})
-    row = result.scalar_one_or_none()
-    return str(row) if row is not None else None
+async def _open_fact_id(
+    session: AsyncSession, triple_key: str, deadline: float | None = None,
+) -> str | None:
+    """Lock and return the open fact on ``triple_key``, or None when there is none.
+
+    Without a deadline the lock is waited for; with one, it is polled with
+    NOWAIT until the deadline and ``FactBusy`` raised when it passes.
+    """
+    if deadline is None:
+        row = (await session.execute(_OPEN_FACT, {"key": triple_key})).scalar_one_or_none()
+        return str(row) if row is not None else None
+    while True:
+        try:
+            async with session.begin_nested():
+                row = (
+                    await session.execute(_OPEN_FACT_NOWAIT, {"key": triple_key})
+                ).scalar_one_or_none()
+            return str(row) if row is not None else None
+        except DBAPIError as exc:
+            if getattr(exc.orig, "sqlstate", None) != _LOCK_NOT_AVAILABLE:
+                raise
+            if asyncio.get_running_loop().time() >= deadline:
+                raise FactBusy(triple_key) from exc
+        await asyncio.sleep(_MEMORY_LOCK_POLL_SECONDS)
 
 
 async def _mint_fact(session: AsyncSession, candidate: _Candidate) -> str:
@@ -583,11 +618,9 @@ async def _lift_one(
     if not candidate.origins:
         return _LiftedOne()
 
-    await _share_lock_memories(
-        session, sorted(candidate.origins),
-        _memory_lock_deadline() if lock_deadline is None else lock_deadline,
-    )
-    fact_id = await _open_fact_id(session, candidate.triple_key)
+    deadline = _memory_lock_deadline() if lock_deadline is None else lock_deadline
+    await _share_lock_memories(session, sorted(candidate.origins), deadline)
+    fact_id = await _open_fact_id(session, candidate.triple_key, deadline)
     live = await _still_asserting(session, candidate)
     if not live:
         # Every memory behind this candidate stopped asserting it between the
@@ -674,21 +707,21 @@ async def run_lift(
         if index % LIFT_COMMIT_BATCH == 0:
             if index:
                 await session.commit()
-            # One wait budget per batch, not one per candidate: every share
-            # lock the batch took so far is held until its commit, so a
+            # One wait budget per batch, not one per candidate: every memory
+            # and fact lock the batch took so far is held until its commit, so a
             # re-extraction blocked on one of them waits out every later
             # candidate's retries too.
             lock_deadline = _memory_lock_deadline()
         try:
             async with session.begin_nested():
                 lifted = await _lift_one(session, candidate, lock_deadline)
-        except MemoriesBusy:
+        except LiftBusy as busy:
             deferred += 1
             logger.info(
-                "fact lifting deferred for %s in project %s: an asserting memory "
-                "is being re-extracted",
+                "fact lifting deferred for %s in project %s: %s",
                 candidate.triple_key,
                 candidate.project,
+                busy.reason,
             )
             continue
         except Exception:
