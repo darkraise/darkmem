@@ -229,7 +229,8 @@ table or column is dropped only once no released code reads it.
   production. The script dumps the live database and prunes to the newest
   `BACKUP_KEEP` (14), but only a dump carrying `CREATE TABLE public.memories`
   and the `alembic_version` data: any other is renamed `.suspect` and fails
-  the run unpruned. Dumps are local only. **Attachments are a second
+  the run with no dump pruned, keeping only the newest three suspects. Dumps
+  are local only. **Attachments are a second
   artefact family on both producers**: a manifest hash over `(id, sha256)`,
   computed by Postgres, decides whether the set changed; if it did, each
   producer writes one whole-set tarball beside its dump under the same stamp

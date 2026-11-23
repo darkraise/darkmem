@@ -90,16 +90,18 @@ psql_owner() {
 # step gets a process group of its own (setsid) and the whole group is killed
 # on a timeout: GNU timeout signals its group, but uutils timeout signals only
 # the command it started, so the step's children would outlive it there.
-# Stdin is passed on explicitly, since a background job otherwise reads
-# /dev/null.
+# Stdin is passed on explicitly, since POSIX gives a background job /dev/null.
+# A 137 counts as a timeout only once the bound has passed: before that it is a
+# SIGKILL from elsewhere (the OOM killer), not this bound.
 bounded() {
     local seconds=$1
     shift
     local rc=0
+    local started=$SECONDS
     setsid --wait timeout --kill-after=10 "$seconds" "$@" <&0 &
     local pid=$!
     wait "$pid" || rc=$?
-    if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+    if [ "$rc" -eq 124 ] || { [ "$rc" -eq 137 ] && [ $((SECONDS - started)) -ge "$seconds" ]; }; then
         kill -KILL -- "-$pid" 2>/dev/null || true
         return "$TIMED_OUT"
     fi
@@ -111,7 +113,7 @@ bounded() {
 # outlive its client. Each step tolerates having nothing to do.
 abandon_side_database() {
     echo "Removing the migrate container and dropping '$SIDE_DB'..." >&2
-    $DOCKER rm -f "$MIGRATE_CONTAINER" >/dev/null 2>&1 || true
+    $DOCKER rm -f "$MIGRATE_CONTAINER" >/dev/null || true
     psql_owner -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$SIDE_DB' AND pid <> pg_backend_pid();" >/dev/null || true
     if psql_owner -d postgres -c "DROP DATABASE IF EXISTS \"$SIDE_DB\";"; then
         STAGE="none"

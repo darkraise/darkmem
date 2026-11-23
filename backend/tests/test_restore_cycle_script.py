@@ -7,6 +7,7 @@ runs `exec sleep 60`, so only the script's own bound can end it.
 """
 from __future__ import annotations
 
+import gzip
 import os
 import subprocess
 import time
@@ -31,23 +32,30 @@ _STUB = """#!/usr/bin/env bash
 case "$*" in
   *alembic*) __MIGRATE__ ;;
   *"baseline_sha()"*) __PROBE__ ;;
+  *viewer_password*|*" -c "*) ;;
+  *" -d darkmem_restore_"*) __REPLAY__ ;;
 esac
 cat >/dev/null
 exit 0
 """
 
 
-def _run(tmp_path: Path, *, migrate: str, probe: str, env: dict[str, str]):
+def _run(
+    tmp_path: Path, *, migrate: str = "exit 0", probe: str = "exit 0",
+    replay: str | None = None, env: dict[str, str],
+):
     dumps = tmp_path / "dumps"
     dumps.mkdir()
     (dumps / SNAPSHOT).write_bytes(_complete_dump(tmp_path).read_bytes())
     log_path = tmp_path / "invocations.log"
     log_path.write_text("")
+    replayed = tmp_path / "replayed.sql"
     stub = tmp_path / "compose_stub.sh"
     stub.write_text(
         _STUB.replace("__LOG_PATH__", str(log_path))
         .replace("__MIGRATE__", migrate)
         .replace("__PROBE__", probe)
+        .replace("__REPLAY__", replay or f'cat > "{replayed}"; exit 0')
     )
     stub.chmod(0o755)
     age = tmp_path / "age"
@@ -119,3 +127,30 @@ def test_an_overrunning_image_probe_exits_non_zero(tmp_path):
     assert elapsed < 20
     assert not _calls(records, "RENAME")
     assert "image probe timed out" in result.stderr
+
+
+def test_the_replay_reaches_psql_with_the_whole_dump(tmp_path):
+    result, records, _ = _run(tmp_path, env={})
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    replayed = (tmp_path / "replayed.sql").read_text()
+    assert replayed == gzip.decompress(_complete_dump(tmp_path).read_bytes()).decode()
+    assert _calls(records, "RENAME")
+
+
+def test_an_overrunning_replay_swaps_nothing(tmp_path):
+    result, records, elapsed = _run(
+        tmp_path, replay="exec sleep 60", env={"RESTORE_REPLAY_TIMEOUT": "2"},
+    )
+
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert elapsed < 20
+    assert not _calls(records, "RENAME")
+    assert not _calls(records, "alembic")
+    assert "replay timed out" in result.stderr
+    terminated = _calls(records, "pg_terminate_backend")
+    dropped = [
+        i for i in _calls(records, "DROP DATABASE IF EXISTS")
+        if any("darkmem_restore_" in f for f in records[i])
+    ]
+    assert terminated and dropped and terminated[0] < dropped[-1]
