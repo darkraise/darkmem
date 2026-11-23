@@ -57,6 +57,11 @@ if [ "${#MISSING[@]}" -gt 0 ]; then
         find "$DEST_DIR" -maxdepth 1 -name 'darkmem-*.sql.gz.suspect' -type f -printf '%T@ %p\0' \
         | sort -zrn | cut -z -d' ' -f2-
     )
+    # The suspect just kept is always in the listing, so an empty one means
+    # the listing failed, and its status is lost in the process substitution.
+    if [ "${#SUSPECTS[@]}" -eq 0 ]; then
+        echo "Could not list the suspect dumps in $DEST_DIR; none pruned." >&2
+    fi
     if [ "${#SUSPECTS[@]}" -gt "$SUSPECT_KEEP" ]; then
         for old_suspect in "${SUSPECTS[@]:$SUSPECT_KEEP}"; do
             rm -f -- "$old_suspect"
