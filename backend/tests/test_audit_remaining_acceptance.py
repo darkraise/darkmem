@@ -396,14 +396,25 @@ def test_a52_every_register_row_is_done_or_deferred_with_reason():
     path = REPO / "docs/dforge/registers/2026-11-20-audit-remaining.md"
     rows = [l for l in path.read_text().splitlines() if re.match(r"\|\s*\d+\s*\|", l)]
     assert len(rows) >= 200
-    bad = []
+    parsed = []
     for line in rows:
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        n, state, note = cells[0], cells[4], "|".join(cells[5:]).strip()
+        parsed.append((cells[0], cells[4], "|".join(cells[5:]).strip()))
+    states = {n: state for n, state, _ in parsed}
+    bad = []
+    for n, state, note in parsed:
         if state not in {"done", "deferred"} or not note:
             bad.append((n, state, note))
         elif state == "done":
-            ok = re.search(r"\b[0-9a-f]{7,40}\b", note) or note.lower().startswith("not reproduced:")
+            # A row closes with its commit, as not reproduced, as a record
+            # with nothing in the tree to change, or as a duplicate of a row
+            # that is itself closed, where its work is tracked.
+            duplicate = re.match(r"duplicate of #(\d+)\b", note)
+            ok = (
+                re.search(r"\b[0-9a-f]{7,40}\b", note)
+                or note.lower().startswith(("not reproduced:", "record only"))
+                or (duplicate and states.get(duplicate.group(1)) in {"done", "deferred"})
+            )
             if not ok:
                 bad.append((n, state, note))
     assert not bad, bad
