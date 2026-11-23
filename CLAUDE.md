@@ -1331,9 +1331,10 @@ the same `document_door` functions; targets resolve through
   purpose sets `dimensions` (no embed call); without it, every filing
   spends one real embed call to learn it.
 - **`embed_inline=False`** (the board's register edit) returns once the
-  filing commits and embeds nothing, so `llm` may be None and an embedder
-  outage cannot fail the write; `block_embedding_refresh` embeds the new
-  blocks within the hour.
+  filing commits and embeds nothing, carries unchanged blocks' vectors under
+  every non-retired fingerprint that holds vectors for the document, so
+  `llm` may be None and an embedder outage cannot fail the write;
+  `block_embedding_refresh` embeds the new blocks within the hour.
 - Delete removes the row and cascades blocks and vectors. Nothing links a
   block to a fact, so there is no provenance to withdraw.
 

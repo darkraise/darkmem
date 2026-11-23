@@ -6,9 +6,11 @@ from sqlalchemy import text
 
 from app.services import board_edit
 from app.services.board_edit import edit_register_row
+from app.services.block_embeddings import PARENT_TABLE
 from app.services.board_parse import BoardRefusal
 from app.services.document_door import put_document
 from app.services.document_ingest import DocumentHashConflict
+from app.services.embedder_registry import child_table, embedder_registry, ensure_registered
 from tests.test_block_pipeline import FILING_CLOSURE
 from tests.test_block_retrieval import BLOCK_CHANNEL_MODULES
 from tests.test_worklog_wall import WORKLOG_MODULES
@@ -131,6 +133,61 @@ async def test_the_put_carries_no_properties_and_no_inline_embed(session, monkey
     assert "properties" not in seen
     assert seen["expected_hash"] == filed.content_hash
     assert seen["actor"] == "admin"
+
+
+CARRY_FINGERPRINTS = ("board-carry-a|3", "board-carry-b|3")
+THREE_ROWS = REGISTER + "| 2 | second | - | - | open | - |\n| 3 | third | - | - | open | - |\n"
+
+
+@pytest.fixture
+def _carry_fingerprints():
+    for fingerprint in CARRY_FINGERPRINTS:
+        embedder_registry.forget(fingerprint)
+    yield
+    for fingerprint in CARRY_FINGERPRINTS:
+        embedder_registry.forget(fingerprint)
+
+
+async def _block_texts(session, document_id) -> dict[str, str]:
+    rows = await session.execute(
+        text("SELECT CAST(id AS text) AS id, text FROM blocks WHERE document_id = CAST(:d AS uuid)"),
+        {"d": document_id},
+    )
+    return {row.id: row.text for row in rows}
+
+
+async def _vector_texts(session, document_id, fingerprint) -> set[str]:
+    table = child_table(PARENT_TABLE, fingerprint)
+    rows = await session.execute(
+        text(f"SELECT b.text FROM blocks b JOIN {table} e ON e.block_id = b.id "
+             "WHERE b.document_id = CAST(:d AS uuid)"),
+        {"d": document_id},
+    )
+    return set(rows.scalars().all())
+
+
+async def test_a_register_edit_keeps_unchanged_block_vectors(session, _carry_fingerprints):
+    for fingerprint in CARRY_FINGERPRINTS:
+        await ensure_registered(session, fingerprint)
+    filed = await _file(session, content=THREE_ROWS)
+    before = await _block_texts(session, filed.document_id)
+    for fingerprint in CARRY_FINGERPRINTS:
+        table = child_table(PARENT_TABLE, fingerprint)
+        for block_id in before:
+            await session.execute(
+                text(f"INSERT INTO {table} (block_id, fingerprint, embedding) "
+                     "VALUES (CAST(:b AS uuid), CAST(:fp AS text), CAST('[1,2,3]' AS vector))"),
+                {"b": block_id, "fp": fingerprint},
+            )
+
+    await _edit(session, filed, number=2, state="done")
+
+    after = set((await _block_texts(session, filed.document_id)).values())
+    unchanged = after & set(before.values())
+    changed = after - set(before.values())
+    assert unchanged and len(changed) == 1
+    for fingerprint in CARRY_FINGERPRINTS:
+        assert await _vector_texts(session, filed.document_id, fingerprint) == unchanged
 
 
 def test_the_edit_service_sits_on_the_filing_path_and_outside_the_work_log_wall():

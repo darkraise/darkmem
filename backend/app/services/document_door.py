@@ -35,7 +35,8 @@ from app.repositories.documents import (
 )
 from app.repositories.relational import PostgresTagRepository
 from app.services.block_embeddings import (
-    PARENT_TABLE, active_fingerprint, embed_blocks,
+    PARENT_TABLE, active_fingerprint, carry_document_vectors, document_vectors_by_text,
+    embed_blocks, fingerprints_holding_document,
 )
 from app.services.block_pipeline import ingest_document
 from app.services.block_query import BlockQueryService
@@ -535,9 +536,11 @@ async def put_document(
     """File a document, commit, then embed its blocks.
 
     With `embed_inline=False` it returns once the filing commits and embeds
-    nothing, so `llm` may be None: `block_embedding_refresh` embeds the new
-    blocks on its next pass, as it does for page writes (spec 2026-10-13
-    §2.4). An embedder failure then cannot fail an edit that already landed.
+    nothing, so `llm` may be None: unchanged blocks keep their vectors under
+    every non-retired fingerprint that holds vectors for the document, and
+    `block_embedding_refresh` embeds the new blocks on its next pass, as it
+    does for page writes (spec 2026-10-13 §2.4). An embedder failure then
+    cannot fail an edit that already landed.
     """
     if len(content) > MAX_CONTENT_CHARS:
         raise DocumentTooLarge(
@@ -555,7 +558,9 @@ async def put_document(
     #
     # A brand-new document has no row to lock, and that is correct rather
     # than a hole: there is nothing to convert and nothing to overwrite.
-    await session.execute(_LOCK_DOCUMENT_BY_URI, {"project": project, "uri": uri})
+    locked_id = (
+        await session.execute(_LOCK_DOCUMENT_BY_URI, {"project": project, "uri": uri})
+    ).scalar_one_or_none()
     direction = (
         await session.execute(_DIRECTION_SQL, {"project": project, "uri": uri})
     ).scalar_one_or_none()
@@ -581,6 +586,15 @@ async def put_document(
                 "re-embedding every block", uri, exc_info=True,
             )
 
+    # Read under the row lock and before the filing strips the blocks these
+    # vectors cascade with.
+    held_vectors: dict[str, dict[str, str]] = {}
+    if not embed_inline and locked_id is not None:
+        for fingerprint in await fingerprints_holding_document(session, locked_id):
+            held_vectors[fingerprint] = await document_vectors_by_text(
+                session, locked_id, fingerprint,
+            )
+
     # The block-count refusal is raised inside the filing's own SAVEPOINT,
     # before any block insert, so it rolls the row and its journal back
     # rather than staging an oversized document for the caller's next commit.
@@ -600,6 +614,9 @@ async def put_document(
         carry_fingerprint=carry_fingerprint,
         max_blocks=MAX_BLOCKS,
     )
+    if filed.outcome != UNCHANGED:
+        for fingerprint, by_text in held_vectors.items():
+            await carry_document_vectors(session, filed.document_id, fingerprint, by_text)
 
     await session.commit()
 

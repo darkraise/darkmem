@@ -194,6 +194,30 @@ async def document_vectors_by_text(
     return {row.text: row.embedding for row in rows}
 
 
+async def fingerprints_holding_document(session: AsyncSession, document_id) -> list[str]:
+    """Every non-retired fingerprint whose partition holds a vector for one of
+    the document's blocks. Read when no embedder names the active one, since
+    the newest registered fingerprint need not be the one search reads."""
+    live = (await session.execute(text(
+        "SELECT fingerprint FROM embedders WHERE retired_at IS NULL ORDER BY fingerprint"
+    ))).scalars().all()
+    held = []
+    for fingerprint in live:
+        table = child_table(PARENT_TABLE, fingerprint)
+        exists = (await session.execute(
+            text("SELECT to_regclass(:name)"), {"name": table},
+        )).scalar_one_or_none()
+        if exists is None:
+            continue
+        found = (await session.execute(text(f"""
+            SELECT 1 FROM {table} e JOIN blocks b ON b.id = e.block_id
+            WHERE b.document_id = CAST(:id AS uuid) LIMIT 1
+        """), {"id": str(document_id)})).first()
+        if found is not None:
+            held.append(fingerprint)
+    return held
+
+
 async def carry_document_vectors(
     session: AsyncSession, document_id, fingerprint: str, by_text: dict[str, str],
 ) -> int:
