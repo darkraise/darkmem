@@ -11,7 +11,7 @@ Arguments pass through to pytest, so `-k session_rotation` runs one test.
 Nothing else needs to be true first — no fresh deployment, no pre-set password,
 no already-running server. This is the normal starting condition, not a
 failure mode: the script resets and migrates `TEST_DATABASE_URL` (default
-`darkmem_test`, overridable),
+`darkmem_e2e`, overridable),
 boots `app.main:app` as its own subprocess on a scratch port, seeds the
 admin account through the real `POST /api/v1/setup` front door (password
 only, no LLM config), runs `pytest scripts/e2e/tests -q` against it with
@@ -22,7 +22,9 @@ only, no LLM config), runs `pytest scripts/e2e/tests -q` against it with
 
 - `e2e_db.py` — drop/recreate + migrate `TEST_DATABASE_URL`. Mirrors
   `scripts/benchlib/bench_db.py`'s reset discipline against a third,
-  separate database.
+  separate database, `darkmem_e2e`, never pytest's `darkmem_test`. Create it
+  once with
+  `docker exec darkmem-postgres-1 psql -U darkmem -d darkmem -c "CREATE DATABASE darkmem_e2e;"`.
 - `stack.py` — `boot(port, password) -> StackHandle`: spawns uvicorn, polls
   `/health`, seeds the admin account, and returns a handle whose
   `teardown()` kills the whole process group (TERM, a grace period, then

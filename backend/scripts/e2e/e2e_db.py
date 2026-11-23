@@ -1,15 +1,17 @@
 """Dedicated e2e-database lifecycle.
 
 Mirrors ``backend/scripts/benchlib/bench_db.py``'s reset discipline against a
-THIRD, separate database (``darkmem_test`` by default, overridable via
-``TEST_DATABASE_URL`` — this lane runs against ``darkmem_test_1``) so the API
-e2e suite never touches ``darkmem`` or ``darkmem_bench``. Importing this
-module overrides ``DATABASE_URL``, so it MUST be imported before any other
-``app.*`` import in an e2e process.
+third, separate database (``darkmem_e2e`` by default, overridable via
+``TEST_DATABASE_URL``) so the API e2e suite never touches ``darkmem``,
+``darkmem_bench`` or pytest's ``darkmem_test``, which conftest drops and
+re-migrates under a running stack. Importing this module overrides
+``DATABASE_URL``, so it MUST be imported before any other ``app.*`` import in
+an e2e process.
 
 Create the database once:
-  psql -h localhost -p 5433 -U darkmem -d darkmem -c "CREATE DATABASE darkmem_test;"
+  docker exec darkmem-postgres-1 psql -U darkmem -d darkmem -c "CREATE DATABASE darkmem_e2e;"
 """
+import ipaddress
 import os
 import re
 import subprocess
@@ -19,7 +21,7 @@ from urllib.parse import urlsplit
 
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL",
-    "postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_test",
+    "postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_e2e",
 )
 # Override BEFORE importing app.database (it builds its engine at import time).
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
@@ -34,18 +36,30 @@ session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
 
 DISPOSABLE_NAME = re.compile(r"darkmem_(test|e2e)(_[a-z0-9_]+)?")
-LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1", ""}
+PRODUCTION_PORT = 5432
+ALEMBIC_TIMEOUT_SECONDS = 600
 
 
 class NotADisposableDatabase(RuntimeError):
     pass
 
 
+def _is_this_host(host: str) -> bool:
+    if host in {"", "localhost"}:
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return address.is_loopback or address.is_unspecified
+
+
 def assert_disposable_target(url: str) -> None:
     """Refuse a reset of anything but a suite database off the production port.
 
     The CI service container answers on its own host's 5432, so the port is
-    refused only on a loopback host, where 5432 is this host's production.
+    refused only on an address of this host (``localhost``, the empty host,
+    any loopback or unspecified address), where 5432 is production.
     """
     parts = urlsplit(url)
     name = parts.path.lstrip("/")
@@ -54,7 +68,7 @@ def assert_disposable_target(url: str) -> None:
             f"refusing to reset {name!r}: the e2e reset only drops a darkmem_test* or darkmem_e2e* database"
         )
     host = (parts.hostname or "").lower()
-    if host in LOOPBACK_HOSTS and (parts.port or 5432) == 5432:
+    if _is_this_host(host) and (parts.port or PRODUCTION_PORT) == PRODUCTION_PORT:
         raise NotADisposableDatabase(
             f"refusing to reset {name!r} on {host or 'localhost'}:5432, the production port on this host"
         )
@@ -72,6 +86,7 @@ def _run_alembic_upgrade() -> None:
     result = subprocess.run(
         [sys.executable, "-m", "alembic", "upgrade", "head"],
         cwd=str(BACKEND_DIR), env=env, capture_output=True, text=True,
+        timeout=ALEMBIC_TIMEOUT_SECONDS,
     )
     if result.returncode != 0:
         raise RuntimeError(

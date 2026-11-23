@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -109,6 +110,61 @@ def test_e2e_reset_accepts_the_suite_databases(e2e_db_module, url):
     module = e2e_db_module(url)
 
     module.assert_disposable_target(url)
+
+
+@pytest.mark.parametrize("host, refused", [
+    ("127.0.0.2:5432", True),
+    ("[::1]:5432", True),
+    ("0.0.0.0:5432", True),
+    ("localhost:5432", True),
+    ("localhost:5433", False),
+    ("127.0.0.1:5433", False),
+])
+def test_the_e2e_reset_refuses_every_loopback_alias(e2e_db_module, host, refused):
+    url = f"postgresql+asyncpg://darkmem:darkmem@{host}/darkmem_e2e"
+    module = e2e_db_module(url)
+
+    if refused:
+        with pytest.raises(module.NotADisposableDatabase):
+            module.assert_disposable_target(url)
+    else:
+        module.assert_disposable_target(url)
+
+
+def test_the_e2e_database_defaults_to_darkmem_e2e(e2e_db_module, monkeypatch):
+    module = e2e_db_module("postgresql+asyncpg://darkmem:darkmem@localhost:5433/unused")
+    monkeypatch.delenv("TEST_DATABASE_URL")
+    monkeypatch.delitem(sys.modules, "e2e.e2e_db")
+    module = importlib.import_module("e2e.e2e_db")
+
+    assert urlsplit(module.TEST_DATABASE_URL).path == "/darkmem_e2e"
+
+
+def _api_e2e_leg(script: Path) -> str:
+    text = script.read_text()
+    start = text.index('run_gate "API e2e suite"')
+    return text[start:text.index("\n\n", start)]
+
+
+def test_gate_and_release_e2e_legs_name_darkmem_e2e():
+    assert "darkmem_e2e" in _api_e2e_leg(ROOT / "scripts" / "gate.sh")
+    release = (ROOT / "scripts" / "release.sh").read_text()
+    assert "run_e2e.py" not in release
+    assert "./scripts/gate.sh --full" in release
+
+
+def test_the_alembic_upgrade_is_bounded(e2e_db_module, monkeypatch):
+    module = e2e_db_module("postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_e2e")
+    seen = {}
+
+    def run(command, **kwargs):
+        seen.update(kwargs)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(module.subprocess, "run", run)
+    module._run_alembic_upgrade()
+
+    assert seen["timeout"] == 600
 
 
 def test_destructive_sql_guard_exemption_names_the_check():

@@ -52,3 +52,14 @@ def test_extra_arguments_reach_pytest(monkeypatch):
     assert len(narrowed) == len(plain) + 2
     assert narrowed[-2:] == ["-k", "session_rotation"]
     assert _without_report(narrowed[:-2]) == _without_report(plain)
+
+
+def test_blocked_names_the_model_url_variable(monkeypatch, capsys):
+    runner = _runner(monkeypatch, [])
+    monkeypatch.setattr(
+        runner, "_extraction_model_is_servable", lambda: (False, "the endpoint serves nothing"),
+    )
+    monkeypatch.setattr(sys, "argv", ["run_e2e.py"])
+
+    assert runner.main() == runner.BLOCKED_EXIT_CODE
+    assert "DARKMEM_OLLAMA_BASE_URL" in capsys.readouterr().err

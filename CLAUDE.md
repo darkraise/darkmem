@@ -37,7 +37,9 @@ table or column is dropped only once no released code reads it.
 - **Databases on the dev Postgres:** `darkmem_test` is pytest's (and the
   controller's when lanes run in parallel); `darkmem_test_2..5` are for
   parallel lanes, one each; `darkmem_bench` is the harness database, free to
-  reset. Never point a harness at `darkmem_test`.
+  reset; `darkmem_e2e` is the API e2e suite's (create it once with
+  `docker exec darkmem-postgres-1 psql -U darkmem -d darkmem -c "CREATE DATABASE darkmem_e2e;"`).
+  Never point a harness at `darkmem_test`.
 - **The dev Postgres is often stopped.** Start only its service:
   `docker compose -f docker-compose.dev.yml up -d postgres`. Starting the
   whole dev stack also starts its `darkmem` app on `8000:8000`, which

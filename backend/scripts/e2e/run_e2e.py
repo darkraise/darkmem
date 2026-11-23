@@ -111,7 +111,12 @@ def main() -> int:
     # which teaches people to ignore it -- the opposite of the point.
     servable, reason = _extraction_model_is_servable()
     if not servable:
-        print(f"BLOCKED: {reason}", file=sys.stderr)
+        print(
+            f"BLOCKED: {reason}\n"
+            "  The seed reads its model endpoint from DARKMEM_OLLAMA_BASE_URL; "
+            "export it to point the suite at an endpoint that serves the model.",
+            file=sys.stderr,
+        )
         return BLOCKED_EXIT_CODE
     print(f"extraction model precondition: {reason}")
 

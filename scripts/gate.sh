@@ -294,9 +294,13 @@ if [ "$FULL" -eq 1 ]; then
     # green with its load-bearing assertion never run. The check above catches
     # a total skip; a partial one like that reads as a pass. Pointing the seed
     # at the real endpoint removes the skip rather than reclassifying it.
+    # Its own database, never pytest's: a pytest run drops and re-migrates
+    # darkmem_test under a running stack. The URL keeps TEST_DATABASE_URL's
+    # credentials and host and swaps only the database name.
+    e2e_server_url="${TEST_DATABASE_URL:-postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_test}"
     run_gate "API e2e suite" 900 "$BACKEND" \
         env -C "$BACKEND" \
-            TEST_DATABASE_URL="${TEST_DATABASE_URL:-postgresql+asyncpg://darkmem:darkmem@localhost:5433/darkmem_test}" \
+            TEST_DATABASE_URL="${e2e_server_url%/*}/darkmem_e2e" \
             DARKMEM_OLLAMA_BASE_URL="${DARKMEM_OLLAMA_BASE_URL:-http://192.168.0.196:11434/v1}" \
             "$PY" scripts/e2e/run_e2e.py
 
