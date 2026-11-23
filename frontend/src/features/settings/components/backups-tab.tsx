@@ -212,6 +212,7 @@ export function BackupsTab() {
                     outcomeKey(destination.name, "attachments"),
                   ) ?? null
                 }
+                outcomesKnown={!outcomesError}
                 busy={isSaving}
                 onToggle={(enabled) => toggle(destination, enabled)}
                 onEdit={() => {
@@ -444,6 +445,7 @@ function DestinationRow({
   destination,
   outcome,
   attachmentOutcome,
+  outcomesKnown,
   busy,
   onToggle,
   onEdit,
@@ -451,6 +453,9 @@ function DestinationRow({
   destination: BackupDestination
   outcome: BackupOutcome | null
   attachmentOutcome: BackupOutcome | null
+  /** False while the outcomes read has failed: a missing outcome is then
+   *  unknown, not "no run yet". */
+  outcomesKnown: boolean
   busy: boolean
   onToggle: (enabled: boolean) => void
   onEdit: () => void
@@ -469,8 +474,12 @@ function DestinationRow({
           unencrypted
         </Badge>
       ) : null}
-      <OutcomeLine outcome={outcome} label="database" />
-      <OutcomeLine outcome={attachmentOutcome} label="attachments" />
+      {outcomesKnown ? (
+        <>
+          <OutcomeLine outcome={outcome} label="database" />
+          <OutcomeLine outcome={attachmentOutcome} label="attachments" />
+        </>
+      ) : null}
       <div className="ml-auto flex items-center gap-2">
         <Switch
           checked={destination.enabled}

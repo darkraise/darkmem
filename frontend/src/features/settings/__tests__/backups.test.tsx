@@ -512,6 +512,17 @@ describe("a failed read shows the failed state with Retry", () => {
     await waitFor(() => expect(callsTo(mock, prefix)).toBeGreaterThan(before))
   })
 
+  it("a failed outcomes read leaves no destination claiming it never ran", async () => {
+    failing(["/events?event_type=backup_shipped&limit=50"])
+    render(<BackupsTab />, { wrapper })
+
+    expect(
+      await screen.findByText("Recent backup outcomes could not be loaded"),
+    ).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: `Edit ${LOCAL.name}` })).toBeInTheDocument()
+    expect(screen.queryByText(/no run yet/)).not.toBeInTheDocument()
+  })
+
   it("an empty inventory appears only after a successful read", async () => {
     const { heal } = failing(["/backups/inventory"])
     render(<BackupsTab />, { wrapper })

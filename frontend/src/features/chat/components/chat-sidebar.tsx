@@ -133,10 +133,12 @@ export function ChatSidebar({
               </span>
               {/* Plain muted text (about 7:1 on the card): at 40-50% opacity
                   this meta measured near 2:1. */}
-              <span className="text-muted-foreground mt-0.5 flex items-center gap-2 text-sm">
-                <span>{relativeTime(conv.updated_at)}</span>
+              <span className="text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-2 text-sm">
+                <span className="whitespace-nowrap">
+                  {relativeTime(conv.updated_at)}
+                </span>
                 {(conv.message_count ?? 0) > 0 && (
-                  <span>
+                  <span className="whitespace-nowrap">
                     {conv.message_count} msg
                     {conv.message_count !== 1 ? "s" : ""}
                   </span>
