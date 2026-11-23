@@ -111,8 +111,7 @@ const EVENT_TYPE_CATEGORY: Record<string, FeedCategory> = {
  */
 const EVENT_TYPES_WITHOUT_TAB = new Set<string>([
   // Inject records (T3.12). Doc 13 section 6.5 puts them in the
-  // timeline/calendar and the Settings -> Distribution log, not in the feed's
-  // five tabs: an inject is neither a capture nor a lifecycle step, it is
+  // timeline/calendar, not in the feed's five tabs: an inject is neither a capture nor a lifecycle step, it is
   // this installation telling a tool what it already knows. The docstring
   // above deferred this decision as one "this task does not own" -- T3.12,
   // which landed the writer, is the task that owns it, and it resolves to an

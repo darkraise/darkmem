@@ -65,7 +65,7 @@ sequenceDiagram
 
 **Decision. Capture stamps a per-memory `origin_key` — the capture-session / agent-run identity — because `source` and `source_agent` are too coarse to tell independent corroboration from an echo, and when identity is genuinely unknown capture merges to ONE origin per `(source, project)` rather than minting distinct ones (undercount, never manufacture agreement).** This is spec §2.1's truth-critical requirement, doc 04 §3.1's `origin_key` column (target-new). The downstream fact layer counts `COUNT(DISTINCT origin_key)`, never rows (doc 04 §8.3): two agents re-saving the same claim under the same origin count once, so promotion cannot be inflated by repetition. The asymmetry is deliberate — undercounting only *delays* a promotion (a label served above nothing), overcounting *manufactures* one (the worst failure, since every article citing the fact inherits the lie). Capture is where this key is set, so this doc owns its derivation.
 
-**Derivation per front door — a caller-supplied identity when present, a coarse-but-stable fallback when not.** The precedence, mirroring the `source` chain and the target `X-Darkmem-Context` header (doc 12):
+**Derivation per front door — a caller-supplied identity when present, a coarse-but-stable fallback when not.** The precedence, mirroring the `source` chain (doc 12):
 
 | Front door | `origin_key` when identity is declared | Fallback when unknown |
 |---|---|---|

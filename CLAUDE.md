@@ -1371,8 +1371,9 @@ the row lock with `DocumentMirrorOwned`, a `DocumentNotConvertible` (REST
 422, MCP `not_convertible`): the dr-forge mirror owns those documents
 through content puts, and the SPA offers no edit mode for them. Each runs one pass:
 lock, load tree, mutate in memory, serialise, write placement and owner row
-in a SAVEPOINT, journal `blocks_edited` (no block text), commit, then embed
-**only** the touched block for a document. An update that changes a block's
+in a SAVEPOINT, journal `blocks_edited` (no block text), for a document prune
+its revisions in the same savepoint (a failed prune delete refuses the edit),
+commit, then embed **only** the touched block for a document. An update that changes a block's
 text or type deletes its vectors for every fingerprint with `retired_at IS
 NULL` in the same savepoint; a document's embed failing after the commit
 answers `blocks_embedded: 0` and leaves the gap to the hourly sweep. A page

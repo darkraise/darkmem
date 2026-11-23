@@ -69,6 +69,8 @@ flowchart LR
 
 ## 3. Auto-inject — selection via F3, managed blocks, transports, budgets, labels
 
+**Declared caller context was removed on 2026-11-23** (§6, doc 12 §5), so the unbuilt inject selection below scopes by project and an optional task string only; where it names the session's declared context, that input no longer exists.
+
 ### 3.1 The inject cycle — pull the F3 selection, write the managed block
 
 **Decision. Auto-inject is a client-side pull-then-write cycle: at session start the inject writer requests the F3 fused, labelled selection scoped to the session's project and declared context, the server ranks and labels it (doc 07) and journals an `inject` event, and the writer rewrites a marker-bounded managed block in the tool's native context file — a strip-before-rewrite that never touches human content (doc 01 F10, doc 02 §6.2, invariant 8 analog).** The selection is a *delivery* of retrieval, full stop: it calls the same `HybridSearchService` composition every read consumer spends, requests the `fused=true` single-list shape doc 07 §5 defines for token-budgeted consumers, and inherits F3's honesty guarantees — no cross-project rows, superseded/deprecated rows labelled and never mixed in as active, the `applies_when` boost/label/conflict rules, and the verification labels (doc 07 §5–§7). Inject adds no ranking of its own; it adds a *transport* and a *budget*.

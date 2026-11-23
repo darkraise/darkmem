@@ -65,7 +65,7 @@ the same corpus differently.
   Codex and similar clients talk to it. Every call needs a bearer API key,
   scoped per tool.
 - **REST** (`/api/v1/...`) — 130-odd endpoints. The web UI is built on it, and
-  a small generated SDK (Python and TypeScript) wraps the three verbs an
+  a small generated SDK (Python and TypeScript) wraps the two verbs an
   application usually needs.
 - **Web UI** — served by the same container on the same port. Browse memories,
   inspect the graph, review facts, search code, watch jobs.

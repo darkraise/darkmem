@@ -27,12 +27,6 @@ that surface is absent.
    renders them from the same tuple the guard checks, which makes the two
    impossible to separate.
 
-There was a third verb, ``declareContext``, sending doc 12 §5's declared
-context as a header. The owner removed declared context from both doors
-(2026-11-23), so the verb, its header and the ``context`` search argument are
-gone, and the generator's refusal of a field the contract does not serve is
-what keeps them gone.
-
 **Contract bindings, and why each is where it is:**
 
 - ``capture`` → ``POST /api/v1/memories``. Doc 15 §6's

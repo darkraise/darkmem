@@ -38,7 +38,7 @@ flowchart TD
     end
     subgraph STATE["State"]
         QC[("TanStack Query cache — all server state")]
-        ZS["Zustand stores — authStore, layoutStore, projectStore (target), contextStore (target)"]
+        ZS["Zustand stores — authStore, layoutStore, projectStore (target)"]
     end
     API["API client + hooks/api/* — the only REST path"]
     WS["one WebSocket at /ws"]
@@ -59,7 +59,7 @@ flowchart TD
 
 **Server state is TanStack Query, addressed by explicit query keys, and the project/status filters are part of the key so a scope change refetches (exists today, extended).** Every read goes through a typed hook in `hooks/api/*` (`use-memory-api`, `use-code-api`, `use-jobs-api`, `use-config-api`, `use-pipeline-api`, and the target-new `use-vault-api`, `use-review-api`, `use-events-api`, `use-distribution-api`). The composite `(project, status[, is_archived])` filter doc 04 §10 and doc 07 §7 push into SQL rides into the query key, so switching the project switcher (§3) or a status filter changes the key and TanStack Query refetches the correctly-scoped, pushdown-filtered result — the UI never re-filters an over-fetched set in the browser, mirroring the backend's move of the same filter out of Python and into SQL. This is the client-side half of the invariant-14 pushdown: the UI asks for one project's rows and the backend returns exactly those.
 
-**Client state is a few small Zustand stores, and the target adds exactly two.** `authStore` holds the cookie-JWT session flag; `layoutStore` holds the chrome choice. The target adds `projectStore` (the active project — the global scope, §3) and `contextStore` (the optional session `applies_when` declaration, §3) — both deliberately tiny, both feeding query keys, neither duplicating server data. Route-level data that must exist before a screen renders (the auth check, a specific object load) rides TanStack Router's `beforeLoad`/loaders; everything else is a `useQuery` inside the component.
+**Client state is a few small Zustand stores, and the target adds one.** `authStore` holds the cookie-JWT session flag; `layoutStore` holds the chrome choice. The target adds `projectStore` (the active project — the global scope, §3), deliberately tiny, feeding query keys, not duplicating server data; the `contextStore` it once added was removed with declared context on 2026-11-23. Route-level data that must exist before a screen renders (the auth check, a specific object load) rides TanStack Router's `beforeLoad`/loaders; everything else is a `useQuery` inside the component.
 
 ### 2.1 The live-update architecture — two channels, one mapping
 
@@ -105,6 +105,8 @@ sequenceDiagram
 ---
 
 ## 3. Information architecture — the route map, navigation, the project switcher
+
+**Declared caller context was removed on 2026-11-23 because nothing ranked by it** (doc 12 §5), and the context chip and `contextStore` went with it. The project switcher is the only scoping control; where this doc still describes the chip, it is the design as it stood.
 
 **Decision. The vault (Knowledge) is promoted to a top-level navigation destination, the code surfaces consolidate into one Code section, and Activity becomes a top-level operational destination — a measured growth from today's seven sidebar items to eight in three groups, because the reshape's whole thesis is that verified knowledge is a first-class surface, not a memory sub-tab (settle: vault top-level; §9).** The tension the framing names is real: the four-layer epistemic model argues Knowledge deserves the top level, while the prior sidebar slim-down (fifteen items down to seven) argues restraint. The resolution keeps restraint where it costs nothing — Facts, Articles, Topics, and Review are *tabs within one Knowledge section*, not four nav items; Repositories, the Code Graph, and the Code Wiki collapse into one Code section — and spends the one new top-level slot where the reshape earns it, on Knowledge. Burying the vault under Memories would tell the user that verified knowledge is a kind of memory, the exact confusion doc 01 §3.4 exists to prevent.
 
