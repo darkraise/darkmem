@@ -541,6 +541,16 @@ async def _insert_page(
     )
 
 
+def _parse_and_check(content: str) -> tuple[list, bool]:
+    # Off the event loop with the parse: `reproduces_source` runs a second
+    # full markdown parse, which near MAX_CONTENT_CHARS stalls the one worker.
+    tree = _flatten_headings(_parse(content))
+    representable = (
+        split_frontmatter(content)[0] is None and reproduces_source(tree, content, {})
+    )
+    return tree, representable
+
+
 async def create_page(
     session: AsyncSession,
     llm,
@@ -559,11 +569,10 @@ async def create_page(
             f"{MAX_CONTENT_CHARS}"
         )
 
-    tree = _flatten_headings(await asyncio.to_thread(_parse, content)) if content else []
-    if content and (
-        split_frontmatter(content)[0] is not None
-        or not reproduces_source(tree, content, {})
-    ):
+    tree, representable = (
+        await asyncio.to_thread(_parse_and_check, content) if content else ([], True)
+    )
+    if not representable:
         raise PageNotRepresentable(
             "this content carries source a page cannot represent (a leading "
             "frontmatter fence or a link-reference definition); a page stores "

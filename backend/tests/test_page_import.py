@@ -352,6 +352,37 @@ async def test_placed_files_are_preserved_when_the_rollback_fails(
 
 
 @pytest.mark.asyncio
+async def test_a_failed_withdrawal_rollback_keeps_the_import_error(
+    session, attachments_dir, tmp_path, monkeypatch
+):
+    from app.services import page_import
+
+    async def invalid(*args, **kwargs):
+        raise page_import.NotionExportInvalid("injected")
+
+    real_execute, real_rollback = session.execute, session.rollback
+    rollbacks: list[int] = []
+
+    async def execute(statement, *args, **kwargs):
+        if statement is page_import._DELETE_ATTACHMENTS:
+            raise RuntimeError("the connection is gone")
+        return await real_execute(statement, *args, **kwargs)
+
+    async def rollback():
+        rollbacks.append(1)
+        if len(rollbacks) > 1:
+            raise RuntimeError("the connection is gone")
+        await real_rollback()
+
+    monkeypatch.setattr(page_import, "_insert_page", invalid)
+    monkeypatch.setattr(session, "execute", execute)
+    monkeypatch.setattr(session, "rollback", rollback)
+    with pytest.raises(page_import.NotionExportInvalid):
+        await _run(session, tmp_path)
+    assert len(rollbacks) == 2
+
+
+@pytest.mark.asyncio
 async def test_insufficient_space_is_refused_before_the_upload(
     session, attachments_dir, tmp_path, monkeypatch
 ):

@@ -37,6 +37,11 @@ async def _chunks(*parts: bytes):
         yield part
 
 
+async def _store(session, *, chunks, max_bytes, **place):
+    staged = await pa.stage_upload(chunks, max_bytes=max_bytes)
+    return await pa.place_upload(session, staged, **place)
+
+
 @pytest.mark.parametrize("head, expected", [
     (b"\x89PNG\r\n\x1a\n....", "image/png"),
     (b"\xff\xd8\xff\xe0....", "image/jpeg"),
@@ -93,8 +98,8 @@ def test_serving_headers():
     assert headers["Content-Disposition"].startswith("inline;")
 
 
-async def test_store_upload_writes_file_and_row(session, root, page):
-    stored = await pa.store_upload(
+async def test_stage_then_place_writes_file_and_row(session, root, page):
+    stored = await _store(
         session, page_id=PAGE, project="p", filename="a.png",
         chunks=_chunks(PNG[:5], PNG[5:]), max_bytes=1024,
     )
@@ -109,9 +114,9 @@ async def test_store_upload_writes_file_and_row(session, root, page):
     assert row is not None and row.project == "p" and row.filename == "a.png"
 
 
-async def test_store_upload_over_the_cap_leaves_nothing(session, root, page):
+async def test_an_upload_over_the_cap_leaves_nothing(session, root, page):
     with pytest.raises(pa.AttachmentTooLarge):
-        await pa.store_upload(
+        await _store(
             session, page_id=PAGE, project="p", filename="a.bin",
             chunks=_chunks(b"x" * 600, b"x" * 600), max_bytes=1000,
         )
@@ -126,7 +131,7 @@ async def test_a_failing_stream_leaves_no_part_file(session, root, page):
         raise ConnectionError("client went away")
 
     with pytest.raises(ConnectionError):
-        await pa.store_upload(
+        await _store(
             session, page_id=PAGE, project="p", filename="a.bin",
             chunks=broken(), max_bytes=1000,
         )
@@ -136,7 +141,7 @@ async def test_a_failing_stream_leaves_no_part_file(session, root, page):
 async def test_a_failing_insert_unlinks_the_file(session, root, page):
     with pytest.raises(IntegrityError):
         async with session.begin_nested():
-            await pa.store_upload(
+            await _store(
                 session, page_id=uuid4(), project="p", filename="a.png",
                 chunks=_chunks(PNG), max_bytes=1024,
             )
@@ -157,7 +162,7 @@ async def test_a_cancelled_commit_keeps_the_file(root):
     """A row-less file is what the cleanup job sweeps; a file-less row is
     forever, so cancellation must not take the bytes with it."""
     with pytest.raises(asyncio.CancelledError):
-        await pa.store_upload(
+        await _store(
             _CancelledCommit(), page_id=PAGE, project="p", filename="a.png",
             chunks=_chunks(PNG), max_bytes=1024,
         )

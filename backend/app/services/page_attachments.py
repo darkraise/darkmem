@@ -250,22 +250,6 @@ async def place_upload(
     )
 
 
-async def store_upload(
-    session: AsyncSession,
-    *,
-    page_id: UUID,
-    project: str,
-    filename: str,
-    chunks: AsyncIterator[bytes],
-    max_bytes: int,
-) -> StoredAttachment:
-    """Stream, then place: the lock is held only around the placement."""
-    staged = await stage_upload(chunks, max_bytes=max_bytes)
-    return await place_upload(
-        session, staged, page_id=page_id, project=project, filename=filename,
-    )
-
-
 def place_staged(staged: Path, attachment_id: UUID) -> None:
     """Move an already-written staged file onto its final sharded path.
 
@@ -292,9 +276,9 @@ async def insert_attachment_row(
     """Insert one row and DO NOT commit.
 
     `place_upload` commits because its file is already on disk and its caller
-    has nothing else to write. An import writes its attachment rows, its pages
-    and its journal row in one transaction, so it needs the insert without the
-    commit.
+    has nothing else to write. An import commits each attachment row in a
+    transaction of its own, before it writes its pages, so it needs the insert
+    without the commit.
     """
     await session.execute(_INSERT, {
         "id": str(attachment_id),

@@ -155,3 +155,23 @@ async def test_an_unauthenticated_upload_is_401_even_read_only(
 async def test_both_routes_need_auth(client, root, page):
     assert (await client.post(f"{V1}/pages/{page}/attachments", content=b"a")).status_code == 401
     assert (await client.get(f"{V1}/pages/attachments/{uuid4()}")).status_code == 401
+
+
+async def test_an_upload_whose_part_was_collected_answers_408(
+    client, auth_headers, root, page, monkeypatch,
+):
+    from app.api.routes import page_attachments as route
+
+    real = route.stage_upload
+
+    async def stage_then_collect(*args, **kwargs):
+        staged = await real(*args, **kwargs)
+        staged.part.unlink()
+        return staged
+
+    monkeypatch.setattr(route, "stage_upload", stage_then_collect)
+    response = await _upload(client, auth_headers, page, PNG)
+
+    assert response.status_code == 408, response.text
+    assert response.json()["error"]["code"] == "request_timeout"
+    assert [p for p in root.rglob("*") if p.is_file()] == []

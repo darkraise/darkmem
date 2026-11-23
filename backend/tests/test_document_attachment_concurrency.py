@@ -21,7 +21,7 @@ from app.services.block_embedding_refresh import refresh_block_embeddings
 from app.services.embedder_registry import ensure_registered
 from app.services.block_verbs import DOCUMENT_OWNER, PAGE_OWNER, NewBlock
 from app.services.document_ingest import BlockDraft, file_document
-from app.services.page_attachments import attachment_path, attachment_url, store_upload
+from app.services.page_attachments import attachment_path, attachment_url, place_upload, stage_upload
 from app.services.page_door import create_page
 from app.services.page_import import import_notion_export
 from tests.conftest import test_engine
@@ -222,7 +222,8 @@ async def test_uncertain_commit_preserves_placed_bytes(isolated, tmp_path, monke
             if operation == "import":
                 await import_notion_export(session, project=project, body=body(), declared_length=None, actor=None)
             else:
-                await store_upload(session, page_id=page_id, project=project, filename="asset", chunks=body(), max_bytes=1024)
+                staged = await stage_upload(body(), max_bytes=1024)
+                await place_upload(session, staged, page_id=page_id, project=project, filename="asset")
     async with factory() as checking:
         attachment_ids = (await checking.execute(text(
             "SELECT id FROM page_attachments WHERE project = :project"
@@ -546,6 +547,25 @@ async def _other_project_page(factory):
     return other, str(page.id)
 
 
+async def _cleanup_queued_or_done(factory, cleanup, seconds=5):
+    """Wait until the collection's exclusive lifecycle lock is queued behind a
+    holder, or the collection finished because nothing held it: either way the
+    write that follows runs after the cleanup reached its lock."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + seconds
+    while not cleanup.done():
+        async with factory() as probe:
+            waiting = (await probe.execute(text(
+                "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' "
+                "AND mode = 'ExclusiveLock' AND NOT granted "
+                "AND database = (SELECT oid FROM pg_database WHERE datname = current_database())"
+            ))).scalar_one()
+        if waiting:
+            return
+        assert loop.time() < deadline, "the cleanup neither queued on its lock nor finished"
+        await asyncio.sleep(0.02)
+
+
 async def _write_within(factory, page_id, seconds=2):
     async with factory() as session:
         await asyncio.wait_for(block_verbs.insert_block(
@@ -579,7 +599,7 @@ async def test_upload_in_progress_does_not_block_a_page_write(isolated):
                 cleanup = asyncio.create_task(page_attachment_cleanup.run_cleanup(
                     factory, grace_hours=168, staging_max_age_hours=6,
                 ))
-                await asyncio.sleep(0.2)
+                await _cleanup_queued_or_done(factory, cleanup)
                 await _write_within(factory, other_page)
             finally:
                 release.set()
@@ -698,7 +718,7 @@ async def test_notion_import_takes_the_lock_per_file(isolated, tmp_path, monkeyp
                 cleanup = asyncio.create_task(page_attachment_cleanup.run_cleanup(
                     factory, grace_hours=168, staging_max_age_hours=6,
                 ))
-                await asyncio.sleep(0.2)
+                await _cleanup_queued_or_done(factory, cleanup)
                 await _write_within(factory, other_page)
             finally:
                 release.set()

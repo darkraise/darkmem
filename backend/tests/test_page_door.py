@@ -136,6 +136,25 @@ async def test_content_the_tree_cannot_hold_is_refused(session, llm, content):
 
 
 @pytest.mark.asyncio
+async def test_create_page_checks_reproduction_off_the_loop(session, llm, monkeypatch):
+    import threading
+
+    from app.services import page_door
+
+    loop_thread = threading.current_thread()
+    seen: list[threading.Thread] = []
+    real = page_door.reproduces_source
+
+    def recording(*args, **kwargs):
+        seen.append(threading.current_thread())
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(page_door, "reproduces_source", recording)
+    await create_page(session, llm, project="p", title="t", content="# A\n\nBody.\n")
+
+    assert seen and all(thread is not loop_thread for thread in seen)
+
+
 async def test_siblings_are_appended_in_dense_order(session, llm):
     a = await create_page(session, llm, project="p", title="a")
     b = await create_page(session, llm, project="p", title="b")

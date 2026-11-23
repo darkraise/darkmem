@@ -265,7 +265,15 @@ async def _withdraw_attachments(session: AsyncSession, ids: list[UUID]) -> None:
             "notion import: could not withdraw %d committed attachment(s); "
             "the cleanup job collects them", len(ids), exc_info=True,
         )
-        await session.rollback()
+        # Called while an import error propagates: a rollback failing here
+        # must not replace that error.
+        try:
+            await session.rollback()
+        except Exception:
+            logger.warning(
+                "notion import: the rollback after a failed withdrawal failed too",
+                exc_info=True,
+            )
         return
     for attachment_id in ids:
         await asyncio.to_thread(attachment_path(attachment_id).unlink, True)

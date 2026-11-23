@@ -50,6 +50,16 @@ class AttachmentResponse(BaseModel):
     size_bytes: int
 
 
+class UploadCollected(HTTPException):
+    error_code = "request_timeout"
+
+    def __init__(self) -> None:
+        super().__init__(
+            status.HTTP_408_REQUEST_TIMEOUT,
+            "The upload stalled past the cleanup window; send it again.",
+        )
+
+
 def _too_large() -> HTTPException:
     return HTTPException(
         status.HTTP_413_CONTENT_TOO_LARGE,
@@ -92,10 +102,15 @@ async def upload_attachment_route(
         ).scalar_one_or_none()
         if project is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, f"no live page with id {page_id}")
-        stored = await place_upload(
-            session, staged, page_id=page_id, project=project,
-            filename=clean_filename(x_filename),
-        )
+        try:
+            stored = await place_upload(
+                session, staged, page_id=page_id, project=project,
+                filename=clean_filename(x_filename),
+            )
+        except FileNotFoundError as exc:
+            # The cleanup job collects a `.part` whose mtime is past its
+            # rowless age, so a body that stalled that long has no bytes left.
+            raise UploadCollected() from exc
     except BaseException:
         discard_upload(staged)
         raise
