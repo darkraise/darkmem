@@ -612,3 +612,12 @@ async def test_search_is_search_with_trace_results(session):
     }
     assert "search_with_trace" in called
     assert not called & {"_rrf_fuse", "_run_channels", "embed_query", "_embed_query"}
+
+
+def test_equal_fused_scores_order_by_row_key():
+    first = [{"id": "b"}, {"id": "a"}]
+    second = [{"id": "a"}, {"id": "b"}]
+    for lists in ((first, second), (second, first)):
+        fused = rrf_fuse([RankedList("x", lists[0], 1.0), RankedList("y", lists[1], 1.0)], 10)
+        assert fused[0]["rrf_score"] == fused[1]["rrf_score"]
+        assert [row["id"] for row in fused] == ["a", "b"]

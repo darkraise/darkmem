@@ -95,8 +95,15 @@ def _fact_row(fact_id, **extra) -> dict:
 
 
 def _stub_channels(monkeypatch, memory_rows, fact_rows):
+    # Descending scores in list order: the memory channel serves its rows by
+    # score, and equal scores would order by id instead of by this list.
+    served = [
+        {**row, "rrf_score": row["rrf_score"] - index * 1e-3}
+        for index, row in enumerate(memory_rows)
+    ]
+
     async def _memory(self, *args, **kwargs):
-        return hybrid_search.ChannelTrace(results=list(memory_rows))
+        return hybrid_search.ChannelTrace(results=list(served))
 
     async def _facts(self, *args, **kwargs):
         return facts_channel.FactChannelTrace(results=list(fact_rows))

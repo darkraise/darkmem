@@ -362,9 +362,9 @@ async def test_a_sections_internal_order_is_the_composed_order_restricted_to_it(
                 "payload": {"content": f"memory {mid}"},
                 "project": PROJECT,
                 "status": "active",
-                "rrf_score": 0.5,
+                "rrf_score": 0.5 - 0.1 * index,
             }
-            for mid in memory_ids
+            for index, mid in enumerate(memory_ids)
         ])
 
     async def _facts(self, *args, **kwargs):

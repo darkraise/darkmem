@@ -292,3 +292,66 @@ def test_search_code_is_gone():
     """
     assert not hasattr(HybridSearchService, "search_code")
     assert not hasattr(HybridSearchService, "_semantic_code_search")
+
+
+_TIE_A = uuid.UUID("00000000-0000-4000-8000-00000000000a")
+_TIE_B = uuid.UUID("00000000-0000-4000-8000-00000000000b")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("hybrid", [True, False])
+async def test_identical_memories_order_is_stable(session, hybrid):
+    from app.config import FEATURE_FLAGS_DEFAULTS
+
+    fingerprint = "tie-embedder|4"
+    vector = [1.0, 0.0, 0.0, 0.0]
+    await _seed_embedding_partition(session, fingerprint, 4)
+    child = child_table("memory_embeddings", fingerprint)
+    flags = {**FEATURE_FLAGS_DEFAULTS, "hybrid_search_enabled": hybrid}
+    svc = HybridSearchService(_FakeLLM(vector, fingerprint), session)
+
+    for order in ((_TIE_B, _TIE_A), (_TIE_A, _TIE_B)):
+        await session.execute(
+            text("DELETE FROM memories WHERE id = ANY(CAST(:ids AS uuid[]))"),
+            {"ids": [str(_TIE_A), str(_TIE_B)]},
+        )
+        for mem_id in order:
+            session.add(Memory(
+                id=mem_id, content="zorvantic quillmesh tiebreak note",
+                source="test", project="hybrid-search-test",
+            ))
+            await session.flush()
+            await session.execute(
+                text(
+                    f"INSERT INTO {child} (memory_id, fingerprint, embedding, payload) "
+                    "VALUES (:mid, :fp, CAST(:vec AS vector), '{}'::jsonb)"
+                ),
+                {"mid": mem_id, "fp": fingerprint, "vec": str(vector)},
+            )
+        await session.flush()
+        session.expunge_all()
+
+        for _ in range(5):
+            results = await svc.search_ranked("zorvantic quillmesh", flags=flags, limit=10)
+            assert [str(row["memory_id"]) for row in results[:2]] == [str(_TIE_A), str(_TIE_B)]
+
+
+@pytest.mark.asyncio
+async def test_rank_fusion_factor_orders_ties_by_id():
+    from app.config import FEATURE_FLAGS_DEFAULTS
+
+    svc = HybridSearchService(None, None)
+
+    def rows():
+        return [
+            {"memory_id": str(_TIE_B), "rrf_score": 0.5, "confidence": 0.75},
+            {"memory_id": str(_TIE_A), "rrf_score": 0.5, "confidence": 0.75},
+        ]
+
+    ordered = await svc.apply_rank_fusion_factor(rows(), dict(FEATURE_FLAGS_DEFAULTS), with_trace=True)
+    assert [row["memory_id"] for row in ordered] == [str(_TIE_A), str(_TIE_B)]
+
+    kept = await svc.apply_rank_fusion_factor(
+        rows(), dict(FEATURE_FLAGS_DEFAULTS), preserve_order=True, with_trace=True,
+    )
+    assert [row["memory_id"] for row in kept] == [str(_TIE_B), str(_TIE_A)]

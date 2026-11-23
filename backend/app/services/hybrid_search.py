@@ -67,6 +67,13 @@ class ChannelTrace:
 QueryEmbedding = tuple[list[float] | None, str | None, bool]
 
 
+def _by_score_then_id(rows: list[dict]) -> list[dict]:
+    # Equal scores order by id. An ANN query keeps its single ORDER BY key:
+    # a second one stops pgvector from using the index, so ties are broken
+    # here, after the fetch.
+    return sorted(rows, key=lambda row: (-float(row["score"]), str(row["memory_id"])))
+
+
 class HybridSearchService:
     def __init__(self, llm: LLMOrchestrator, session: AsyncSession):
         self.llm = llm
@@ -111,9 +118,9 @@ class HybridSearchService:
                 vector, fingerprint, _ = embedded
             else:
                 vector, fingerprint = await self.llm.embed(query)
-            results = await PostgresVectorRepository(self.session).search(
+            results = _by_score_then_id(await PostgresVectorRepository(self.session).search(
                 vector, fingerprint=fingerprint, limit=limit, filters=filters,
-            )
+            ))
             self._record_access(results)
             if with_trace:
                 trace = ChannelTrace(
@@ -174,7 +181,10 @@ class HybridSearchService:
                 row["rank_fusion_factor"] = factor
         if preserve_order:
             return results
-        return sorted(results, key=lambda row: float(row.get(score_key) or 0.0), reverse=True)
+        return sorted(
+            results,
+            key=lambda row: (-float(row.get(score_key) or 0.0), normalize_row_id(row) or ""),
+        )
 
     async def search(
         self,
@@ -374,7 +384,7 @@ class HybridSearchService:
             """),
             params,
         )
-        return [
+        return _by_score_then_id([
             {
                 "memory_id": str(row.memory_id),
                 "score": float(row.score),
@@ -383,7 +393,7 @@ class HybridSearchService:
                 **scope_labels(row),
             }
             for row in result
-        ]
+        ])
 
     def keyword_query(
         self,
@@ -410,7 +420,7 @@ class HybridSearchService:
                 FROM memories m
                 WHERE m.search_vector @@ plainto_tsquery('english', :q)
                   {scope_sql}
-                ORDER BY rank DESC
+                ORDER BY rank DESC, m.id
                 LIMIT :limit
         """
         return sql, params
@@ -549,10 +559,10 @@ class HybridSearchService:
             logger.error("Dual-level arm failed: %s", e)
             return []
 
-        return [
+        return _by_score_then_id([
             {"memory_id": str(row.memory_id), "score": float(row.score)}
             for row in rows
-        ]
+        ])
 
     async def _attach_access_signals(self, rows: list[dict]) -> None:
         """Stamp `heat` and `recency` onto the fused rows, in one read.

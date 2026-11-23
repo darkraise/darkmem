@@ -133,8 +133,8 @@ def rrf_fuse(
     that normalised id back onto the fused row.
 
     The first-seen list's raw ``score`` survives on the fused row so a
-    consumer can see which modality found it, but ``rrf_score`` is the sole
-    ordering key.
+    consumer can see which modality found it, but ``rrf_score`` is the
+    ordering key, with equal scores ordered by row key.
     """
     fused: dict[Hashable, dict] = {}
 
@@ -158,8 +158,10 @@ def rrf_fuse(
             else:
                 entry["rrf_score"] += contribution
 
-    ordered = sorted(fused.values(), key=lambda r: r["rrf_score"], reverse=True)
-    return ordered[:limit]
+    # Ties break on the key as a string so hybrid search's string ids and the
+    # vector repository's UUIDs order alike.
+    ordered = sorted(fused.items(), key=lambda item: (-item[1]["rrf_score"], str(item[0])))
+    return [entry for _, entry in ordered[:limit]]
 
 
 # ── class 2: per-row scalars ─────────────────────────────────────────
