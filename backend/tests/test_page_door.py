@@ -155,6 +155,7 @@ async def test_create_page_checks_reproduction_off_the_loop(session, llm, monkey
     assert seen and all(thread is not loop_thread for thread in seen)
 
 
+@pytest.mark.asyncio
 async def test_siblings_are_appended_in_dense_order(session, llm):
     a = await create_page(session, llm, project="p", title="a")
     b = await create_page(session, llm, project="p", title="b")

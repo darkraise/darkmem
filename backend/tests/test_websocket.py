@@ -481,13 +481,26 @@ async def test_reload_is_single_flight_merges_and_survives_a_failed_read(
     assert len(warnings) == 1, [r.getMessage() for r in warnings]
 
 
-async def test_a_cancelled_refresh_forgets_the_renewed_mark(manager, client, auth_headers):
+@pytest.mark.parametrize(
+    ("path", "body"),
+    [
+        ("/api/v1/auth/refresh", None),
+        (
+            "/api/v1/auth/change-password",
+            {"current_password": "test-admin-password", "new_password": "a-new-password-9"},
+        ),
+    ],
+    ids=["refresh", "change-password"],
+)
+async def test_a_cancelled_rotation_forgets_the_renewed_mark(
+    manager, client, auth_headers, path, body,
+):
     presented = _presented(auth_headers)
     jti = jwt.decode(presented, settings.jwt_secret, algorithms=[ALGORITHM])["jti"]
     socket, task = await _open(presented)
     try:
         async with manager._send_lock:
-            answer = asyncio.create_task(client.post("/api/v1/auth/refresh", headers=auth_headers))
+            answer = asyncio.create_task(client.post(path, headers=auth_headers, json=body))
             for _ in range(200):
                 if jti in websocket.session_revocations._renewed:
                     break

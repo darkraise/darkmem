@@ -136,15 +136,16 @@ async def test_the_put_carries_no_properties_and_no_inline_embed(session, monkey
 
 
 CARRY_FINGERPRINTS = ("board-carry-a|3", "board-carry-b|3")
+RETIRED_FINGERPRINT = "board-carry-retired|3"
 THREE_ROWS = REGISTER + "| 2 | second | - | - | open | - |\n| 3 | third | - | - | open | - |\n"
 
 
 @pytest.fixture
 def _carry_fingerprints():
-    for fingerprint in CARRY_FINGERPRINTS:
+    for fingerprint in (*CARRY_FINGERPRINTS, RETIRED_FINGERPRINT):
         embedder_registry.forget(fingerprint)
     yield
-    for fingerprint in CARRY_FINGERPRINTS:
+    for fingerprint in (*CARRY_FINGERPRINTS, RETIRED_FINGERPRINT):
         embedder_registry.forget(fingerprint)
 
 
@@ -167,11 +168,11 @@ async def _vector_texts(session, document_id, fingerprint) -> set[str]:
 
 
 async def test_a_register_edit_keeps_unchanged_block_vectors(session, _carry_fingerprints):
-    for fingerprint in CARRY_FINGERPRINTS:
+    for fingerprint in (*CARRY_FINGERPRINTS, RETIRED_FINGERPRINT):
         await ensure_registered(session, fingerprint)
     filed = await _file(session, content=THREE_ROWS)
     before = await _block_texts(session, filed.document_id)
-    for fingerprint in CARRY_FINGERPRINTS:
+    for fingerprint in (*CARRY_FINGERPRINTS, RETIRED_FINGERPRINT):
         table = child_table(PARENT_TABLE, fingerprint)
         for block_id in before:
             await session.execute(
@@ -179,6 +180,11 @@ async def test_a_register_edit_keeps_unchanged_block_vectors(session, _carry_fin
                      "VALUES (CAST(:b AS uuid), CAST(:fp AS text), CAST('[1,2,3]' AS vector))"),
                 {"b": block_id, "fp": fingerprint},
             )
+
+    await session.execute(
+        text("UPDATE embedders SET retired_at = now() WHERE fingerprint = :fp"),
+        {"fp": RETIRED_FINGERPRINT},
+    )
 
     await _edit(session, filed, number=2, state="done")
 
@@ -188,6 +194,7 @@ async def test_a_register_edit_keeps_unchanged_block_vectors(session, _carry_fin
     assert unchanged and len(changed) == 1
     for fingerprint in CARRY_FINGERPRINTS:
         assert await _vector_texts(session, filed.document_id, fingerprint) == unchanged
+    assert await _vector_texts(session, filed.document_id, RETIRED_FINGERPRINT) == set()
 
 
 def test_the_edit_service_sits_on_the_filing_path_and_outside_the_work_log_wall():

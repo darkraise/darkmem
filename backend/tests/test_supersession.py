@@ -110,6 +110,7 @@ async def test_batch_reconciliation_failure_reports_matching_journal_and_outcome
 async def test_a_failed_reconciliation_keeps_the_extracted_journal(setup_database):
     async with savepoint_bed(["older", "newer"], "supersession-reconcile-read|4") as bed:
         real_factory = bed.pipe.session_factory
+        fired = []
 
         @asynccontextmanager
         async def failing_read_factory():
@@ -118,6 +119,7 @@ async def test_a_failed_reconciliation_keeps_the_extracted_journal(setup_databas
 
                 async def execute(statement, *args, **kwargs):
                     if "ORDER BY memories.created_at, memories.id" in str(statement):
+                        fired.append(statement)
                         raise RuntimeError("reconciliation read failed")
                     return await real_execute(statement, *args, **kwargs)
 
@@ -126,6 +128,7 @@ async def test_a_failed_reconciliation_keeps_the_extracted_journal(setup_databas
 
         bed.pipe.session_factory = failing_read_factory
         results = await bed.pipe.process_batch([bed.entry(index) for index in range(2)])
+        assert fired, "the reconciliation read was never reached, so nothing failed"
         assert [result["vector"] for result in results] == ["ok", "ok"]
 
         async with real_factory() as session:

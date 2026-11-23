@@ -162,7 +162,7 @@ async def test_hybrid_off_outage_dials_the_embedder_once(quiet_search):
     svc = HybridSearchService(llm, _KeywordOnlySession())
 
     for query in ("first", "second"):
-        with pytest.raises(Exception):
+        with pytest.raises(RuntimeError, match="the query embed failed"):
             await svc.search_ranked(query, flags=HYBRID_OFF)
 
     assert llm.calls == 1
@@ -172,7 +172,7 @@ async def test_hybrid_off_shared_failed_embed_is_not_retried(quiet_search):
     llm = _DownLLM()
     svc = HybridSearchService(llm, _KeywordOnlySession())
 
-    with pytest.raises(Exception):
+    with pytest.raises(RuntimeError, match="the query embed failed"):
         await svc.search_ranked("shared", flags=HYBRID_OFF, embedded=(None, None, True))
 
     assert llm.calls == 0

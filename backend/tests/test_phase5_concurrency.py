@@ -112,7 +112,7 @@ async def test_shared_entities_written_in_opposite_order_both_commit(
 
 
 @pytest.mark.asyncio
-async def test_swapped_prior_and_new_sets_both_commit(setup_database, monkeypatch):
+async def test_swapped_prior_and_new_sets_both_commit(setup_database, monkeypatch, caplog):
     async with savepoint_bed(
         ["writer a", "writer b"], "phase5-swap|4", entity_names=SWAP_NAMES,
     ) as bed:
@@ -138,6 +138,7 @@ async def test_swapped_prior_and_new_sets_both_commit(setup_database, monkeypatc
             return result
 
         monkeypatch.setattr(PostgresGraphRepository, "delete_by_memory_id", strip_then_wait)
+        caplog.set_level(logging.WARNING, logger=PIPELINE_LOGGER)
 
         statuses = await asyncio.gather(*[
             bed.pipe._write_memory(
@@ -148,6 +149,9 @@ async def test_swapped_prior_and_new_sets_both_commit(setup_database, monkeypatc
         ])
 
         assert [status["graph"] for status in statuses] == ["ok", "ok"], statuses
+        # Both committing proves the retry only if the two writers really
+        # crossed: without a deadlock this would pass with no retry at all.
+        assert _retry_warnings(caplog), "the interleaving was missed: no deadlock retry ran"
         for index in range(2):
             assert await bed.entity_names(index) == set(SWAP_NAMES)
         assert await _failure_rows(bed) == 0
