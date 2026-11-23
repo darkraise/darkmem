@@ -379,7 +379,9 @@ memory (201) only when that row's replay finished `done` within
 answers the plain ack, and a flush still running at the deadline finishes as a
 tracked background task on its own session (`wait_process.drive`), cut at the
 scheduled flush's own deadline and drained at shutdown, either way with any row
-it still holds returned to `pending`. While eight such flushes are running, a
+it still holds returned to `pending` (a lone row cut at that deadline is charged
+an attempt, as the scheduled lone-row path is; a cut of several rows, or at
+shutdown, refunds it). While eight `wait_process` flushes are in flight, a
 `wait_process` capture is not driven at all and answers the plain ack at once.
 Every capture runs through `capture_lint` (a
 pure function: named signals, two or more of them or over 1,500 characters

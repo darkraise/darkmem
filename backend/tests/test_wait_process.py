@@ -14,7 +14,7 @@ The four Done-when boxes, each with its own test group below:
 1. `wait_process` writes the buffer row, then drives THAT row's flush
    synchronously — never the scheduled flush, and never skipping the buffer
    write itself.
-2. Bounded by `buffer_wait_timeout_seconds`; on timeout it degrades to the
+2. Bounded by `BUFFER_WAIT_TIMEOUT_SECONDS`; on timeout it degrades to the
    plain 202 accept rather than hanging or losing the capture.
 3. The bypass runs the identical pipeline — never a second code path. The
    sharpest version of this is Ruling 3: the synchronous driver must claim
@@ -27,11 +27,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import uuid
 from contextlib import asynccontextmanager
 
 import pytest
-from sqlalchemy import select, text
+from sqlalchemy import event, select, text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.config import Config
 from app.models.memory import MemoryBuffer
@@ -562,7 +564,7 @@ async def test_a_capture_past_the_continuing_cap_is_left_to_the_scheduled_flush(
         await drop_buffer(buffer_ids)
 
 
-async def test_a_continuing_flush_past_its_deadline_releases_its_rows(
+async def test_a_lone_inline_row_cut_at_its_deadline_is_charged(
     setup_database, monkeypatch,
 ):
     monkeypatch.setattr(wait_process, "BUFFER_FLUSH_DEADLINE_SECONDS", 0.3)
@@ -584,7 +586,7 @@ async def test_a_continuing_flush_past_its_deadline_releases_its_rows(
         await asyncio.gather(*wait_process.continuing_flushes(), return_exceptions=True)
         row = (await buffer_rows(buffer_ids))[buffer_ids[0]]
         memory_id = uuid.UUID(row["metadata"]["memory_id"])
-        assert (row["status"], row["attempts"], row["claimed_by"]) == ("pending", 0, None)
+        assert (row["status"], row["attempts"], row["claimed_by"]) == ("pending", 1, None)
         assert "deadline" in row["last_error"]
     finally:
         if memory_id is not None:
@@ -594,3 +596,171 @@ async def test_a_continuing_flush_past_its_deadline_releases_its_rows(
                 )
                 await s.commit()
         await drop_buffer(buffer_ids)
+
+
+def _hanging_pipeline(started: asyncio.Event | None = None) -> RecordingPipeline:
+    pipeline = RecordingPipeline()
+
+    async def _hangs(entries):
+        pipeline.batches.append(list(entries))
+        if started is not None:
+            started.set()
+        await asyncio.Event().wait()
+
+    pipeline.process_batch = _hangs
+    return pipeline
+
+
+async def _delete_materialized(rows: dict) -> None:
+    ids = [row["metadata"]["memory_id"] for row in rows.values() if row["metadata"].get("memory_id")]
+    if not ids:
+        return
+    async with factory()() as s:
+        await s.execute(
+            text("DELETE FROM memories WHERE id = ANY(CAST(:ids AS uuid[]))"), {"ids": ids},
+        )
+        await s.commit()
+
+
+async def test_a_multi_row_cut_and_a_shutdown_cut_refund(setup_database, monkeypatch):
+    monkeypatch.setattr(wait_process, "BUFFER_FLUSH_DEADLINE_SECONDS", 0.3)
+    batch_ids = await seed_buffer(3)
+    lone_ids = await seed_buffer(1)
+    try:
+        settled = await wait_process.drive(
+            factory(), _hanging_pipeline(), buffer_ids=batch_ids,
+            timeout_seconds=0.05, max_attempts=5, poll_interval_seconds=0.01,
+        )
+        assert settled == frozenset()
+        await asyncio.gather(*wait_process.continuing_flushes(), return_exceptions=True)
+        rows = await buffer_rows(batch_ids)
+        assert {
+            (row["status"], row["attempts"], row["claimed_by"]) for row in rows.values()
+        } == {("pending", 0, None)}
+
+        started = asyncio.Event()
+        await wait_process.drive(
+            factory(), _hanging_pipeline(started), buffer_ids=lone_ids,
+            timeout_seconds=0.05, max_attempts=5, poll_interval_seconds=0.01,
+        )
+        await asyncio.wait_for(started.wait(), 5)
+        await wait_process.drain_continuing_flushes(grace_seconds=0.05)
+        row = (await buffer_rows(lone_ids))[lone_ids[0]]
+        assert (row["status"], row["attempts"], row["claimed_by"]) == ("pending", 0, None)
+        assert "shutdown" in row["last_error"]
+    finally:
+        await _delete_materialized(await buffer_rows(batch_ids + lone_ids))
+        await drop_buffer(batch_ids + lone_ids)
+
+
+def _sessions_on_the_test_connection(session, opened: list, gate: asyncio.Event | None = None):
+    """A factory of sessions distinct from the request's, sharing its
+    connection so the flush sees the capture's uncommitted buffer row."""
+
+    @asynccontextmanager
+    async def recording_factory():
+        own = AsyncSession(bind=session.bind, expire_on_commit=False)
+        opened.append(own)
+        try:
+            if gate is not None and len(opened) == 1:
+                await gate.wait()
+            yield own
+        finally:
+            await own.close()
+
+    return recording_factory
+
+
+async def test_no_pipeline_flush_never_uses_the_request_session(
+    client, auth_headers, session, monkeypatch,
+):
+    import app.services.memory as memory_module
+    from app.main import app
+
+    opened: list = []
+    gate = asyncio.Event()
+    monkeypatch.setattr(
+        memory_module, "async_session_factory",
+        _sessions_on_the_test_connection(session, opened, gate), raising=False,
+    )
+    monkeypatch.setattr(memory_module, "BUFFER_WAIT_TIMEOUT_SECONDS", 0.2)
+    pipeline = RecordingPipeline()
+    app.state.pipeline = pipeline
+    try:
+        response = await client.post(
+            "/api/v1/memories?wait_process=true",
+            json={"content": "a flush with no pipeline factory"},
+            headers=auth_headers,
+        )
+    finally:
+        app.state.pipeline = None
+    assert response.status_code == 202
+
+    after_response: list = []
+
+    def _record(state):
+        after_response.append(str(state.statement))
+
+    event.listen(session.sync_session, "do_orm_execute", _record)
+    try:
+        gate.set()
+        await asyncio.gather(*wait_process.continuing_flushes())
+    finally:
+        event.remove(session.sync_session, "do_orm_execute", _record)
+
+    assert opened, "the flush runs on a session of the app's factory"
+    assert after_response == []
+    assert len(pipeline.batches) == 1
+
+
+async def test_a_pipeline_flush_runs_on_its_own_session(client, auth_headers, session):
+    from app.main import app
+
+    opened: list = []
+    pipeline = RecordingPipeline()
+    pipeline.session_factory = _sessions_on_the_test_connection(session, opened)
+    app.state.pipeline = pipeline
+    try:
+        response = await client.post(
+            "/api/v1/memories?wait_process=true",
+            json={"content": "a flush on the pipeline's factory"},
+            headers=auth_headers,
+        )
+    finally:
+        app.state.pipeline = None
+    assert response.status_code == 201
+    assert opened, "the flush runs on a session of the pipeline's factory"
+    assert all(own is not session for own in opened)
+
+
+async def test_a_raising_inline_flush_answers_the_ack_and_logs_once(
+    client, auth_headers, session, monkeypatch, caplog,
+):
+    from app.main import app
+
+    async def _claim_raises(*args, **kwargs):
+        raise RuntimeError("claim exploded")
+
+    monkeypatch.setattr(wait_process, "flush_claimed", _claim_raises)
+    caplog.set_level(logging.ERROR)
+    app.state.pipeline = _pipeline(session)
+    try:
+        response = await client.post(
+            "/api/v1/memories?wait_process=true",
+            json={"content": "a flush that raises"},
+            headers=auth_headers,
+        )
+    finally:
+        app.state.pipeline = None
+
+    assert response.status_code == 202
+    assert response.json()["status"] == "accepted"
+    assert response.json()["id"]
+    reports = [
+        record for record in caplog.records
+        if record.levelno >= logging.ERROR and (
+            "claim exploded" in record.getMessage()
+            or (record.exc_info and "claim exploded" in str(record.exc_info[1]))
+        )
+    ]
+    assert len(reports) == 1, [record.getMessage() for record in reports]

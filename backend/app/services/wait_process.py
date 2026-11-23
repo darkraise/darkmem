@@ -37,14 +37,15 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_POLL_INTERVAL_SECONDS = 0.05
 SHUTDOWN_GRACE_SECONDS = 5.0
-# Each continuing flush holds a connection and an LLM lease; past this many a
-# capture answers the plain ack and leaves its row to the scheduled flush.
+# Each wait_process flush in flight, inside its request's window or past it,
+# holds a connection and an LLM lease; past this many a capture answers the
+# plain ack and leaves its row to the scheduled flush.
 MAX_CONTINUING_FLUSHES = 8
 
 _SETTLED_BUFFER_STATUSES = ("done", "error")
 
-# Flushes that outlived their request. In-process tracking is enough because
-# the app runs one worker (invariant 13).
+# Every wait_process flush in flight, from its spawn to its end. In-process
+# tracking is enough because the app runs one worker (invariant 13).
 _continuing: set[asyncio.Task] = set()
 
 
@@ -80,16 +81,25 @@ async def _flush_on_own_session(
                     max_attempts=max_attempts,
                 )
     except TimeoutError:
-        await _release(session_factory, buffer_ids, worker, "inline flush passed its deadline")
+        # As the scheduled flush settles a deadline cut: a lone row that cannot
+        # finish inside the whole deadline pays its attempt, a batch is refunded.
+        await _release(
+            session_factory, buffer_ids, worker, "inline flush passed its deadline",
+            max_attempts=max_attempts if len(buffer_ids) == 1 else None,
+        )
         raise
     except asyncio.CancelledError:
         await _release(session_factory, buffer_ids, worker, "flush interrupted by shutdown")
         raise
 
 
-async def _release(session_factory, buffer_ids, worker: str, message: str) -> None:
+async def _release(
+    session_factory, buffer_ids, worker: str, message: str, *, max_attempts: int | None = None,
+) -> None:
     async with session_factory() as session:
-        await release_interrupted_claims(session, buffer_ids, worker=worker, message=message)
+        await release_interrupted_claims(
+            session, buffer_ids, worker=worker, message=message, max_attempts=max_attempts,
+        )
         await session.commit()
 
 
@@ -154,7 +164,11 @@ async def drive(
     if not task.done():
         return frozenset()
 
-    result = task.result()
+    try:
+        result = task.result()
+    except Exception:
+        # `_forget` reports it; the capture is buffered, so the caller gets the ack.
+        return frozenset()
     done = set(result.done)
     pending = set(buffer_ids) - result.settled
     if not pending:

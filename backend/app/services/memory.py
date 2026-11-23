@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.database import async_session_factory
 from app.models.memory import Memory, MemoryBuffer
 from app.repositories import memory_communities
 from app.repositories.relational import (
@@ -321,13 +322,11 @@ class MemoryService:
         settings = await buffer_flush.buffer_settings(
             buffer_flush.as_session_factory(self.session)
         )
-        # The pipeline's own factory, not this request's session: a flush that
-        # outlives the deadline keeps running after the request has closed.
-        # With no pipeline configured the flush can only claim and requeue,
-        # which finishes inside the request, so the request's session serves.
+        # Never this request's session: a flush that outlives the deadline
+        # keeps running after the request has closed.
         session_factory = getattr(self.pipeline, "session_factory", None)
         return await _drive_wait_process_flush(
-            session_factory or buffer_flush.as_session_factory(self.session),
+            session_factory or async_session_factory,
             self.pipeline,
             buffer_ids=buffer_ids,
             timeout_seconds=BUFFER_WAIT_TIMEOUT_SECONDS,

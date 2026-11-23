@@ -705,24 +705,40 @@ async def _requeue_timed_out(
 
 async def release_interrupted_claims(
     session: AsyncSession, buffer_ids: list[uuid.UUID], *, worker: str, message: str,
+    max_attempts: int | None = None,
 ) -> None:
     """Return the rows ``worker`` still holds to `pending`, refunding the attempt.
 
     An interrupted flush (the process shutting down under it) says nothing
     about the rows it held, so it must not walk them towards `error`.
+
+    With ``max_attempts`` the attempt is charged instead, as `_release`
+    settles a scheduled lone row cut at its deadline: the row returns to
+    `pending`, or to `error` once its attempts are spent.
     """
     if not buffer_ids:
         return
+    if max_attempts is None:
+        settle = "status = 'pending', attempts = GREATEST(attempts - 1, 0), "
+        params: dict = {}
+    else:
+        settle = (
+            "status = CASE WHEN attempts >= CAST(:max_attempts AS int) "
+            "THEN 'error' ELSE 'pending' END, "
+        )
+        params = {"max_attempts": max_attempts}
     await session.execute(
         text(
-            "UPDATE memory_buffer SET status = 'pending', "
-            "attempts = GREATEST(attempts - 1, 0), "
+            f"UPDATE memory_buffer SET {settle}"
             "last_error = CAST(:message AS text), "
             "claimed_at = NULL, claimed_by = NULL "
             "WHERE id = ANY(CAST(:ids AS uuid[])) "
             "AND status = 'claimed' AND claimed_by = CAST(:worker AS text)"
         ),
-        {"ids": [str(i) for i in buffer_ids], "worker": worker, "message": message[:2000]},
+        {
+            "ids": [str(i) for i in buffer_ids], "worker": worker,
+            "message": message[:2000], **params,
+        },
     )
 
 

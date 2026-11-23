@@ -135,8 +135,27 @@ async def session(setup_database):
     # failure on every call in the suite, masking real ones.
     async_session = AsyncSession(bind=connection, expire_on_commit=False)
 
+    # A wait_process flush with no pipeline factory opens its sessions from the
+    # app's factory, never the request's; binding those to this connection keeps
+    # the capture's uncommitted buffer row visible to it and its writes undone.
+    from contextlib import asynccontextmanager
+
+    import app.services.memory as memory_module
+
+    @asynccontextmanager
+    async def _sessions_on_this_connection():
+        own = AsyncSession(bind=connection, expire_on_commit=False)
+        try:
+            yield own
+        finally:
+            await own.close()
+
+    previous_factory = memory_module.async_session_factory
+    memory_module.async_session_factory = _sessions_on_this_connection
+
     yield async_session
 
+    memory_module.async_session_factory = previous_factory
     await async_session.close()
     await transaction.rollback()
     await connection.close()
