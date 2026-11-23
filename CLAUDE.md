@@ -455,7 +455,10 @@ Five phases, each a hard checkpoint:
    does not roll back the vector write.
    - **Strip prior graph contributions (`delete_by_memory_id`) inside
      savepoint B**, as one atomic replace with the write: a B failure rolls
-     the strip back, and an extraction failure never enters B. A failed
+     the strip back, and an extraction failure never enters B. When Postgres
+     aborts savepoint B as a deadlock (SQLSTATE `40P01`) it is run again,
+     strip included, up to three attempts in all; any other error, and a
+     third deadlock, end as `graph=error` with savepoint A kept. A failed
      strip fails B; never swallow it and write over it. This makes
      re-extraction idempotent. `delete_by_memory_id` deletes a relation only
      when no live memory asserts it, and an entity only when no live memory

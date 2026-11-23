@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
+from sqlalchemy.exc import DBAPIError
 
 from app.repositories.graph import PostgresGraphRepository
 from app.repositories.vector import MemoryFilter, PostgresVectorRepository
@@ -141,6 +142,20 @@ _LOCAL_CLASSIFIER_TTL_SECONDS = 0
 # embedder rotates under it. Two is already pathological; the bound only exists
 # so an embedder that hands back a new fingerprint on every call cannot spin.
 _ENTITY_EMBED_ROTATION_ATTEMPTS = 3
+
+# Two writers' savepoint B can still close a lock cycle (a strip locks a
+# memory's prior rows before its sorted upserts take the new ones). Rolling the
+# savepoint back releases its locks, so the graph write is run again.
+DEADLOCK_SQLSTATE = "40P01"
+DEADLOCK_ATTEMPTS = 3
+
+
+def _is_deadlock(exc: BaseException) -> bool:
+    return (
+        isinstance(exc, DBAPIError)
+        and getattr(exc.orig, "sqlstate", None) == DEADLOCK_SQLSTATE
+    )
+
 
 DUPLICATE_STATUSES: tuple[str, ...] = ("active",)
 
@@ -713,157 +728,168 @@ class ProcessingPipeline:
                 # so it has nothing to write and must not enter the savepoint:
                 # the strip below would replace a good graph with nothing.
                 if status["vector"] == "ok" and status["extract"] == "ok" and isinstance(extraction, dict):
-                    try:
-                        async with session.begin_nested():
-                            # Idempotent re-extraction: strip any prior
-                            # contributions of this memory_id from the entity
-                            # graph before writing the new set. Otherwise
-                            # re-running with a different model just accumulates
-                            # duplicate-by-type rows on top of the previous
-                            # extraction. ``delete_by_memory_id`` removes a
-                            # relation only when no live memory still asserts it
-                            # and an entity only when no live memory asserts it
-                            # AND no surviving relation references it, so
-                            # entities shared with other memories are preserved
-                            # and no other memory's edge is cascaded away.
-                            #
-                            # Inside savepoint B rather than ahead of it, so
-                            # strip-and-write is one atomic replace: a failure
-                            # here rolls the strip back and the memory keeps its
-                            # previous graph, instead of the outer commit making
-                            # the deletion durable and leaving it with no graph
-                            # at all and a technologies denorm matching nothing.
-                            # For the same reason an ordinary extraction failure,
-                            # which never enters this savepoint, no longer empties
-                            # a good graph.
-                            await graph_repo.delete_by_memory_id(memory_id)
+                    for attempt in range(1, DEADLOCK_ATTEMPTS + 1):
+                        try:
+                            async with session.begin_nested():
+                                # Idempotent re-extraction: strip any prior
+                                # contributions of this memory_id from the entity
+                                # graph before writing the new set. Otherwise
+                                # re-running with a different model just accumulates
+                                # duplicate-by-type rows on top of the previous
+                                # extraction. ``delete_by_memory_id`` removes a
+                                # relation only when no live memory still asserts it
+                                # and an entity only when no live memory asserts it
+                                # AND no surviving relation references it, so
+                                # entities shared with other memories are preserved
+                                # and no other memory's edge is cascaded away.
+                                #
+                                # Inside savepoint B rather than ahead of it, so
+                                # strip-and-write is one atomic replace: a failure
+                                # here rolls the strip back and the memory keeps its
+                                # previous graph, instead of the outer commit making
+                                # the deletion durable and leaving it with no graph
+                                # at all and a technologies denorm matching nothing.
+                                # For the same reason an ordinary extraction failure,
+                                # which never enters this savepoint, no longer empties
+                                # a good graph.
+                                await graph_repo.delete_by_memory_id(memory_id)
 
-                            # Map each canonical (lower-cased) entity name to the
-                            # type it was written with, so relationships resolve
-                            # endpoints by (name, entity_type) — entity uniqueness
-                            # — instead of name alone, which can bind to a
-                            # same-named entity of a different type.
-                            name_to_type: dict[str, str] = {
-                                entity["name"].strip().lower(): entity["type"]
-                                for entity in extraction.get("entities", [])
-                            }
-                            # Concurrent writers upsert shared rows and hold
-                            # the locks until commit, so every writer takes
-                            # them in one global order or two can deadlock.
-                            entities = sorted(
-                                extraction.get("entities", []),
-                                key=lambda e: (e["name"].strip().lower(), e["type"]),
-                            )
-                            relationships = sorted(
-                                extraction.get("relationships", []),
-                                key=lambda r: (
-                                    (r["source"] or "").strip().lower(),
-                                    (r["target"] or "").strip().lower(),
-                                    r["type"],
-                                ),
-                            )
-                            # Build a display-name map keyed by the canonical
-                            # lower-cased name. The canonical name is what we
-                            # write to ``entities.name``; the original casing
-                            # is preserved in properties so the UI can render
-                            # ``Darkmem`` instead of ``darkmem``.
-                            for entity in entities:
-                                display_name = entity["name"]
-                                canonical_name = display_name.strip().lower()
-                                props = dict(entity.get("properties") or {})
-                                if display_name != canonical_name:
-                                    props.setdefault("display_name", display_name)
-                                created = await graph_repo.create_entity(
-                                    name=canonical_name, entity_type=entity["type"],
-                                    properties=props, memory_id=memory_id,
+                                # Map each canonical (lower-cased) entity name to the
+                                # type it was written with, so relationships resolve
+                                # endpoints by (name, entity_type) — entity uniqueness
+                                # — instead of name alone, which can bind to a
+                                # same-named entity of a different type.
+                                name_to_type: dict[str, str] = {
+                                    entity["name"].strip().lower(): entity["type"]
+                                    for entity in extraction.get("entities", [])
+                                }
+                                # Concurrent writers upsert shared rows and hold
+                                # the locks until commit, so every writer takes
+                                # them in one global order or two can deadlock.
+                                entities = sorted(
+                                    extraction.get("entities", []),
+                                    key=lambda e: (e["name"].strip().lower(), e["type"]),
                                 )
-                                # Keyed by ``canonical_name`` — the name this row is
-                                # actually written under — never by the pre-rewrite
-                                # variant name. Phase 3 embeds raw extracted names,
-                                # so a canonicalized variant's survivor name is
-                                # usually absent from ``name_to_embedding``; when it
-                                # is, this looks up nothing and the survivor's
-                                # stored embedding is left alone instead of being
-                                # overwritten with a vector computed for a
-                                # different name. A name that stays distinct still
-                                # resolves here, since its own canonical_name is
-                                # its own extracted name.
-                                emb = name_to_embedding.get(canonical_name)
-                                if emb and created:
-                                    await graph_repo.upsert_entity_embedding(
-                                        created["id"], emb, fingerprint=entity_fingerprint,
+                                relationships = sorted(
+                                    extraction.get("relationships", []),
+                                    key=lambda r: (
+                                        (r["source"] or "").strip().lower(),
+                                        (r["target"] or "").strip().lower(),
+                                        r["type"],
+                                    ),
+                                )
+                                # Build a display-name map keyed by the canonical
+                                # lower-cased name. The canonical name is what we
+                                # write to ``entities.name``; the original casing
+                                # is preserved in properties so the UI can render
+                                # ``Darkmem`` instead of ``darkmem``.
+                                for entity in entities:
+                                    display_name = entity["name"]
+                                    canonical_name = display_name.strip().lower()
+                                    props = dict(entity.get("properties") or {})
+                                    if display_name != canonical_name:
+                                        props.setdefault("display_name", display_name)
+                                    created = await graph_repo.create_entity(
+                                        name=canonical_name, entity_type=entity["type"],
+                                        properties=props, memory_id=memory_id,
                                     )
-                            for rel in relationships:
-                                source_name = (rel["source"] or "").strip().lower()
-                                target_name = (rel["target"] or "").strip().lower()
-                                await graph_repo.create_relationship(
-                                    source_name=source_name,
-                                    target_name=target_name,
-                                    rel_type=rel["type"], properties=rel.get("properties", {}),
-                                    weight=rel.get("weight", 0.5), memory_id=memory_id,
-                                    source_type=name_to_type.get(source_name),
-                                    target_type=name_to_type.get(target_name),
-                                )
-
-                            if mem_record is not None:
-                                # Denormalised onto the memory row so the GIN index
-                                # on `memories.technologies` answers the supersession
-                                # overlap test and the retrieval filter without
-                                # joining `entities`. Assigned whole, from the graph
-                                # as it stands after this savepoint's strip and
-                                # write: a partial update would leave a memory whose
-                                # denorm covers some of its entities and not others,
-                                # and supersession would then fire on some REPLACES
-                                # targets and silently not on the rest.
-                                mem_record.technologies = (
-                                    await graph_repo.technologies_for_memory(memory_id)
-                                )
-                                # Trigger on a REPLACES-family relation, not on
-                                # this memory's own technologies: the detector keys
-                                # off the replacement *target* overlapping a
-                                # candidate's technologies, which is independent of
-                                # whether the new memory produced a tech entity of
-                                # its own. The predicate is shared with the detector
-                                # so this gate and its filter can never disagree.
-                                if any(
-                                    is_supersession_trigger(r.get("type"))
-                                    for r in extraction.get("relationships", [])
-                                ):
-                                    await session.flush([mem_record])
-                                    await detect_supersessions(
-                                        session,
-                                        new_memory_id=memory_id,
-                                        new_memory_text=content,
-                                        new_memory_created_at=mem_created_at,
-                                        project=mem_project,
-                                        new_relations=extraction.get("relationships", []),
-                                        excluded_memory_ids=batch_memory_ids,
+                                    # Keyed by ``canonical_name`` — the name this row is
+                                    # actually written under — never by the pre-rewrite
+                                    # variant name. Phase 3 embeds raw extracted names,
+                                    # so a canonicalized variant's survivor name is
+                                    # usually absent from ``name_to_embedding``; when it
+                                    # is, this looks up nothing and the survivor's
+                                    # stored embedding is left alone instead of being
+                                    # overwritten with a vector computed for a
+                                    # different name. A name that stays distinct still
+                                    # resolves here, since its own canonical_name is
+                                    # its own extracted name.
+                                    emb = name_to_embedding.get(canonical_name)
+                                    if emb and created:
+                                        await graph_repo.upsert_entity_embedding(
+                                            created["id"], emb, fingerprint=entity_fingerprint,
+                                        )
+                                for rel in relationships:
+                                    source_name = (rel["source"] or "").strip().lower()
+                                    target_name = (rel["target"] or "").strip().lower()
+                                    await graph_repo.create_relationship(
+                                        source_name=source_name,
+                                        target_name=target_name,
+                                        rel_type=rel["type"], properties=rel.get("properties", {}),
+                                        weight=rel.get("weight", 0.5), memory_id=memory_id,
+                                        source_type=name_to_type.get(source_name),
+                                        target_type=name_to_type.get(target_name),
                                     )
 
-                            # The vault enqueue hook (doc 05 §8.4). Inside
-                            # savepoint B, not after the commit: the withdrawal
-                            # and the inline expiry are justified *by* the graph
-                            # replace, so they have to share its atomicity: a B
-                            # failure unwinds the withdrawal, the expiry and the
-                            # append-only event together, never a half-applied
-                            # subset. Post-commit would open the opposite
-                            # window — a crash between the commit and the
-                            # reconcile leaves a new graph with stale
-                            # provenance, no event, and nothing to notice it.
-                            # (It would *not* strand an expiry for a write that
-                            # never landed, as an earlier draft of this comment
-                            # claimed: the reconcile reads the asserted set back
-                            # from disk, so after a B rollback it would see the
-                            # prior graph and no-op.)
-                            # Phase 5 only enqueues; it never recomputes a
-                            # verification status (invariant 15).
-                            await reconcile_memory_sources(session, memory_id=memory_id)
+                                if mem_record is not None:
+                                    # Denormalised onto the memory row so the GIN index
+                                    # on `memories.technologies` answers the supersession
+                                    # overlap test and the retrieval filter without
+                                    # joining `entities`. Assigned whole, from the graph
+                                    # as it stands after this savepoint's strip and
+                                    # write: a partial update would leave a memory whose
+                                    # denorm covers some of its entities and not others,
+                                    # and supersession would then fire on some REPLACES
+                                    # targets and silently not on the rest.
+                                    mem_record.technologies = (
+                                        await graph_repo.technologies_for_memory(memory_id)
+                                    )
+                                    # Trigger on a REPLACES-family relation, not on
+                                    # this memory's own technologies: the detector keys
+                                    # off the replacement *target* overlapping a
+                                    # candidate's technologies, which is independent of
+                                    # whether the new memory produced a tech entity of
+                                    # its own. The predicate is shared with the detector
+                                    # so this gate and its filter can never disagree.
+                                    if any(
+                                        is_supersession_trigger(r.get("type"))
+                                        for r in extraction.get("relationships", [])
+                                    ):
+                                        await session.flush([mem_record])
+                                        await detect_supersessions(
+                                            session,
+                                            new_memory_id=memory_id,
+                                            new_memory_text=content,
+                                            new_memory_created_at=mem_created_at,
+                                            project=mem_project,
+                                            new_relations=extraction.get("relationships", []),
+                                            excluded_memory_ids=batch_memory_ids,
+                                        )
 
-                        status["graph"] = "ok"
-                    except Exception as e:
-                        status["graph"] = "error"
-                        status["error"] = status["error"] or f"Graph write failed: {e}"
-                        logger.error(f"Graph write failed for {memory_id}: {e}")
+                                # The vault enqueue hook (doc 05 §8.4). Inside
+                                # savepoint B, not after the commit: the withdrawal
+                                # and the inline expiry are justified *by* the graph
+                                # replace, so they have to share its atomicity: a B
+                                # failure unwinds the withdrawal, the expiry and the
+                                # append-only event together, never a half-applied
+                                # subset. Post-commit would open the opposite
+                                # window — a crash between the commit and the
+                                # reconcile leaves a new graph with stale
+                                # provenance, no event, and nothing to notice it.
+                                # (It would *not* strand an expiry for a write that
+                                # never landed, as an earlier draft of this comment
+                                # claimed: the reconcile reads the asserted set back
+                                # from disk, so after a B rollback it would see the
+                                # prior graph and no-op.)
+                                # Phase 5 only enqueues; it never recomputes a
+                                # verification status (invariant 15).
+                                await reconcile_memory_sources(session, memory_id=memory_id)
+
+                            status["graph"] = "ok"
+                            break
+                        except Exception as e:
+                            deadlocked = _is_deadlock(e)
+                            if deadlocked and attempt < DEADLOCK_ATTEMPTS:
+                                logger.warning(
+                                    "Graph write deadlocked for %s (attempt %d of %d); retrying",
+                                    memory_id, attempt, DEADLOCK_ATTEMPTS,
+                                )
+                                continue
+                            status["graph"] = "error"
+                            detail = f" (SQLSTATE {DEADLOCK_SQLSTATE})" if deadlocked else ""
+                            status["error"] = status["error"] or f"Graph write failed{detail}: {e}"
+                            logger.error(f"Graph write failed for {memory_id}: {e}")
+                            break
                 elif status["vector"] == "ok":
                     status["graph"] = "skipped"
             else:
