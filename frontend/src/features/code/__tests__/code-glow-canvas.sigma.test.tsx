@@ -257,6 +257,52 @@ describe("CodeGlowCanvas rebuilds", () => {
   })
 })
 
+describe("CodeGlowCanvas container resize", () => {
+  it("a container resize refreshes the renderer", () => {
+    const observers: Array<{
+      callback: ResizeObserverCallback
+      observed: Element[]
+      disconnected: boolean
+    }> = []
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        entry: (typeof observers)[number]
+        constructor(callback: ResizeObserverCallback) {
+          this.entry = { callback, observed: [], disconnected: false }
+          observers.push(this.entry)
+        }
+        observe(el: Element) {
+          this.entry.observed.push(el)
+        }
+        unobserve() {}
+        disconnect() {
+          this.entry.disconnected = true
+        }
+      },
+    )
+    try {
+      const { unmount } = render(<CodeGlowCanvas {...base} />)
+      const sigma = last()
+      const container = (sigma as unknown as { container: HTMLElement }).container
+      const watching = observers.filter((o) => o.observed.includes(container))
+      expect(watching).toHaveLength(1)
+
+      const refresh = vi.spyOn(sigma as unknown as { refresh: () => void }, "refresh")
+      watching[0]!.callback(
+        [{ target: container, contentRect: { width: 320, height: 600 } } as unknown as ResizeObserverEntry],
+        {} as ResizeObserver,
+      )
+      expect(refresh).toHaveBeenCalledTimes(1)
+
+      unmount()
+      expect(watching[0]!.disconnected).toBe(true)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+})
+
 describe("CodeGlowCanvas reducers", () => {
   const reduce = (props: Partial<Props>, id: string) => {
     render(<CodeGlowCanvas {...base} {...props} />)

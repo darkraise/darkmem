@@ -57,6 +57,12 @@
   --graph-nebula: 266 75% 42%;
 }
 
+/* darkraise-ui defines `--disabled-opacity` once (0.5) with no dark value;
+   on the dark canvas an outline or ghost button at 0.5 reads as enabled. */
+[data-mode="dark"] {
+  --disabled-opacity: 0.38;
+}
+
 /* The app's one markdown treatment. Used by the chat transcript, the prompt
    viewer and the document reader through `components/markdown`.
 

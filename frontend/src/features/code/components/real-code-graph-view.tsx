@@ -758,7 +758,7 @@ export function RealCodeGraphView({
                 </pre>
                 <Clipboard
                   value={mermaid}
-                  className="self-end"
+                  className="justify-self-end"
                   onCopyStatusChange={(d) => setCopyFailed(Boolean(d.error))}
                 >
                   <ClipboardTrigger>

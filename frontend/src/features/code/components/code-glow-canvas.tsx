@@ -499,6 +499,18 @@ export function CodeGlowCanvas({
     // style mutation the theme observer sees.
   }, [graph, colorBy, hiddenKinds, themeKey])
 
+  // Sigma resizes only on a window resize or a render, so a pane opening
+  // beside the canvas would leave it drawing, and hit-testing, at the old size.
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+    const observer = new ResizeObserver(() => {
+      sigmaRef.current?.refresh()
+    })
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [])
+
   useEffect(() => {
     sigmaRef.current?.refresh()
   }, [visibleIds, blastIds, highlightCommunity, processIds])
