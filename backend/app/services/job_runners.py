@@ -13,12 +13,16 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from sqlalchemy import delete, select, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
 
 from app.services.job_registry import FieldDescriptor
 from app.services.llm import lease_llm
 
 logger = logging.getLogger(__name__)
+
+# lock_not_available: a lock_timeout ran out.
+_LOCK_NOT_AVAILABLE = "55P03"
 
 # Per-repo due-times, keyed by repo id then by lane. Invariant 13 fixes the
 # worker count at one, so an in-process map needs no cross-process
@@ -458,13 +462,38 @@ def make_expired_memory_cleanup_runner(session_factory: async_sessionmaker[Async
         from app.services.events import record_maintenance_run
         deleted = 0
         reaped = 0
+        deferred = 0
         try:
             async with session_factory() as session:
                 expired = (await session.execute(text(
                     "SELECT id FROM memories WHERE expires_at IS NOT NULL AND expires_at < NOW()"
                 ))).scalars().all()
-                if expired:
-                    ids = list(expired)
+                ids: list = []
+                # Withdraw provenance first, before the DELETE and in the same
+                # transaction: a rollback must take the inline expiry and the
+                # append-only sources_changed rows with the delete that
+                # justified them. A memory whose withdrawal failed must not be
+                # deleted anyway, which is the stranding this closes. A fact
+                # lock held past the withdrawal's bound (a Tier-C batch) defers
+                # only that memory to the next tick; any other failure fails
+                # the batch.
+                for memory_id in expired:
+                    try:
+                        async with session.begin_nested():
+                            await fact_provenance.withdraw_memory_sources(
+                                session, memory_id=memory_id
+                            )
+                    except DBAPIError as exc:
+                        if getattr(exc.orig, "sqlstate", None) != _LOCK_NOT_AVAILABLE:
+                            raise
+                        deferred += 1
+                        logger.warning(
+                            "Expired memory %s deferred: a fact lock was held past "
+                            "the withdrawal bound", memory_id,
+                        )
+                        continue
+                    ids.append(memory_id)
+                if ids:
                     # Demote before deleting, never after: the demotion is what
                     # keeps the SET-NULL FK from stranding a dependent on
                     # 'superseded' with a null pointer, and one such row aborts
@@ -472,23 +501,12 @@ def make_expired_memory_cleanup_runner(session_factory: async_sessionmaker[Async
                     # Shared with the interactive delete path
                     # (MemoryService.delete_memory) so the two cannot drift.
                     await demote_dependents(session, ids)
-                    # Then withdraw provenance, still before the DELETE and in
-                    # the same transaction: a rollback must take the inline
-                    # expiry and the append-only sources_changed rows with the
-                    # delete that justified them. The batch is all-or-nothing
-                    # for the same reason it always was -- a memory whose
-                    # withdrawal failed must not be deleted anyway, which is the
-                    # stranding this closes.
-                    for memory_id in ids:
-                        await fact_provenance.withdraw_memory_sources(
-                            session, memory_id=memory_id
-                        )
                     result = await session.execute(
                         text("DELETE FROM memories WHERE id = ANY(CAST(:ids AS uuid[])) RETURNING id"),
                         {"ids": ids},
                     )
                     deleted = len(result.scalars().all())
-                    await session.commit()
+                await session.commit()
 
             # The backstop, in its own transaction after the delete committed,
             # and outside the `if expired` branch: what it heals was stranded by
@@ -504,8 +522,8 @@ def make_expired_memory_cleanup_runner(session_factory: async_sessionmaker[Async
                 session_factory, operation="expired_memory_cleanup", outcome="error",
             )
             raise
-        counts = {"deleted": deleted, "provenance_reaped": reaped}
-        if deleted or reaped:
+        counts = {"deleted": deleted, "provenance_reaped": reaped, "deferred": deferred}
+        if deleted or reaped or deferred:
             logger.info(
                 "Expired memory cleanup: deleted=%s provenance_reaped=%s",
                 deleted, reaped,

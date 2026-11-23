@@ -247,6 +247,48 @@ async def test_expired_cleanup_withdraws_provenance_and_expires_its_last_fact(
 
 
 @pytest.mark.asyncio
+async def test_a_held_fact_lock_defers_only_its_memory(monkeypatch):
+    """One fact held past the withdrawal's bound must not cost the whole tick."""
+    without_the_backstop(monkeypatch)
+    monkeypatch.setattr(fact_provenance, "WITHDRAWAL_LOCK_TIMEOUT", "200ms")
+    engine = create_async_engine(settings.test_database_url)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    held_fact = free_fact = held_memory = free_memory = None
+    try:
+        async with factory() as s:
+            held_memory = await plant_memory(s, expired=True)
+            free_memory = await plant_memory(s, expired=True)
+            held_fact = await plant_fact(s, subject="kafka", obj="zookeeper")
+            free_fact = await plant_fact(s, subject="nats", obj="jetstream")
+            await plant_source(s, fact_id=held_fact, source_ref=memory_source_ref(held_memory))
+            await plant_source(s, fact_id=free_fact, source_ref=memory_source_ref(free_memory))
+            await s.commit()
+
+        async with factory() as holder:
+            await holder.execute(
+                text("SELECT id FROM knowledge_triples WHERE id = CAST(:id AS uuid) FOR UPDATE"),
+                {"id": held_fact},
+            )
+            counts = await make_expired_memory_cleanup_runner(factory)()
+            await holder.rollback()
+
+        assert counts["deferred"] == 1
+        async with factory() as s:
+            left = set((await s.execute(
+                text("SELECT id FROM memories WHERE id = ANY(CAST(:ids AS uuid[]))"),
+                {"ids": [held_memory, free_memory]},
+            )).scalars().all())
+            assert left == {held_memory}
+            assert await source_rows(s, free_fact) == 0
+            assert await source_rows(s, held_fact) == 1
+    finally:
+        await discard(
+            factory, fact_ids=[held_fact, free_fact], memory_ids=[held_memory, free_memory],
+        )
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_expired_cleanup_leaves_a_fact_that_keeps_a_surviving_source(monkeypatch):
     """Belief is withdrawn on *no* surviving source, never on one fewer.
 
