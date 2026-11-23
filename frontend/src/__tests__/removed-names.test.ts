@@ -12,6 +12,7 @@ const REMOVED = [
   ["watch", "enabled"],
 ].map((parts) => parts.join("_"))
 REMOVED.push(["use", "Vector", "Projection"].join(""))
+REMOVED.push(["declare", "Context"].join(""), ["X", "Darkmem", "Context"].join("-"))
 
 const SOURCES = import.meta.glob<string>("/src/**/*.{ts,tsx}", {
   query: "?raw",

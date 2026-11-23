@@ -8,13 +8,13 @@ Every mechanism below is tagged **(exists today)**, **(target-new)**, **(activat
 
 ## 1. Purpose & scope
 
-**This doc fixes the complete external contract — every REST route and MCP tool, the wire shape of every payload that leaves the box, how `source` and context are resolved on the way in, the auth-and-trust posture the two front doors carry, and the WebSocket-and-events read surface the human's timeline and calendar consume.** It is the convergence layer: doc 07 defines what retrieval *computes*, docs 08/09 define what the vault *means* and *serves*, doc 10 defines the code graph, doc 11 defines the model boundary — and this doc is where all of it becomes a callable surface an agent or a browser can speak to. It owns three of the seven Part-B cross-doc contracts outright: the **retrieval-trace serialisation** (contract 1 — doc 07 §8 defines the payload, this doc puts it on the wire), the **verification badge field semantics** (contract 2 — the exact honest claim a fact/article row carries), and the **context-declaration wire format** (contract 3 — the arg, the header, and the precedence, with doc 07 owning the *matching* those values feed).
+**This doc fixes the complete external contract — every REST route and MCP tool, the wire shape of every payload that leaves the box, how `source` is resolved on the way in, the auth-and-trust posture the two front doors carry, and the WebSocket-and-events read surface the human's timeline and calendar consume.** It is the convergence layer: doc 07 defines what retrieval *computes*, docs 08/09 define what the vault *means* and *serves*, doc 10 defines the code graph, doc 11 defines the model boundary — and this doc is where all of it becomes a callable surface an agent or a browser can speak to. It owns three of the seven Part-B cross-doc contracts outright: the **retrieval-trace serialisation** (contract 1 — doc 07 §8 defines the payload, this doc puts it on the wire), the **verification badge field semantics** (contract 2 — the exact honest claim a fact/article row carries), and the **context-declaration wire format** (contract 3 — the arg, the header, and the precedence, with doc 07 owning the *matching* those values feed).
 
 **What the neighbouring docs fix instead.** Doc 07 owns the ranking, the composition rules, and the trace *definition* this doc serialises verbatim; it also owns the `applies_when` *matching* semantics behind the context values this doc's wire format carries. Docs 08 and 09 own the vault lifecycle, the servable-row predicates, the review-queue mechanics, and *what* a `verification_status` means — this doc serialises those states and their badge, and never recomputes them (invariant 15). Doc 10 owns the code graph and its tool family's *mechanics*; this doc fixes the family's contract. Doc 11 owns the flattened LLM/settings shape the config routes expose. Doc 13 renders every payload this doc defines — the badge colour, the trace panel, the calendar cell — while this doc fixes *what information the payload carries*. Doc 15's SDKs and browser extension speak exactly this contract. Doc 18 owns auth *hardening* (the `ApiKey` wiring, exposed-deployment bearer) that this doc names as the deferred path but does not design. Doc 04 owns every table these routes read and write.
 
 **Audience & authority.** This binds anyone building a route, a tool, an SDK, or a client against darkmem, and anyone rendering a payload it returns. Where it and the as-is baseline (`CLAUDE.md`, `docs/api-rest-conventions.md`) agree, the behaviour is contract; where the target extends the baseline, the extension is labelled. The load-bearing rule over the whole surface is **two front doors, one service layer (invariant 17)**: an MCP tool and its REST twin call the *same* service and must never drift into two engines — every new capability lands on both doors, or is *explicitly single-door with a stated reason*. The reshape adds deliberate single-door surfaces of two kinds, each with a stated reason — the confirmed-power writes (§3) and the human-observability reads (the review queue, §3, and the events stream, §7).
 
-**The one sentence to hold in mind:** the API is a thin, honest skin over one service layer — it resolves who is calling and in what context, serialises the layer/verification labels and the trace without inventing any of them, surfaces every exclusion as a count rather than a silent drop (invariant 14), and never lets the machine-facing MCP surface carry a power the REST/UI door reserves for an authenticated human.
+**The one sentence to hold in mind:** the API is a thin, honest skin over one service layer — it resolves who is calling, serialises the layer/verification labels and the trace without inventing any of them, surfaces every exclusion as a count rather than a silent drop (invariant 14), and never lets the machine-facing MCP surface carry a power the REST/UI door reserves for an authenticated human.
 
 **Scaffolding honesty up front (invariant 23).** Today the surface is the memory + code MCP tool families and the REST routes behind the bundled nginx, with cookie-JWT auth, TOFU setup, the Host allowlist, and the `/ws` broadcast — all **(exists today)**. Everything the reshape adds is target work honestly labelled: the **vault and review tools** (`knowledge_search`, `fact_get`, `article_get`, `dispute_inspect`, `memory_overview`) and their REST twins are **target-new**; the **retrieval trace**, the **badge field**, the **excluded-by-conflict counts**, and the **layer/verification labels** on every row are **target-new** payload extensions; the **events read API** (timeline + calendar over the `events` table) is a **target-new** rebuild of today's coarse `AuditLog`-backed `/analytics/pipeline-logs`; the **app-as-edge trust flip** (`trust_proxy_headers` off, the rate-limiter reading the transport peer) is a **target-new** posture change; and programmatic **`ApiKey` bearer auth** is a dormant **(activation)** deferred to doc 18. Nothing here presents scaffolding as shipped.
 
@@ -99,9 +99,9 @@ vault row above named neither `GET /knowledge/facts` (shipped by T2.36a) nor
   `POST /review-queue/facts/{id}/reject` and `/dismiss-suspicion`, which adjudicate the fact and
   the finding rather than setting the derived bit. §3's sentence carrying the same claim is
   amended there. (Doc 13's `/knowledge/review` is a *frontend* route and is not this claim.)
-- **Three named routes remain honest targets, now explicitly so**: `GET /knowledge/facts/{id}/dispute`
-  (with `dispute_inspect`), `POST /knowledge/context/validate` (with `context_validate`), and
-  `POST /knowledge/articles/{id}/ratify` are target-new and still unshipped — said here so the
+- **Two named routes remain honest targets, now explicitly so**: `GET /knowledge/facts/{id}/dispute`
+  (with `dispute_inspect`) and `POST /knowledge/articles/{id}/ratify` are target-new and still
+  unshipped — said here so the
   additions table cannot be read as uniformly shipped now that its other rows are.
 - **The rest of the additions table has shipped and reads exists-today**: `POST /knowledge/search`,
   `GET /knowledge/facts/{id}`, `GET /knowledge/articles/{id}`, `GET /knowledge/overview`,
@@ -150,9 +150,9 @@ flowchart TD
 
 ---
 
-## 3. The MCP tool surface — memory, code, vault & review, context
+## 3. The MCP tool surface — memory, code, vault & review
 
-**Decision. The MCP surface keeps the ten memory tools and eleven code tools it ships today, adds a small vault tool set plus `memory_overview`, carries context as a per-call argument and a header rather than a stateful tool, and deliberately keeps every *confirmed-power* write (ratification, review resolution) off MCP entirely — those live only on the authenticated REST/UI door.** The tool families mirror the epistemic layers: memory tools read and write L0, code tools read the repo-scoped graph, and the new vault tools read L2/L3 and the disputes over them. Naming stays consistent with the two live families — `noun_verb` for the memory family (`memory_add`, `memory_search`), `code_*` for the code family — so the vault tools follow suit: the composed cross-layer read is `knowledge_search`, and the single-object reads are `noun_verb` (`fact_get`, `article_get`, `dispute_inspect`, `memory_overview`), each reading like the ones already in muscle memory. There is no literal `knowledge_*` prefix family — only `knowledge_search` carries the prefix, and the noun-first reads deliberately match the memory family's idiom. Every read tool has a REST twin (invariant 17); the ratify/review *writes* are the one sanctioned single-door exception, and the reason is trust: **the MCP surface must never carry `confirmed` power** (invariant 20, spec §2.1) — enforced since 2026-08-26 by `ratify` being a forbidden API-key scope, so the exclusion survives the door becoming authenticated — a machine reaching `confirmed` is exactly what the under-claiming design forbids.
+**Decision. The MCP surface keeps the ten memory tools and eleven code tools it ships today, adds a small vault tool set plus `memory_overview`, and deliberately keeps every *confirmed-power* write (ratification, review resolution) off MCP entirely — those live only on the authenticated REST/UI door.** The tool families mirror the epistemic layers: memory tools read and write L0, code tools read the repo-scoped graph, and the new vault tools read L2/L3 and the disputes over them. Naming stays consistent with the two live families — `noun_verb` for the memory family (`memory_add`, `memory_search`), `code_*` for the code family — so the vault tools follow suit: the composed cross-layer read is `knowledge_search`, and the single-object reads are `noun_verb` (`fact_get`, `article_get`, `dispute_inspect`, `memory_overview`), each reading like the ones already in muscle memory. There is no literal `knowledge_*` prefix family — only `knowledge_search` carries the prefix, and the noun-first reads deliberately match the memory family's idiom. Every read tool has a REST twin (invariant 17); the ratify/review *writes* are the one sanctioned single-door exception, and the reason is trust: **the MCP surface must never carry `confirmed` power** (invariant 20, spec §2.1) — enforced since 2026-08-26 by `ratify` being a forbidden API-key scope, so the exclusion survives the door becoming authenticated — a machine reaching `confirmed` is exactly what the under-claiming design forbids.
 
 The memory family, unchanged in shape (exists today; some gain honest labels as an activation):
 
@@ -206,7 +206,6 @@ The new vault & review tools (target-new):
 | `article_get` | read one article: grounded content, `status`, claim-support `confidence`, citations, stale label | `GET /knowledge/articles/{id}` | no |
 | `dispute_inspect` | read a disputed fact/article **with both sides**, the contradiction, each side's origins, consequence rank | `GET /knowledge/facts/{id}/dispute` | no |
 | `memory_overview` | project-scoped map-reduce **organizational** overview, no badge (doc 09 §3.3) | `GET /knowledge/overview` | no |
-| `context_validate` *(optional)* | stateless: echo the normalised `applies_when`, warn on unknown axes | `POST /knowledge/context/validate` | no |
 
 **The ratify and review-resolution writes are REST/UI-only, single-door with a stated reason (invariant 17's sanctioned exception).** `POST /knowledge/facts/{id}/ratify` (promote to `confirmed` by writing a `human`-kind `fact_source`, doc 08 §4.4), `PATCH /knowledge/facts/{id}/review` (clear or set `review_state`), and the article equivalents **have no MCP twin**. The reason is the trust model: `confirmed` is the one rung the machine can never reach on its own (spec §2.1), and exposing ratification over the machine door would let an agent forge the human's imprimatur. *(Amended 2026-08-26: this argued from `/mcp` being unauthenticated. It now requires a bearer key — which strengthens rather than removes the reason, because `ratify` is in `FORBIDDEN_SCOPES` and no key can be minted carrying it. An authenticated machine is still a machine.)* This is not an accidental gap; it is the design, and it is recorded here so no future contributor "completes the symmetry" and re-opens it. The review-queue *read* (`GET /knowledge/review`) is authenticated REST too — it is a curation surface (doc 13), not an agent capability — and it likewise has no MCP twin, for the same reason plus the observation that an agent triaging its own truth backlog is a conflict of interest the design declines.
 
@@ -243,7 +242,6 @@ graph TD
         FG["fact_get / article_get"]
         DI["dispute_inspect"]
         OV["memory_overview — no badge"]
-        CV["context_validate — stateless, optional"]
     end
     subgraph REVIEW["Review & ratify — CONFIRMED power"]
         RAT["ratify / review-resolve"]
@@ -270,13 +268,13 @@ sequenceDiagram
     participant Svc as RetrievalService (doc 07)
     participant DB as Postgres (pushdown, per-fingerprint)
 
-    A->>T: POST /mcp — Host, X-Darkmem-Client, X-Darkmem-Context
+    A->>T: POST /mcp — Host, X-Darkmem-Client
     alt Host not allowlisted
         T-->>A: 421 — fix by extending allowlist, never disabling (inv 20)
     else Host allowed
         T->>Tool: dispatch tool call (no auth — LAN trust)
-        Tool->>Tool: resolve source (header/UA) + context (arg/header)
-        Tool->>Svc: search(query, project, context) — same call as REST twin
+        Tool->>Tool: resolve source (header/UA)
+        Tool->>Svc: search(query, project) — same call as REST twin
         Svc->>DB: channels with SQL project/status pushdown (inv 14)
         DB-->>Svc: candidate rows
         Svc-->>Tool: composed, labelled rows + trace (doc 07 sections 5,8)
@@ -338,8 +336,8 @@ the tree before the doc was changed rather than the code:
   superseded rows that the scoped run does not, which is the point: those rows are never
   fetched, so counting them would mean re-fetching exactly what the pushdown exists to avoid.
 - **`by_context_conflict` has no counting primitive.** The declared-context matcher and
-  `rank_fusion.partition_by_context` were removed: a declared context is echoed and ranks
-  nothing, so no row is ever excluded for a context conflict. The name stays reserved.
+  `rank_fusion.partition_by_context` were removed, and declared context with them, so no row is
+  ever excluded for a context conflict. The name stays reserved.
 - **An always-zero honesty counter is worse than an absent one**, because it reads as evidence
   that a check ran. That is invariant 14 applied to the counter itself.
 
@@ -410,9 +408,9 @@ flowchart TD
 
 ---
 
-## 5. Source & context resolution
+## 5. Source resolution
 
-**Decision. `source` resolution keeps the live precedence — explicit arg (the door's *own* literal counts as unspecified) > `X-Darkmem-Client` header > User-Agent product map > the door's own literal (`api` on REST, `mcp` on MCP; amended 2026-07-28, below) — and context resolution mirrors it exactly with a new `X-Darkmem-Context` header: per-call `context` arg > `X-Darkmem-Context` header > project-registry default > nothing; there is no stateful session tool, because the MCP server is stateless by design (settle: framing open question).** Reusing the `source` precedence's shape for context is deliberate — it is already understood, already header-driven, and already survives the stateless server. The one genuinely new decision is *where* per-session context lives on a server that holds no session, and the honest answer is: **in a header the client sends on every call**, exactly as `X-Darkmem-Client` already carries the client identity. A stateful `context_declare` tool would be a lie on a `stateless_http=True` server — there is no session to store it in — so it is rejected, and the header is the "declare once, configured at the transport" mechanism.
+**Decision. `source` resolution keeps the live precedence — explicit arg (the door's *own* literal counts as unspecified) > `X-Darkmem-Client` header > User-Agent product map > the door's own literal (`api` on REST, `mcp` on MCP; amended 2026-07-28, below).**
 
 **Source resolution is verbatim the live `client_identity` logic, and it never fails a write (exists today).** The rules: an explicit `source` argument wins as-is (lowercased; **the door's own literal is treated as *unspecified*** so an agent copying that door's default cannot mask detection); else the `X-Darkmem-Client` header (sanitised to a slug); else the first User-Agent product token, dropping generic runtime tokens (`node`, `python-httpx`, `curl`, …) and mapping known ones (`claude-code`); else **the door's own literal** — `api` on REST, `mcp` on MCP. `source_agent` is the explicit arg or the raw User-Agent. Both batch doors resolve on the **raw entry dicts** before `MemoryCreate` validation, and every entry in a batch resolves from the *same* request context, so a batch of 100 from one undeclared agent is one origin rather than 100 (doc 05 §2.1). Resolution never raises — attribution must not fail a capture.
 
@@ -437,20 +435,9 @@ doc was changed rather than the code:
   losing the caller's real identity. Do not "simplify" it away on the strength of the REST
   case alone.
 
-**Context resolution is the new wire format this doc owns (contract 3, target-new); doc 07 owns the matching those values feed.** The declared caller context is a structured value `{env, version, situation}`; `env` and `situation` are **closed vocabularies normalised before store under doc 06's taxonomy discipline** (invariant 5 — matching rots on `prod`/`production`/`prd` drift otherwise), and `version` is a free string compared app-side (doc 07 §6, never a jsonb predicate). The precedence:
+**Declared caller context was removed on 2026-11-23 because nothing ranked by it.**
 
-| Rank | Source of context | Wire form |
-|---|---|---|
-| 1 | per-call `context` argument | a `context` object on the search/vault tool (or the REST body) |
-| 2 | per-session declaration | the `X-Darkmem-Context` header, sent on every call (mirrors `X-Darkmem-Client`) |
-| 3 | per-project default | `projects.properties.applies_when_default` for the call's `project` (doc 04 §7) |
-| 4 | nothing | every row treated as context-neutral — the common case |
-
-The crucial honesty rule (doc 07 §6, doc 01 §3.4): the **declared caller context is trusted** (a human or a client configured it), but an **LLM-guessed `applies_when` on a *fact* is displayed provenance, never a conflict-exclusion basis** until a human touches it — the wire carries a `provenance: human|llm_guessed` marker on each row's `applies_when` so doc 07's matching knows which values may drive a hard exclusion. And because most callers pass no context, matching is **boost-plus-label by default with hard exclusion only on explicit conflict**, the excluded count surfaced (§4's `excluded.by_context_conflict`) — this doc's wire format carries the declaration and the surfaced count; doc 07 turns them into a boost, a label, or a counted exclusion.
-
-**The optional `context_validate` tool is stateless and returns the normalised context, so a client can verify its declaration parses before relying on it.** It takes a `context` object, runs the same `env`/`situation` normalisers doc 06 owns, and returns `{normalized, unknown_axes: [...]}` — a warning surface, not a store. It is the honest substitute for the rejected stateful `context_declare`: it lets a client confirm its per-call arg or `X-Darkmem-Context` header will match as intended, without pretending the server remembers it.
-
-Source and context resolution, two mirrored precedence chains that both survive the stateless server:
+Source resolution, a precedence chain that survives the stateless server:
 
 ```mermaid
 flowchart TD
@@ -463,25 +450,12 @@ flowchart TD
         S3 -->|yes| SU["mapped UA source"]
         S3 -->|no| SF["fallback: 'mcp'"]
     end
-    subgraph CTX["context resolution (target-new, contract 3)"]
-        C1{"per-call context arg?"}
-        C1 -->|yes| CA["use it"]
-        C1 -->|no| C2{"X-Darkmem-Context header?"}
-        C2 -->|yes| CH["header context"]
-        C2 -->|no| C3{"project default?"}
-        C3 -->|yes| CP["projects.properties default"]
-        C3 -->|no| CN["no context — rows neutral"]
-    end
     SA --> W["-> service call"]
     SH --> W
     SU --> W
     SF --> W
-    CA --> W
-    CH --> W
-    CP --> W
-    CN --> W
 ```
-*Caption: context reuses source's header-driven shape; there is no stateful session tool because the server holds no session (invariant 20).*
+*Caption: source rides a header the client sends on every call, so it needs no session on a server that holds none (invariant 20).*
 
 ---
 
@@ -585,7 +559,7 @@ The invariants that bind this layer, restated in this doc's own terms against th
 - **Honest partial results, surfaced counts, filter-pushdown prerequisite (inv. 14).** Every list envelope surfaces an `excluded` map naming every reason that fired — with `by_project`, `by_status` and `by_context_conflict` reserved names rather than mandatory keys (§4's 2026-07-28 amendment) — and a `partial` flag; a degraded channel is flagged, never silently dropped; the badge under-claims and never says "true"/"verified" (§4). The pushdown (doc 07 §7) is what lets the search reads scope in SQL rather than leak.
 - **`memory_id` str/UUID drift normalised at the boundary (inv. 9).** Every id is serialised as a string with an `id_kind` discriminator (`memory`/`fact`/`article`) at the JSON boundary, so a consumer round-tripping ids never drops a match on a type mismatch (§3, §4).
 - **Reconciliation off the hot path (inv. 15).** The API serialises the labels, badge, and trace that docs 07/08/09 computed; it recomputes no `verification_status`, no ranking, no grounding — the read surface never triggers an LLM reconciliation (§4).
-- **Closed taxonomy for the context axes (inv. 5).** The `env`/`situation` axes of the `applies_when` wire format are closed vocabularies normalised under doc 06's discipline; `version` is app-side compared; `context_validate` surfaces unknown axes (§5).
+- **Closed taxonomy for the context axes (inv. 5).** The `env`/`situation` axes of the `applies_when` wire format are closed vocabularies normalised under doc 06's discipline; `version` is app-side compared.
 - **Scaffolding-not-substrate (inv. 23).** The vault tools, the trace, the badge, the excluded counts, the events read API, and the app-as-edge trust flip are all target-new and labelled as such; `ApiKey` bearer is a dormant activation deferred to doc 18; nothing here is claimed as shipped that is only scaffolding (§1).
 
 ---
@@ -594,9 +568,9 @@ The invariants that bind this layer, restated in this doc's own terms against th
 
 Each carries a recommended stance, so downstream inherits a default rather than a blank.
 
-- **The new tool inventory, naming, and the MCP versioning/deprecation policy — resolved (§3).** *Stance: a vault tool set — the composed `knowledge_search` plus the `noun_verb` single-object reads `fact_get`, `article_get`, `dispute_inspect` — plus `memory_overview` and an optional stateless `context_validate`, each named in the two live families' idiom and each with a REST twin. Versioning is procedural: additive-by-default, a breaking change mints a new tool name through a description-flagged, event-journaled deprecation window removed only at a major, and the response envelope carries a `schema_version` integer.* MCP has no protocol-level per-tool version, so the discipline is the contract.
+- **The new tool inventory, naming, and the MCP versioning/deprecation policy — resolved (§3).** *Stance: a vault tool set — the composed `knowledge_search` plus the `noun_verb` single-object reads `fact_get`, `article_get`, `dispute_inspect` — plus `memory_overview`, each named in the two live families' idiom and each with a REST twin. Versioning is procedural: additive-by-default, a breaking change mints a new tool name through a description-flagged, event-journaled deprecation window removed only at a major, and the response envelope carries a `schema_version` integer.* MCP has no protocol-level per-tool version, so the discipline is the contract.
 - **Whether ratification is exposed over MCP — resolved: no (§3).** *Stance: ratification and review-resolution (`confirmed` power) are authenticated REST/UI only, with no MCP twin — the one sanctioned single-door asymmetry (invariant 17), because the MCP surface must never carry the one rung the machine cannot reach on its own (invariant 20, spec §2.1) — held by `ratify` being a forbidden API-key scope since 2026-08-26, so authenticating the door did not reopen it.* `dispute_inspect` and the vault *reads* are on both doors; only the writes that change verification are single-door.
-- **Per-session context on a stateless MCP server — resolved: header-per-call (§5).** *Stance: context arrives as a per-call `context` argument or the `X-Darkmem-Context` header (configured at the client transport, mirroring `X-Darkmem-Client`), with project-registry defaults beneath; there is no stateful `context_declare` tool because `stateless_http=True` gives the server no session to hold it in. An optional stateless `context_validate` returns the normalised context so a client can confirm its declaration parses.* This closes the framing's stateless-context question in favour of the header the server can actually honour.
+- **Per-session context on a stateless MCP server — retired 2026-11-23.** Declared context was removed because nothing ranked by it, so no context travels per call or per session.
 - **The standard partial-result envelope — resolved (§4).** *Stance: one envelope for every list-returning read across both doors — `sections`/`items` of labelled, badged rows, an `excluded` counts object, a `channels`/`partial` degradation flag, pagination, and an opt-in `trace` (doc 07 §8 verbatim) — serialised once at the service boundary so REST and MCP can never paraphrase the same result differently (convention 10).* A per-tool bespoke shape is a review-blocking defect.
 - **The events read API shape and WS schema versioning — resolved (§7).** *Stance: three `GET` shapes over the append-only `events` table — `GET /events` (filtered list), `GET /events/calendar` (per-UTC-day counts), `GET /events/timeline` (one object's history) — each riding its doc-04 §8.1 index, authenticated REST/UI single-door (an observability surface, not an agent capability). WS versioning is additive-within-an-event-type and a new event type for any breaking payload change, with a top-level `v` field, mirroring the tool policy.* Events are never written through the API (the forbid-trigger owns write-blocking); there is no `POST /events`.
 - **The `ApiKey` bearer path — SHIPPED 2026-08-26, no longer deferred.** *Was: keep the LAN default (unauthenticated MCP behind the Host allowlist) for v1, with the programmatic-key hardening deferred to doc 18.* That activation happened: `api_keys` is live, `/mcp` requires a bearer key on every call with one scope per tool, and `events.api_key_id`/`actor` now carry a value on keyed calls. See §6 and doc 18 §5.

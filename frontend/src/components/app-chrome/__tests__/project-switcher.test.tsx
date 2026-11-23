@@ -17,7 +17,6 @@ import {
   ALL_PROJECTS,
   STALE_SCOPE_NOTICE,
 } from "@/stores/project-store"
-import { useContextStore } from "@/stores/context-store"
 
 const mockUseProjects = vi.fn()
 vi.mock("@/hooks/api", () => ({
@@ -38,7 +37,6 @@ describe("ProjectSwitcher", () => {
       activeProject: DEFAULT_PROJECT,
       missingProject: null,
     })
-    useContextStore.setState({ declared: null })
     mockUseProjects.mockReturnValue({ data: [], isLoading: false })
   })
 
@@ -233,7 +231,6 @@ describe("ProjectSwitcher", () => {
     await user.click(await screen.findByRole("button", { name: /^production/ }))
 
     expect(useProjectStore.getState().activeProject).toBe("production")
-    expect(useContextStore.getState().declared).toBeNull()
   })
 
   it("omits the personal notes space from the scope list", async () => {

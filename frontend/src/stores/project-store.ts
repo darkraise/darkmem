@@ -32,9 +32,7 @@ interface ProjectState {
   /**
    * The global isolation/scope boundary (doc 13 §3) — the project switcher
    * writes here, and it rides into every project-scoped query key via
-   * `src/lib/query-keys.ts`. This is NOT the session `applies_when`
-   * context declaration; see `context-store.ts` for that, and never let
-   * the two read from or write into each other.
+   * `src/lib/query-keys.ts`.
    *
    * `null` means every project; see `ALL_PROJECTS`.
    */

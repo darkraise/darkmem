@@ -70,7 +70,6 @@ describe("searchDemoMemories", () => {
     const { results, totalMatches } = searchDemoMemories(memories, {
       query: "reranker",
       project: "all",
-      context: null,
     })
     expect(results.length).toBeGreaterThan(0)
     expect(totalMatches).toBeGreaterThanOrEqual(results.length)
@@ -92,7 +91,6 @@ describe("searchDemoMemories", () => {
     const { results } = searchDemoMemories(memories, {
       query: "reranker",
       project: "all",
-      context: null,
     })
     const stale = results.find(
       (r) => r.memory.id === CURATED_IDS.rerankFullList,
@@ -102,7 +100,7 @@ describe("searchDemoMemories", () => {
   })
 
   it("is deterministic for the same query", () => {
-    const q = { query: "reranker rrf", project: "all", context: null }
+    const q = { query: "reranker rrf", project: "all" }
     const a = searchDemoMemories(memories, q)
     const b = searchDemoMemories(memories, q)
     expect(a.results.map((r) => [r.memory.id, r.trace.rrf_score])).toEqual(
@@ -110,29 +108,10 @@ describe("searchDemoMemories", () => {
     )
   })
 
-  it("ranks the same rows with or without a declared context", () => {
-    const query = "plain-http lan logins"
-    const withContext = searchDemoMemories(memories, {
-      query,
-      project: "all",
-      context: "env=prod",
-    })
-    const withoutContext = searchDemoMemories(memories, {
-      query,
-      project: "all",
-      context: null,
-    })
-    expect(withContext.results.map((r) => r.memory.id)).toEqual(
-      withoutContext.results.map((r) => r.memory.id),
-    )
-    expect(withContext.exclusions).toEqual(withoutContext.exclusions)
-  })
-
   it("counts out-of-scope matches as by_project exclusions", () => {
     const scoped = searchDemoMemories(memories, {
       query: "auth",
       project: "darkmem",
-      context: null,
     })
     expect(scoped.results.every((r) => r.memory.project === "darkmem")).toBe(
       true,
@@ -146,7 +125,6 @@ describe("searchDemoMemories", () => {
     const outcome = searchDemoMemories(memories, {
       query: "wireshark packet capture",
       project: "all",
-      context: null,
     })
     expect(outcome.results).toEqual([])
     expect(outcome.totalMatches).toBe(0)

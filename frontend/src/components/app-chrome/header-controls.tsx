@@ -10,15 +10,13 @@ import {
 import { useLayoutStore } from "darkraise-ui/layout"
 import { DetailLevelToggle } from "@/components/darkmem"
 import { useMediaQuery } from "@/hooks/use-media-query"
-import { DEMO } from "@/lib/demo-flag"
-import { ContextChip } from "./context-chip"
 import { MinimalThemeSwitcher } from "./minimal-theme-switcher"
 import { ProjectSwitcher } from "./project-switcher"
 
 /** Inline controls need roughly 600px beside the page title, its actions and
  *  the account menu. Below 1280px (header ≈ 1024px with the expanded rail)
- *  they crowded the title until a declared context pushed the actions over
- *  the project pill and the account controls off-screen, so the overflow
+ *  they crowded the title until the actions overlapped the project pill and
+ *  the account controls went off-screen, so the overflow
  *  popover takes over from here down rather than only below `md`. */
 export const HEADER_WIDE_QUERY = "(min-width: 1280px)"
 
@@ -40,12 +38,6 @@ function openCommandPalette() {
   )
 }
 
-/** The session context chip only feeds the demo Memories page: real search
- *  never sends a declared context (the wire verb is unbuilt, and the ranking
- *  arm it would feed sits at weight 0). Shown live it promised a ranking
- *  effect that does not happen, so real mode leaves it out. */
-const SHOW_CONTEXT = DEMO
-
 /**
  * The header's view controls. From 1280px up they sit inline beside the page
  * title; below it they share one overflow popover so the title keeps the bar.
@@ -66,7 +58,6 @@ export function HeaderControls({
     return (
       <div className="flex min-w-0 shrink-0 items-center gap-2">
         <ProjectSwitcher disabledReason={projectDisabledReason} />
-        {SHOW_CONTEXT && <ContextChip />}
         <DetailLevelToggle />
         <MinimalThemeSwitcher />
       </div>
@@ -97,8 +88,8 @@ export function HeaderControls({
           side="bottom"
           align="end"
           className="grid w-80 max-w-[calc(100vw-1rem)] grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-x-3 gap-y-3 p-3"
-          // The switcher and the context chip open popovers of their own, which
-          // portal outside this one; a click inside them must not close it.
+          // The switcher opens a popover of its own, which portals outside
+          // this one; a click inside it must not close it.
           onInteractOutside={(event) => {
             const target = event.target
             if (
@@ -115,11 +106,6 @@ export function HeaderControls({
           <ControlRow label="Project">
             <ProjectSwitcher disabledReason={projectDisabledReason} />
           </ControlRow>
-          {SHOW_CONTEXT && (
-            <ControlRow label="Context">
-              <ContextChip />
-            </ControlRow>
-          )}
           <DetailLevelToggle variant="row" />
           <ControlRow label="Theme">
             <MinimalThemeSwitcher />

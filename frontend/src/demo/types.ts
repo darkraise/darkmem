@@ -47,10 +47,8 @@ export interface MemoryExclusion {
 
 export interface MemorySearchQuery {
   query: string
-  /** "all" or a project name — the isolation scope, not the context. */
+  /** "all" or a project name — the isolation scope. */
   project: string
-  /** Session applies_when declaration, or null when not declared. */
-  context: string | null
 }
 
 export interface MemorySearchOutcome {

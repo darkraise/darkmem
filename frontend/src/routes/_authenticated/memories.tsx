@@ -27,7 +27,6 @@ import { RealMemoriesView } from "@/features/memories/components/real-memories-v
 import { TimelineScrubber } from "@/components/timeline-scrubber"
 import { buildTimelineScale, dateToFraction } from "@/lib/timeline"
 import { ALL_PROJECTS, useProjectStore } from "@/stores/project-store"
-import { CONTEXT_AXES, useContextStore } from "@/stores/context-store"
 import type { MemoryStatus } from "@/hooks/api"
 
 export const Route = createFileRoute("/_authenticated/memories")({
@@ -83,14 +82,6 @@ function DemoMemoriesPage() {
   const scope = activeProject ?? "all"
   const setScope = (next: string) =>
     setProject(next === "all" ? ALL_PROJECTS : next)
-  // The search honours the header's session-context declaration; there is
-  // no page-local context control to disagree with it.
-  const declared = useContextStore((s) => s.declared)
-  const context = declared
-    ? CONTEXT_AXES.filter((axis) => declared.axes[axis])
-        .map((axis) => `${axis}=${declared.axes[axis]}`)
-        .join(", ")
-    : null
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all")
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [browseLimit, setBrowseLimit] = useState(BROWSE_PAGE)
@@ -109,9 +100,9 @@ function DemoMemoriesPage() {
   const outcome = useMemo(
     () =>
       searching
-        ? searchDemoMemories(memories, { query, project: scope, context })
+        ? searchDemoMemories(memories, { query, project: scope })
         : null,
-    [memories, query, scope, context, searching],
+    [memories, query, scope, searching],
   )
 
   // Browse rows stay computed while searching so the scrubber column keeps
@@ -279,9 +270,7 @@ function DemoMemoriesPage() {
         }
       />
 
-      {/* Search bar: the query and the session context. The project scope is
-          the header switcher; the context declares the session applies_when —
-          conflating them would silently exclude rows. */}
+      {/* Search bar. The project scope is the header switcher. */}
       <div className="flex flex-wrap items-center gap-2.5">
         <Input
           prefix={<Search aria-hidden className="h-4 w-4" />}

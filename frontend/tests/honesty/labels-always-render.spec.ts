@@ -41,23 +41,19 @@ test.describe("honesty/labels-always-render", () => {
 
     await expect(page.getByText(/^\d+ of \d+ shown$/)).toBeVisible()
 
-    await selectProject(page, "darkmem")
+    await selectProject(page, "default")
 
-    // The session context is declared on the header's ContextChip; the
-    // page has no context control of its own.
-    const contextTrigger = page.getByRole("button", { name: "Session context" })
-    await expect(contextTrigger).toBeVisible()
-    await contextTrigger.click()
-    await page.getByRole("textbox", { name: "env" }).fill("prod")
-    await page.getByRole("button", { name: "Declare" }).click()
-
+    // Both "cookie-secure" rows live in project "darkmem", so scoping to
+    // "default" excludes them by project.
     await page.getByLabel("Search memories").fill("cookie-secure")
 
     for (const level of ["simple", "advanced"] as const) {
       await setDetailLevel(page, level)
 
-      await expect(page.getByText("1 memory excluded")).toBeVisible()
-      await expect(page.getByText(/env=dev-only row/i)).toBeVisible()
+      await expect(page.getByText("2 memories excluded")).toBeVisible()
+      await expect(
+        page.getByText(/outside the current project scope \(default\)/),
+      ).toBeVisible()
     }
   })
 

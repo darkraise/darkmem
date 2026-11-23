@@ -58,9 +58,6 @@ const TRIGGER_CLASS =
  * makes Memories, Knowledge, Review, the timeline, the calendar and the
  * dashboard refetch against the new scope.
  *
- * A solid pill, deliberately styled distinctly from `ContextChip`'s dashed
- * one (Ruling 3): this control sets *scope*, never a session context hint.
- *
  * The list is exactly the corpus's own (`GET /api/v1/projects`) — a scope is
  * offered once a memory, document, workstream or page carries it. There is no free-text field: a
  * project comes into existence by being captured into, so a name typed here
