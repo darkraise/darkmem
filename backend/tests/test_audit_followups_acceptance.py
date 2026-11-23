@@ -475,3 +475,218 @@ async def test_a6_neighbour_context_applies_the_limit_after_the_scope_filter(ses
     returned = {n["id"] for n in context["neighbors"]}
     assert returned == {str(n.id) for n in neighbours[10:]}
     assert len(returned) == 15
+
+
+# ------------------------------------------------------------------ A7
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["detector-raises", "read-raises"])
+async def test_a7_reconciliation_raising_leaves_every_extracted_journal_row(setup_database, monkeypatch, failure):
+    from contextlib import asynccontextmanager
+
+    import app.services.pipeline as pipeline_module
+
+    if failure == "detector-raises":
+        async def boom(*args, **kwargs):
+            raise RuntimeError("reconciliation exploded")
+
+        monkeypatch.setattr(pipeline_module, "detect_supersessions", boom)
+
+    async with savepoint_bed(["a7 older", "a7 newer", "a7 newest"], f"a7-{failure}|4") as bed:
+        real_factory = bed.pipe.session_factory
+        if failure == "read-raises":
+            @asynccontextmanager
+            async def failing_read_factory():
+                async with real_factory() as session:
+                    real_execute = session.execute
+
+                    async def execute(statement, *args, **kwargs):
+                        if "ORDER BY memories.created_at, memories.id" in str(statement):
+                            raise RuntimeError("reconciliation read failed")
+                        return await real_execute(statement, *args, **kwargs)
+
+                    session.execute = execute
+                    yield session
+
+            bed.pipe.session_factory = failing_read_factory
+
+        results = await bed.pipe.process_batch([bed.entry(i) for i in range(3)])
+        assert len(results) == 3
+
+        async with real_factory() as session:
+            journalled = (await session.execute(
+                text("SELECT object_id FROM events WHERE event_type = 'extracted' AND object_id = ANY(:ids)"),
+                {"ids": bed.memory_ids},
+            )).scalars().all()
+        assert sorted(journalled) == sorted(bed.memory_ids)
+
+
+# ------------------------------------------------------------------ A8 / A9 / A40
+
+from sqlalchemy import event  # noqa: E402
+from sqlalchemy.ext.asyncio import AsyncSession  # noqa: E402
+
+from app.services import wait_process  # noqa: E402
+from tests.test_buffer_flush import RecordingPipeline, buffer_rows, drop_buffer, factory, seed_buffer  # noqa: E402
+
+
+@pytest.mark.asyncio
+async def test_a8_no_pipeline_factory_no_flush_statement_runs_on_the_request_session_after_the_response(
+    client, auth_headers, session, monkeypatch
+):
+    from contextlib import asynccontextmanager
+
+    import app.services.memory as memory_module
+    from app.main import app
+
+    opened: list = []
+    gate = asyncio.Event()
+
+    @asynccontextmanager
+    async def own_sessions():
+        own = AsyncSession(bind=session.bind, expire_on_commit=False)
+        opened.append(own)
+        try:
+            if len(opened) == 1:
+                await gate.wait()
+            yield own
+        finally:
+            await own.close()
+
+    monkeypatch.setattr(memory_module, "async_session_factory", own_sessions, raising=False)
+    monkeypatch.setattr(memory_module, "BUFFER_WAIT_TIMEOUT_SECONDS", 0.2)
+    pipeline = RecordingPipeline()
+    app.state.pipeline = pipeline
+    try:
+        response = await client.post(
+            "/api/v1/memories?wait_process=true",
+            json={"content": "a8 flush with no pipeline factory"},
+            headers=auth_headers,
+        )
+    finally:
+        app.state.pipeline = None
+    assert response.status_code == 202
+
+    after_response: list[str] = []
+
+    def record(state):
+        after_response.append(str(state.statement))
+
+    event.listen(session.sync_session, "do_orm_execute", record)
+    try:
+        gate.set()
+        await asyncio.gather(*wait_process.continuing_flushes())
+    finally:
+        event.remove(session.sync_session, "do_orm_execute", record)
+    assert after_response == []
+
+
+async def _hang(pipeline):
+    async def hangs(entries):
+        pipeline.batches.append(list(entries))
+        await asyncio.Event().wait()
+
+    pipeline.process_batch = hangs
+
+
+async def _cleanup_rows(buffer_ids):
+    rows = await buffer_rows(buffer_ids)
+    ids = [r["metadata"]["memory_id"] for r in rows.values() if r["metadata"].get("memory_id")]
+    if ids:
+        async with factory()() as s:
+            await s.execute(text("DELETE FROM memories WHERE id = ANY(CAST(:ids AS uuid[]))"), {"ids": ids})
+            await s.commit()
+    await drop_buffer(buffer_ids)
+
+
+@pytest.mark.asyncio
+async def test_a9_lone_row_cut_at_its_deadline_is_charged_an_attempt(setup_database, monkeypatch):
+    monkeypatch.setattr(wait_process, "BUFFER_FLUSH_DEADLINE_SECONDS", 0.3)
+    ids = await seed_buffer(1)
+    pipeline = RecordingPipeline()
+    await _hang(pipeline)
+    try:
+        await wait_process.drive(
+            factory(), pipeline, buffer_ids=ids, timeout_seconds=0.05, max_attempts=5, poll_interval_seconds=0.01,
+        )
+        await asyncio.gather(*wait_process.continuing_flushes(), return_exceptions=True)
+        row = (await buffer_rows(ids))[ids[0]]
+        assert (row["status"], row["attempts"]) == ("pending", 1)
+    finally:
+        await _cleanup_rows(ids)
+
+
+@pytest.mark.asyncio
+async def test_a9_several_rows_cut_the_same_way_charge_none(setup_database, monkeypatch):
+    monkeypatch.setattr(wait_process, "BUFFER_FLUSH_DEADLINE_SECONDS", 0.3)
+    ids = await seed_buffer(3)
+    pipeline = RecordingPipeline()
+    await _hang(pipeline)
+    try:
+        await wait_process.drive(
+            factory(), pipeline, buffer_ids=ids, timeout_seconds=0.05, max_attempts=5, poll_interval_seconds=0.01,
+        )
+        await asyncio.gather(*wait_process.continuing_flushes(), return_exceptions=True)
+        rows = await buffer_rows(ids)
+        assert {(r["status"], r["attempts"]) for r in rows.values()} == {("pending", 0)}
+    finally:
+        await _cleanup_rows(ids)
+
+
+@pytest.mark.asyncio
+async def test_a9_a_flush_cut_at_shutdown_charges_none(setup_database):
+    ids = await seed_buffer(1)
+    started = asyncio.Event()
+    pipeline = RecordingPipeline()
+
+    async def hangs(entries):
+        pipeline.batches.append(list(entries))
+        started.set()
+        await asyncio.Event().wait()
+
+    pipeline.process_batch = hangs
+    try:
+        await wait_process.drive(
+            factory(), pipeline, buffer_ids=ids, timeout_seconds=0.05, max_attempts=5, poll_interval_seconds=0.01,
+        )
+        await asyncio.wait_for(started.wait(), 5)
+        await wait_process.drain_continuing_flushes(grace_seconds=0.05)
+        row = (await buffer_rows(ids))[ids[0]]
+        assert (row["status"], row["attempts"]) == ("pending", 0)
+    finally:
+        await _cleanup_rows(ids)
+
+
+@pytest.mark.asyncio
+async def test_a40_a_raising_inline_flush_answers_the_ack_and_logs_the_failure_once(
+    client, auth_headers, session, monkeypatch, caplog
+):
+    from app.main import app
+    from app.services.buffer_flush import as_session_factory
+
+    async def exploding(*args, **kwargs):
+        raise RuntimeError("a40 claim exploded")
+
+    monkeypatch.setattr(wait_process, "flush_claimed", exploding)
+    caplog.set_level(logging.ERROR)
+    pipeline = RecordingPipeline()
+    pipeline.session_factory = as_session_factory(session)
+    app.state.pipeline = pipeline
+    try:
+        response = await client.post(
+            "/api/v1/memories?wait_process=true",
+            json={"content": "a40 a flush that raises"},
+            headers=auth_headers,
+        )
+    finally:
+        app.state.pipeline = None
+
+    assert response.status_code == 202
+    assert response.json()["status"] == "accepted"
+    reports = [
+        r for r in caplog.records
+        if r.levelno >= logging.ERROR
+        and ("a40 claim exploded" in r.getMessage() or (r.exc_info and "a40 claim exploded" in str(r.exc_info[1])))
+    ]
+    assert len(reports) == 1, [r.getMessage() for r in reports]
