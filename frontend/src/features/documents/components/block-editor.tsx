@@ -7,6 +7,7 @@ import {
   type Ref,
 } from "react"
 import { Button } from "darkraise-ui/components/button"
+import { toast } from "darkraise-ui/components/sonner"
 import { Textarea } from "darkraise-ui/components/textarea"
 import { cn } from "darkraise-ui/lib"
 import {
@@ -17,6 +18,7 @@ import {
   type BlockRow,
 } from "@/hooks/api"
 import { ApiError } from "@/lib/api"
+import { QueuedWriteDiscarded } from "../lib/mutation-queue"
 import { BlockView } from "./block-view"
 import { listDepths } from "./document-reader"
 
@@ -221,6 +223,18 @@ export function BlockEditor({
     reportHeld.current?.(heldState)
   }, [heldState])
 
+  // A write in flight is not held against an in-app navigation, so its
+  // refusal can arrive after this editor is gone, with nothing left on screen
+  // to show it.
+  const mounted = useRef(false)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      reportHeld.current?.("none")
+    }
+  }, [])
+
   // A write in flight is lost with the tab as surely as a refused one.
   useEffect(() => {
     if (heldState === "none") return
@@ -280,13 +294,24 @@ export function BlockEditor({
   ) =>
     write.then(
       () => release(block.block_id, kind),
-      (error: unknown) =>
+      (error: unknown) => {
+        if (error instanceof QueuedWriteDiscarded) {
+          release(block.block_id, kind)
+          return
+        }
+        if (!mounted.current) {
+          toast.error(
+            `A block edit was not saved after you left the document: ${failureMessage(error)}`,
+          )
+          return
+        }
         hold(block.block_id, {
           kind,
           draft: draftText,
           message: failureMessage(error),
           busy: false,
-        }),
+        })
+      },
     )
 
   const updateFor = (block: BlockRow, source: string) => {
@@ -364,9 +389,11 @@ export function BlockEditor({
         target?.focus()
       },
       discardHeld: () => {
-        for (const [id, write] of Object.entries(held)) {
-          if (write.message !== null) discardHeld(id, write)
-        }
+        // A refusal pauses the queue, so every other held write is queued
+        // behind it, unsent, and goes with it.
+        if (!Object.values(held).some((write) => write.message !== null)) return
+        recovery.discardAll()
+        for (const [id, write] of Object.entries(held)) release(id, write.kind)
       },
     }),
   )

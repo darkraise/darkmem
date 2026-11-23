@@ -1,3 +1,4 @@
+import { useState } from "react"
 import { describe, expect, it, vi } from "vitest"
 import { act, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
@@ -93,6 +94,61 @@ describe("DocumentLeaveGuard", () => {
       expect(screen.getByRole("button", { name: "held block" })).toHaveFocus(),
     )
     expect(path(router)).toBe("/")
+  })
+
+  it("a switch its host reports as pending asks the same question", async () => {
+    const onDiscard = vi.fn()
+    const action = vi.fn()
+    const order: string[] = []
+    onDiscard.mockImplementation(() => order.push("discard"))
+    action.mockImplementation(() => order.push("switch"))
+    function Host() {
+      const [pending, setPending] = useState<(() => void) | null>(null)
+      return (
+        <>
+          <textarea aria-label="held edit" defaultValue="unsaved words" />
+          <button type="button" onClick={() => setPending(() => action)}>
+            other document
+          </button>
+          <DocumentLeaveGuard
+            held="refused"
+            restoreFocus={() => screen.getByRole("textbox", { name: "held edit" }).focus()}
+            onDiscard={onDiscard}
+            pending={pending}
+            onPendingSettled={() => setPending(null)}
+          />
+        </>
+      )
+    }
+    const root = createRootRoute({ component: Host })
+    render(
+      <RouterProvider
+        router={createRouter({
+          routeTree: root,
+          history: createMemoryHistory({ initialEntries: ["/"] }),
+        })}
+      />,
+    )
+
+    await userEvent.click(await screen.findByRole("button", { name: "other document" }))
+    const dialog = await screen.findByRole("alertdialog")
+    await userEvent.click(within(dialog).getByRole("button", { name: "Stay" }))
+    await waitFor(() =>
+      expect(screen.getByRole("textbox", { name: "held edit" })).toHaveFocus(),
+    )
+    expect(action).not.toHaveBeenCalled()
+    expect(onDiscard).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole("button", { name: "other document" }))
+    await userEvent.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", {
+        name: "Leave and discard",
+      }),
+    )
+    expect(order).toEqual(["discard", "switch"])
+    await waitFor(() =>
+      expect(screen.getByRole("alertdialog", { hidden: true })).toHaveAttribute("data-state", "closed"),
+    )
   })
 
   it.each(["saving", "none"] as const)(

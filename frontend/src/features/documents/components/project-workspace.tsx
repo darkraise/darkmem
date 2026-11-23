@@ -55,7 +55,10 @@ import {
 } from "@/features/documents/components/document-metadata"
 import { DocumentOutline } from "@/features/documents/components/document-outline"
 import { DocumentReader } from "@/features/documents/components/document-reader"
-import { EditableDocument } from "@/features/documents/components/editable-document"
+import {
+  EditableDocument,
+  type DocumentLeaveHandle,
+} from "@/features/documents/components/editable-document"
 import { GroundedAnswer } from "@/features/documents/components/grounded-answer"
 import { BoardPanel } from "@/features/board/components/board-panel"
 import { DocumentTree } from "@/features/documents/components/document-tree"
@@ -188,6 +191,14 @@ export function ProjectWorkspace({
   // Reading is the default for every selection: the block editor commits on
   // blur, so landing in it makes a stray keystroke a real edit.
   const [mode, setMode] = useState<ReaderMode>("read")
+  // Choosing a document or Read mode unmounts the editor without a router
+  // navigation, so the editor's leave guard is asked here instead.
+  const leaveGuard = useRef<DocumentLeaveHandle>(null)
+  const guarded = useCallback((action: () => void) => {
+    const handle = leaveGuard.current
+    if (handle) handle.attempt(action)
+    else action()
+  }, [])
   const search = useDocumentSearch()
   const qa = useGroundedQa()
   /** Counts "Show in Work log" clicks: it remounts the panel when the same
@@ -305,17 +316,25 @@ export function ProjectWorkspace({
   }, [])
 
   // Stable, so the memoised tree is not re-rendered by a heading crossing.
-  const handleSelectDocument = useCallback((doc: DocumentListItem) => {
-    setSelectedId(doc.id)
-    setFocusBlockId(null)
-    setMode("read")
-  }, [])
+  const handleSelectDocument = useCallback(
+    (doc: DocumentListItem) =>
+      guarded(() => {
+        setSelectedId(doc.id)
+        setFocusBlockId(null)
+        setMode("read")
+      }),
+    [guarded],
+  )
 
-  const openCitation = useCallback((citation: QaCitation) => {
-    setSelectedId(citation.document_id)
-    setFocusBlockId(citation.block_id)
-    setMode("read")
-  }, [])
+  const openCitation = useCallback(
+    (citation: QaCitation) =>
+      guarded(() => {
+        setSelectedId(citation.document_id)
+        setFocusBlockId(citation.block_id)
+        setMode("read")
+      }),
+    [guarded],
+  )
 
   const switchTab = tabs.onTabChange
   const documentsLoading = documents.isLoading
@@ -334,12 +353,14 @@ export function ProjectWorkspace({
         )
         return
       }
-      setSelectedId(doc.id)
-      setFocusBlockId(null)
-      setMode("read")
-      switchTab?.("artifacts")
+      guarded(() => {
+        setSelectedId(doc.id)
+        setFocusBlockId(null)
+        setMode("read")
+        switchTab?.("artifacts")
+      })
     },
-    [items, documentsLoading, switchTab],
+    [items, documentsLoading, switchTab, guarded],
   )
 
   const hits = search.data?.items ?? []
@@ -492,8 +513,10 @@ export function ProjectWorkspace({
               onClick={() => {
                 const doc = items.find((d) => d.id === hit.document_id)
                 if (doc) {
-                  setSelectedId(doc.id)
-                  setFocusBlockId(hit.block_id)
+                  guarded(() => {
+                    setSelectedId(doc.id)
+                    setFocusBlockId(hit.block_id)
+                  })
                 }
               }}
             >
@@ -619,7 +642,7 @@ export function ProjectWorkspace({
                     <DocumentActions
                       document={selected}
                       mode={mode}
-                      onModeChange={setMode}
+                      onModeChange={(next) => guarded(() => setMode(next))}
                       onDeleted={() => {
                         setSelectedId(null)
                         setFocusBlockId(null)
@@ -642,7 +665,10 @@ export function ProjectWorkspace({
                             showOutline={false}
                           />
                         ) : (
-                          <EditableDocument documentId={selected.id} />
+                          <EditableDocument
+                            documentId={selected.id}
+                            leave={leaveGuard}
+                          />
                         )}
                       </Card>
                     </div>
@@ -669,9 +695,11 @@ export function ProjectWorkspace({
                     onOpenDocument={(documentId, blockId) => {
                       const doc = items.find((d) => d.id === documentId)
                       if (!doc) return
-                      setSelectedId(doc.id)
-                      setFocusBlockId(blockId)
-                      setMode("read")
+                      guarded(() => {
+                        setSelectedId(doc.id)
+                        setFocusBlockId(blockId)
+                        setMode("read")
+                      })
                     }}
                   />
                 </div>
@@ -696,11 +724,13 @@ export function ProjectWorkspace({
         onOpenChange={(open) => {
           if (!open) setNewDocumentAt(null)
         }}
-        onCreated={(documentId) => {
-          setSelectedId(documentId)
-          setFocusBlockId(null)
-          setMode("read")
-        }}
+        onCreated={(documentId) =>
+          guarded(() => {
+            setSelectedId(documentId)
+            setFocusBlockId(null)
+            setMode("read")
+          })
+        }
       />
       <RenameFolderDialog
         project={project}

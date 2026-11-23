@@ -34,7 +34,7 @@ vi.mock("@/hooks/api", async (importOriginal) => ({
   useBlockUpdate: () => ({ mutate: update, mutateAsync: asAsync(update) }),
   useBlockInsert: () => ({ mutate: insert, mutateAsync: asAsync(insert) }),
   useBlockDelete: () => ({ mutate: remove, mutateAsync: asAsync(remove) }),
-  useBlockWriteRecovery: () => ({ retry: vi.fn(), discard: vi.fn() }),
+  useBlockWriteRecovery: () => ({ retry: vi.fn(), discard: vi.fn(), discardAll: vi.fn() }),
   useDocumentBlocks: () => ({ isLoading: false, isError: false, data: blocksState.data }),
 }))
 vi.mock("@/lib/api", async (importOriginal) => {

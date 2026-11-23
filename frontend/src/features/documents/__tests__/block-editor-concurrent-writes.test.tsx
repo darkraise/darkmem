@@ -18,7 +18,7 @@ vi.mock("@/hooks/api", async (importOriginal) => ({
   useBlockUpdate: () => useMutation({ mutationFn: write }),
   useBlockInsert: () => useMutation({ mutationFn: write }),
   useBlockDelete: () => useMutation({ mutationFn: write }),
-  useBlockWriteRecovery: () => ({ retry: vi.fn(), discard: vi.fn() }),
+  useBlockWriteRecovery: () => ({ retry: vi.fn(), discard: vi.fn(), discardAll: vi.fn() }),
 }))
 
 function block(over: Partial<BlockRow>): BlockRow {

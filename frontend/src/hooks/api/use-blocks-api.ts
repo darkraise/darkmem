@@ -176,6 +176,10 @@ export function useBlockWriteRecovery(documentId: string) {
       queueFor(documentId, qc).discard()
       invalidateDocument(qc, documentId)
     },
+    discardAll: () => {
+      queueFor(documentId, qc).discardAll()
+      invalidateDocument(qc, documentId)
+    },
   }
 }
 

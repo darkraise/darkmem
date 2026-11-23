@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { readFileSync } from "node:fs"
 import path from "node:path"
-import { createMutationQueue } from "../lib/mutation-queue"
+import { createMutationQueue, QueuedWriteDiscarded } from "../lib/mutation-queue"
 
 const noReread = async () => "unused"
 
@@ -72,6 +72,31 @@ describe("the mutation queue", () => {
     await new Promise((r) => setTimeout(r, 20))
     expect(sent).toEqual(["first"])
     expect(queue.paused).toBe(true)
+  })
+
+  it("discardAll drops the refused write and every write queued behind it", async () => {
+    const queue = createMutationQueue("hash-0", async () => "hash-fresh")
+    const sent: string[] = []
+    const write = (name: string) =>
+      queue.enqueue(async (hash) => {
+        sent.push(`${name}@${hash}`)
+        if (name === "first") {
+          throw Object.assign(new Error("stale"), { status: 409, code: "hash_conflict" })
+        }
+        return { result: name, content_hash: hash }
+      })
+    const refused = write("first")
+    const queued = [write("second"), write("third")]
+    await expect(refused).rejects.toThrow("stale")
+
+    queue.discardAll()
+
+    for (const promise of queued) {
+      await expect(promise).rejects.toBeInstanceOf(QueuedWriteDiscarded)
+    }
+    expect(queue.paused).toBe(false)
+    await expect(write("later")).resolves.toBe("later")
+    expect(sent).toEqual(["first@hash-0", "later@hash-fresh"])
   })
 
   it("the queue resumes when the operator acts", async () => {

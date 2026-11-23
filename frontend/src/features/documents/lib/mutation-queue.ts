@@ -4,6 +4,14 @@ type Mutation<T> = (
   hash: string,
 ) => Promise<{ result: T; content_hash: string | null }>
 
+/** The rejection of a write `discardAll` dropped before it was sent. */
+export class QueuedWriteDiscarded extends Error {
+  constructor() {
+    super("The write was discarded before it was sent")
+    this.name = "QueuedWriteDiscarded"
+  }
+}
+
 /** Serialises a document's block mutations and carries the hash between them.
  *
  *  The editor fires a commit and an insert synchronously; run concurrently
@@ -23,6 +31,7 @@ export function createMutationQueue(
   let tail: Promise<unknown> = Promise.resolve()
   let held: { fn: Mutation<unknown>; resume: () => void } | null = null
   let retrying: Promise<unknown> | null = null
+  let discards = 0
 
   async function attempt<T>(fn: Mutation<T>): Promise<T> {
     // Null after a delete (204, no body), a hash conflict or a discard.
@@ -41,13 +50,20 @@ export function createMutationQueue(
   }
 
   function enqueue<T>(fn: Mutation<T>): Promise<T> {
-    const run = tail.then(() => attempt(fn))
+    const generation = discards
+    const run = tail.then(() =>
+      generation === discards
+        ? attempt(fn)
+        : Promise.reject(new QueuedWriteDiscarded()),
+    )
     tail = run.then(
       () => undefined,
-      () =>
-        new Promise<void>((resume) => {
-          held = { fn: fn as Mutation<unknown>, resume }
-        }),
+      (error: unknown) =>
+        error instanceof QueuedWriteDiscarded
+          ? undefined
+          : new Promise<void>((resume) => {
+              held = { fn: fn as Mutation<unknown>, resume }
+            }),
     )
     return run
   }
@@ -82,10 +98,23 @@ export function createMutationQueue(
     current.resume()
   }
 
+  /** Drops the failed mutation and every one queued behind it, which then
+   *  reject with `QueuedWriteDiscarded` unsent. A write already sent is not
+   *  recalled. */
+  function discardAll() {
+    if (retrying) return
+    discards += 1
+    const current = held
+    held = null
+    hash = null
+    current?.resume()
+  }
+
   return {
     enqueue,
     retry,
     discard,
+    discardAll,
     get paused() {
       return held !== null
     },
