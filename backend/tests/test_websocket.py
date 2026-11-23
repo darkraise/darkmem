@@ -41,6 +41,7 @@ async def test_event_manager_disconnect():
 
 # ── Revalidation from memory ─────────────────────────────────────────────
 
+import math
 import time
 import uuid
 from contextlib import contextmanager
@@ -60,8 +61,10 @@ INTERVAL = 0.05
 
 def _token(*, iat_ago: float = 0.0, ttl: float = 3600.0) -> str:
     now = time.time()
+    # Rounded up: a truncated `exp` leaves a one-second ttl anywhere from no
+    # time to a second, and a handshake that outlasts it is refused unaccepted.
     return jwt.encode(
-        {"sub": "admin", "iat": int(now - iat_ago), "exp": int(now + ttl), "jti": uuid.uuid4().hex},
+        {"sub": "admin", "iat": int(now - iat_ago), "exp": math.ceil(now + ttl), "jti": uuid.uuid4().hex},
         settings.jwt_secret, algorithm=ALGORITHM,
     )
 
