@@ -150,11 +150,14 @@ DEADLOCK_SQLSTATE = "40P01"
 DEADLOCK_ATTEMPTS = 3
 
 
+def _sqlstate(exc: BaseException) -> str | None:
+    if isinstance(exc, DBAPIError):
+        return getattr(exc.orig, "sqlstate", None)
+    return None
+
+
 def _is_deadlock(exc: BaseException) -> bool:
-    return (
-        isinstance(exc, DBAPIError)
-        and getattr(exc.orig, "sqlstate", None) == DEADLOCK_SQLSTATE
-    )
+    return _sqlstate(exc) == DEADLOCK_SQLSTATE
 
 
 DUPLICATE_STATUSES: tuple[str, ...] = ("active",)
@@ -1448,11 +1451,37 @@ class ProcessingPipeline:
                 vector_repo = PostgresVectorRepository(session)
                 graph_repo = PostgresGraphRepository(session)
                 await vector_repo.delete(memory_id)
-                await graph_repo.delete_by_memory_id(memory_id)
+                # Each step has its own savepoint so a failed one costs only
+                # itself: the commit keeps the vector delete and whatever else
+                # landed, and `graph_orphan_cleanup` and the hourly reap heal
+                # a strip or a withdrawal that did not.
+                for attempt in range(1, DEADLOCK_ATTEMPTS + 1):
+                    try:
+                        async with session.begin_nested():
+                            await graph_repo.delete_by_memory_id(memory_id)
+                        break
+                    except Exception as e:
+                        if _is_deadlock(e) and attempt < DEADLOCK_ATTEMPTS:
+                            logger.warning(
+                                "Graph strip deadlocked for %s (attempt %d of %d); retrying",
+                                memory_id, attempt, DEADLOCK_ATTEMPTS,
+                            )
+                            continue
+                        logger.warning(
+                            "Graph strip failed for %s (SQLSTATE %s): %s",
+                            memory_id, _sqlstate(e), e,
+                        )
+                        break
                 # A deleted memory sources nothing, so the whole set goes
-                # (doc 05 §8.4). Same transaction as the graph strip for the
-                # same reason Phase 5's hook sits inside savepoint B.
-                await withdraw_memory_sources(session, memory_id=memory_id)
+                # (doc 05 §8.4).
+                try:
+                    async with session.begin_nested():
+                        await withdraw_memory_sources(session, memory_id=memory_id)
+                except Exception as e:
+                    logger.warning(
+                        "Fact-source withdrawal failed for %s (SQLSTATE %s): %s",
+                        memory_id, _sqlstate(e), e,
+                    )
                 await session.commit()
             if broadcast and self._broadcast:
                 try:

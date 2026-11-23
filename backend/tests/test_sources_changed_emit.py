@@ -733,3 +733,109 @@ async def drop_facts(factory, fact_ids) -> None:
             {"ids": [str(f) for f in fact_ids]},
         )
         await s.commit()
+
+
+class _SqlState(Exception):
+    def __init__(self, sqlstate: str):
+        super().__init__(f"sqlstate {sqlstate}")
+        self.sqlstate = sqlstate
+
+
+async def _seed_written_memory_with_source(bed, subject: str) -> dict:
+    status = await bed.pipe._write_memory(
+        bed.entry(content="pgvector replaces faiss"),
+        VECTOR, bed.fingerprint, bed.fingerprint,
+        dict(EXTRACTION), None, {}, {},
+    )
+    assert status["graph"] == "ok", status
+    async with bed.factory() as s:
+        fact = await seed_fact(s, subject=subject, rel_type="USES", obj="postgres")
+        await seed_source(s, fact_id=fact["id"], memory_id=bed.memory_id)
+        await s.commit()
+    return fact
+
+
+@pytest.mark.asyncio
+async def test_a_delete_that_loses_one_deadlock_still_strips(setup_database, monkeypatch):
+    from sqlalchemy.exc import DBAPIError
+
+    async with savepoint_bed(["pgvector replaces faiss"], "delete-deadlock|4") as bed:
+        fact = await _seed_written_memory_with_source(bed, f"delete-deadlock-{uuid.uuid4()}")
+        assert await bed.entity_names()
+        real_strip = PostgresGraphRepository.delete_by_memory_id
+        calls = 0
+
+        async def deadlock_once(self, memory_id):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise DBAPIError("UPDATE entities", {}, _SqlState("40P01"))
+            return await real_strip(self, memory_id)
+
+        monkeypatch.setattr(PostgresGraphRepository, "delete_by_memory_id", deadlock_once)
+        try:
+            await bed.pipe.delete_memory(bed.memory_id, broadcast=False)
+
+            assert calls == 2
+            assert await bed.entity_names() == set()
+            assert await bed.embedding_rows() == 0
+            async with bed.factory() as s:
+                assert await source_rows(s, fact["id"]) == 0
+        finally:
+            await drop_facts(bed.factory, [fact["id"]])
+
+
+@pytest.mark.asyncio
+async def test_a_withdrawal_lock_timeout_keeps_the_strip(setup_database, monkeypatch, caplog):
+    import asyncio
+    import logging
+
+    from app.services import fact_provenance
+
+    async with savepoint_bed(["pgvector replaces faiss"], "delete-locked|4") as bed:
+        fact = await _seed_written_memory_with_source(bed, f"delete-locked-{uuid.uuid4()}")
+        monkeypatch.setattr(fact_provenance, "WITHDRAWAL_LOCK_TIMEOUT", "200ms")
+        caplog.set_level(logging.WARNING, logger="app.services.pipeline")
+        try:
+            async with bed.factory() as holder:
+                await holder.execute(
+                    text("SELECT 1 FROM knowledge_triples WHERE id = CAST(:id AS uuid) FOR UPDATE"),
+                    {"id": str(fact["id"])},
+                )
+                await asyncio.wait_for(
+                    bed.pipe.delete_memory(bed.memory_id, broadcast=False), 5,
+                )
+                await holder.rollback()
+
+            assert await bed.embedding_rows() == 0
+            assert await bed.entity_names() == set()
+            async with bed.factory() as s:
+                assert await source_rows(s, fact["id"]) == 1
+            warnings = [
+                r.getMessage() for r in caplog.records
+                if r.name == "app.services.pipeline"
+                and r.levelno == logging.WARNING
+                and "55P03" in r.getMessage()
+            ]
+            assert len(warnings) == 1, warnings
+        finally:
+            await drop_facts(bed.factory, [fact["id"]])
+
+
+@pytest.mark.asyncio
+async def test_withdrawal_restores_the_callers_lock_timeout(setup_database):
+    async with savepoint_bed(["pgvector replaces faiss"], "delete-timeout|4") as bed:
+        async with bed.factory() as s:
+            fact = await seed_fact(
+                s, subject=f"delete-timeout-{uuid.uuid4()}", rel_type="USES", obj="postgres",
+            )
+            await seed_source(s, fact_id=fact["id"], memory_id=bed.memory_id)
+            await s.execute(text("SELECT set_config('lock_timeout', '7s', true)"))
+
+            await withdraw_memory_sources(s, memory_id=bed.memory_id)
+
+            assert (await s.execute(
+                text("SELECT current_setting('lock_timeout')")
+            )).scalar_one() == "7s"
+            assert await source_rows(s, fact["id"]) == 0
+            await s.rollback()
