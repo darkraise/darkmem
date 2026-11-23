@@ -11,7 +11,16 @@ or HA deployment would back this with Redis instead.
 from __future__ import annotations
 
 import time
-from typing import Callable
+from typing import Callable, NamedTuple
+
+
+REFUSED_FAILURES = "failures"
+REFUSED_IN_FLIGHT = "in_flight"
+
+
+class LoginRefusal(NamedTuple):
+    retry_after: int
+    gate: str
 
 
 class LoginRateLimiter:
@@ -52,8 +61,9 @@ class LoginRateLimiter:
             return int(remaining) + 1
         return None
 
-    def acquire(self, ip: str) -> int | None:
-        """Reserve an attempt slot for ``ip``, or return the 429's Retry-After.
+    def acquire(self, ip: str) -> LoginRefusal | None:
+        """Reserve an attempt slot for ``ip``, or return the 429's Retry-After
+        and the gate that refused.
 
         Called before the handler's first ``await``: attempts already in flight
         count against the threshold, so concurrent guesses cannot all pass a
@@ -62,14 +72,14 @@ class LoginRateLimiter:
         """
         locked = self.retry_after(ip)
         if locked is not None:
-            return locked
+            return LoginRefusal(locked, REFUSED_FAILURES)
         now = self._clock()
         self._maybe_sweep(now)
         st = self._state.setdefault(ip, {"failures": [], "locked_until": 0.0})
         st["failures"] = [t for t in st["failures"] if now - t < self.window_seconds]
         in_flight = st.get("in_flight", 0)
         if len(st["failures"]) + in_flight >= self.max_failures:
-            return 1
+            return LoginRefusal(1, REFUSED_IN_FLIGHT if in_flight else REFUSED_FAILURES)
         st["in_flight"] = in_flight + 1
         return None
 

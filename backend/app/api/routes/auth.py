@@ -8,6 +8,7 @@ from sqlalchemy import select, text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import (
+    PASSWORD_CHANGED_AT_KEY,
     TokenPayload,
     clear_auth_cookie,
     create_access_token,
@@ -25,12 +26,11 @@ from app.database import SessionDep, async_session_factory
 from app.models.config import Config
 from app.models.token_blocklist import TokenBlocklist
 from app.services.events import record_event
-from app.services.login_rate_limit import login_rate_limiter
+from app.services.login_rate_limit import REFUSED_IN_FLIGHT, login_rate_limiter
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 ADMIN_PASSWORD_KEY = "admin_password_hash"
-PASSWORD_CHANGED_AT_KEY = "admin_password_changed_at"
 
 
 async def _record_audit(action: str, details: dict) -> None:
@@ -96,11 +96,16 @@ async def auth_login(
     # boundary; bcrypt slows each guess but doesn't bound the rate. The slot is
     # reserved before the first await, so concurrent guesses count against the
     # threshold while they are still in flight.
-    retry_after = limiter.acquire(ip)
-    if retry_after is not None:
+    refusal = limiter.acquire(ip)
+    if refusal is not None:
+        retry_after = refusal.retry_after
+        if refusal.gate == REFUSED_IN_FLIGHT:
+            detail = f"Too many login attempts in progress; retry in {retry_after}s"
+        else:
+            detail = f"Too many failed login attempts; retry in {retry_after}s"
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"Too many failed login attempts; retry in {retry_after}s",
+            detail=detail,
             headers={"Retry-After": str(retry_after)},
         )
     try:

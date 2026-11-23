@@ -21,8 +21,7 @@ ACCESS_TOKEN_EXPIRE_HOURS = 24
 COOKIE_NAME = "darkmem_session"
 # Config row holding the Unix timestamp of the last admin password change.
 # Tokens issued strictly before this instant are rejected so a password
-# change revokes every outstanding session. Kept in sync with
-# ``app.api.routes.auth.PASSWORD_CHANGED_AT_KEY``.
+# change revokes every outstanding session.
 PASSWORD_CHANGED_AT_KEY = "admin_password_changed_at"
 
 

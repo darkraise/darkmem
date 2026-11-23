@@ -89,3 +89,62 @@ async def test_lockout_transition_is_journaled(client, session, monkeypatch):
     r = await client.post("/api/v1/auth/login", json={"password": "wrong"})
     assert r.status_code == 429
     assert await _lockout_row_count() == baseline + 1
+
+
+async def _armed_limiter(session, monkeypatch) -> LoginRateLimiter:
+    from tests.conftest import test_engine
+
+    test_factory = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    monkeypatch.setattr(auth_routes, "async_session_factory", test_factory)
+    limiter = LoginRateLimiter(max_failures=5, lockout_seconds=300)
+    monkeypatch.setattr(auth_routes, "login_rate_limiter", limiter)
+    session.add(Config(key="admin_password_hash", value={"hash": hash_password("correct")}))
+    await session.commit()
+    return limiter
+
+
+@pytest.mark.asyncio
+async def test_in_flight_saturation_says_in_progress(client, session, monkeypatch):
+    import asyncio
+    import re
+    import threading
+
+    limiter = await _armed_limiter(session, monkeypatch)
+    release = threading.Event()
+
+    def _held_verify(password, hashed):
+        release.wait(10)
+        return False
+
+    monkeypatch.setattr(auth_routes, "verify_password", _held_verify)
+    held = [
+        asyncio.create_task(client.post("/api/v1/auth/login", json={"password": "wrong"}))
+        for _ in range(5)
+    ]
+    try:
+        for _ in range(500):
+            if sum(limiter.in_flight(ip) for ip in list(limiter._state)) == 5:
+                break
+            await asyncio.sleep(0.01)
+        refused = await client.post("/api/v1/auth/login", json={"password": "wrong"})
+    finally:
+        release.set()
+        await asyncio.gather(*held)
+
+    assert refused.status_code == 429
+    detail = refused.json()["detail"]
+    assert re.fullmatch(r"Too many login attempts in progress; retry in \d+s", detail), detail
+    assert "failed login attempts" not in detail
+
+
+@pytest.mark.asyncio
+async def test_failures_still_say_failed(client, session, monkeypatch):
+    await _armed_limiter(session, monkeypatch)
+    for _ in range(5):
+        r = await client.post("/api/v1/auth/login", json={"password": "wrong"})
+        assert r.status_code == 401
+
+    refused = await client.post("/api/v1/auth/login", json={"password": "wrong"})
+
+    assert refused.status_code == 429
+    assert refused.json()["detail"].startswith("Too many failed login attempts; retry in")

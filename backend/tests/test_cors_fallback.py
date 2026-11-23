@@ -14,31 +14,45 @@ def _cors_entry():
     return entries[0]
 
 
+def _cors_origins(origins: list[str]):
+    """The CORS entry rebuilt with ``origins``; the stack is rebuilt again on
+    the way out, so no later test sees this one's origins."""
+    import contextlib
+
+    @contextlib.contextmanager
+    def patched():
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setitem(_cors_entry().kwargs, "allow_origins", origins)
+            mp.setattr(app, "middleware_stack", None)
+            try:
+                yield
+            finally:
+                app.middleware_stack = None
+        app.middleware_stack = None
+
+    return patched()
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("origin", ["http://localhost:3000", "http://localhost:5173"])
 async def test_unset_cors_origins_allows_no_origin(client, origin):
     assert settings.cors_origins == []
 
-    r = await client.get("/api/v1/auth/me", headers={"Origin": origin})
-    assert "access-control-allow-origin" not in r.headers
+    with _cors_origins([]):
+        r = await client.get("/api/v1/auth/me", headers={"Origin": origin})
+        pre = await client.options(
+            "/api/v1/auth/me",
+            headers={"Origin": origin, "Access-Control-Request-Method": "GET"},
+        )
 
-    pre = await client.options(
-        "/api/v1/auth/me",
-        headers={"Origin": origin, "Access-Control-Request-Method": "GET"},
-    )
+    assert "access-control-allow-origin" not in r.headers
     assert "access-control-allow-origin" not in pre.headers
 
 
 @pytest.mark.asyncio
-async def test_configured_origin_is_still_allowed(client, monkeypatch):
-    entry = _cors_entry()
-    monkeypatch.setitem(entry.kwargs, "allow_origins", ["https://mem.example"])
-    monkeypatch.setattr(app, "middleware_stack", None)
-    try:
+async def test_configured_origin_is_still_allowed(client):
+    with _cors_origins(["https://mem.example"]):
         r = await client.get("/api/v1/auth/me", headers={"Origin": "https://mem.example"})
-    finally:
-        monkeypatch.undo()
-        app.middleware_stack = None
 
     assert r.headers.get("access-control-allow-origin") == "https://mem.example"
     assert r.headers.get("access-control-allow-credentials") == "true"
