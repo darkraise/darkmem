@@ -988,14 +988,19 @@ def test_a49_a_right_dump_still_prunes(tmp_path):
 def test_a49_the_restore_cycle_exits_nonzero_on_a_migrate_failure_unless_an_older_baseline():
     text = (REPO / "scripts/worker/restore-cycle.sh").read_text()
     m = re.search(
-        r'if ! \$COMPOSE run .*?alembic upgrade head.*?; then\n(?P<body>.*?)\nfi\n', text, flags=re.S
+        r'\$COMPOSE run .*?alembic upgrade head.*?\|\| MIGRATE_RC=\$\?\n'
+        r'.*?\nif \[ "\$MIGRATE_RC" -ne 0 \]; then\n(?P<body>.*?)\nfi\n',
+        text, flags=re.S,
     )
     assert m, "the migrate step is not guarded"
     body = m.group("body")
-    cond = re.search(r'if (\[ .*? \]); then\n(?P<then>.*?)\n\s*fi\n(?P<after>.*)', body, flags=re.S)
+    cond = re.search(
+        r'if (\[ [^\n]*"\$STAMPED" != "\$IMAGE_SHA"[^\n]* \]); then\n(?P<then>.*?)\n\s*fi\n(?P<after>.*)',
+        body, flags=re.S,
+    )
     assert cond, body
-    assert '"$STAMPED" != "$IMAGE_SHA"' in cond.group(1)
     assert re.search(r"\bexit 0\b", cond.group("then"))
+    assert not re.search(r"\bexit 0\b", body[:cond.start()])
     assert re.search(r"\bexit 1\b", cond.group("after"))
     assert not re.search(r"\bexit 0\b", cond.group("after"))
 

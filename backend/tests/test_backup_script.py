@@ -152,7 +152,6 @@ def test_retention_never_deletes_a_real_dump_to_keep_a_failure_artefact(dest, tm
         assert gzip.decompress(dump.read_bytes()), f"{dump.name} is an empty dump"
 
 
-
 def _seed_dumps(dest: Path, count: int) -> list[Path]:
     """Older real dumps, oldest first by mtime."""
     seeded = []
@@ -182,6 +181,27 @@ def test_wrong_database_dump_triggers_no_prune(dest, tmp_path):
     survivors = _dumps(dest)
     assert len(survivors) == 14
     assert older[0] not in survivors and older[1:] == [d for d in survivors if d in older]
+
+
+def test_suspect_dumps_keep_the_newest_three(dest, tmp_path):
+    real = _seed_dumps(dest, 2)
+    before = {dump: (dump.read_bytes(), dump.stat().st_mtime) for dump in real}
+    seeded = []
+    for index in range(4):
+        suspect = dest / f"darkmem-202002{index + 1:02d}-000000.sql.gz.suspect"
+        suspect.write_bytes(gzip.compress(OTHER_DATABASE_BODY.encode()))
+        os.utime(suspect, (2000 + index, 2000 + index))
+        seeded.append(suspect)
+    wrong = _stub(tmp_path, "compose-wrong.sh", f"cat <<'SQL'\n{OTHER_DATABASE_BODY}{DUMP_TAIL}SQL\n")
+
+    result = _run_backup(dest, wrong, keep="14")
+
+    assert result.returncode != 0
+    suspects = sorted(dest.glob("darkmem-*.sql.gz.suspect"))
+    new = [s for s in suspects if s not in seeded]
+    assert len(new) == 1
+    assert set(suspects) == {*new, *seeded[-2:]}
+    assert {dump: (dump.read_bytes(), dump.stat().st_mtime) for dump in real} == before
 
 
 def test_failed_dump_still_prunes_nothing(dest, tmp_path):

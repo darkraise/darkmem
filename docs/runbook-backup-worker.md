@@ -306,6 +306,13 @@ docker compose -f docker-compose.worker.yml start darkmem
 Every other stage leaves the viewer untouched and the side database as debris to
 drop.
 
+A replay, migrate or image probe that overruns its bound (`RESTORE_REPLAY_TIMEOUT`,
+`RESTORE_MIGRATE_TIMEOUT`, default 3600 s each; `RESTORE_PROBE_TIMEOUT`, default
+120 s) exits non-zero with a `TIMED OUT` line naming the step and swaps nothing.
+A timed-out replay or migrate also removes the migrate container, ends the side
+database's sessions and drops it. To check for a leftover one, run
+`docker compose -f docker-compose.worker.yml exec -T postgres psql -U darkmem -d postgres -Atc "SELECT datname FROM pg_database WHERE datname LIKE 'darkmem_restore_%'"`.
+
 ---
 
 ## Verifying it worked

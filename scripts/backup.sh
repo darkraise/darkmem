@@ -29,7 +29,8 @@ $COMPOSE exec -T "$SERVICE" pg_dump -U "$USER" -d "$DB" --clean --if-exists \
 
 # pg_dump writes this marker last and only on success, so it also catches the
 # truncated stream that still exits 0, which pipefail cannot see. A size floor
-# would not: this database's nightly dumps have ranged from 14 KB to 2.4 MB.
+# would not: this database's nightly dumps are about 250 MB, and were once
+# as small as 14 KB.
 if ! gunzip -c "$PART" | tail -c 512 | grep -F 'PostgreSQL database dump complete' >/dev/null; then
     echo "Incomplete dump: no pg_dump completion marker. Nothing written to $OUT." >&2
     exit 1
@@ -48,7 +49,20 @@ done
 if [ "${#MISSING[@]}" -gt 0 ]; then
     mv -- "$PART" "$OUT.suspect"
     printf "Suspect dump: no '%s' line in it.\n" "${MISSING[@]}" >&2
-    echo "Not a darkmem database dump. Kept as $OUT.suspect; nothing pruned." >&2
+    echo "Not a darkmem database dump. Kept as $OUT.suspect; no dump pruned." >&2
+    # Suspects take their own glob, so this can never reach a real dump; a
+    # run of bad nights would otherwise fill the disk with ~250 MB files.
+    SUSPECT_KEEP=3
+    mapfile -d '' -t SUSPECTS < <(
+        find "$DEST_DIR" -maxdepth 1 -name 'darkmem-*.sql.gz.suspect' -type f -printf '%T@ %p\0' \
+        | sort -zrn | cut -z -d' ' -f2-
+    )
+    if [ "${#SUSPECTS[@]}" -gt "$SUSPECT_KEEP" ]; then
+        for old_suspect in "${SUSPECTS[@]:$SUSPECT_KEEP}"; do
+            rm -f -- "$old_suspect"
+            echo "Pruned $old_suspect (suspects: newest $SUSPECT_KEEP)" >&2
+        done
+    fi
     exit 1
 fi
 

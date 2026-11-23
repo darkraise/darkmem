@@ -35,8 +35,15 @@ SERVICE="${POSTGRES_SERVICE:-postgres}"
 APP_SERVICE="${APP_SERVICE:-darkmem}"
 GRANTS="${GRANTS:-$(dirname "$0")/viewer-grants.sql}"
 ATTACHMENT_STORE="${ATTACHMENT_STORE:-/srv/darkmem-attachments}"
+DOCKER="${DOCKER_CMD:-docker}"
+# The worker's real cycle time is unmeasured, so each bound is overridable.
+PROBE_TIMEOUT="${RESTORE_PROBE_TIMEOUT:-120}"
+REPLAY_TIMEOUT="${RESTORE_REPLAY_TIMEOUT:-3600}"
+MIGRATE_TIMEOUT="${RESTORE_MIGRATE_TIMEOUT:-3600}"
+TIMED_OUT=124
 
 SIDE_DB="${DB}_restore_$$"
+MIGRATE_CONTAINER="darkmem-restore-migrate-$$"
 STAGE="none"
 PLAIN=""
 
@@ -77,6 +84,38 @@ trap cleanup EXIT
 psql_owner() {
     PGPASSWORD="$OWNER_PASSWORD" $COMPOSE exec -T "$SERVICE" \
         psql -U "$OWNER_USER" -v ON_ERROR_STOP=1 "$@"
+}
+
+# Runs one step under a bound and answers 124 when the bound ended it. The
+# step gets a process group of its own (setsid) and the whole group is killed
+# on a timeout: GNU timeout signals its group, but uutils timeout signals only
+# the command it started, so the step's children would outlive it there.
+# Stdin is passed on explicitly, since a background job otherwise reads
+# /dev/null.
+bounded() {
+    local seconds=$1
+    shift
+    local rc=0
+    setsid --wait timeout --kill-after=10 "$seconds" "$@" <&0 &
+    local pid=$!
+    wait "$pid" || rc=$?
+    if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+        kill -KILL -- "-$pid" 2>/dev/null || true
+        return "$TIMED_OUT"
+    fi
+    return "$rc"
+}
+
+# A timeout kills only the local compose client: the replay's psql keeps
+# running inside the Postgres container, and the migrate's run container can
+# outlive its client. Each step tolerates having nothing to do.
+abandon_side_database() {
+    echo "Removing the migrate container and dropping '$SIDE_DB'..." >&2
+    $DOCKER rm -f "$MIGRATE_CONTAINER" >/dev/null 2>&1 || true
+    psql_owner -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$SIDE_DB' AND pid <> pg_backend_pid();" >/dev/null || true
+    if psql_owner -d postgres -c "DROP DATABASE IF EXISTS \"$SIDE_DB\";"; then
+        STAGE="none"
+    fi
 }
 
 # ── attachment generations ────────────────────────────────────────────
@@ -220,7 +259,16 @@ psql_owner -d postgres \
 STAGE="side_created"
 
 echo "Replaying into '$SIDE_DB'..."
-gunzip -c "$PLAIN" | psql_owner -d "$SIDE_DB"
+REPLAY_RC=0
+gunzip -c "$PLAIN" | PGPASSWORD="$OWNER_PASSWORD" bounded "$REPLAY_TIMEOUT" \
+    $COMPOSE exec -T "$SERVICE" psql -U "$OWNER_USER" -v ON_ERROR_STOP=1 -d "$SIDE_DB" \
+    || REPLAY_RC=$?
+if [ "$REPLAY_RC" -eq "$TIMED_OUT" ]; then
+    echo "REPLAY TIMED OUT: the replay timed out after ${REPLAY_TIMEOUT}s (RESTORE_REPLAY_TIMEOUT); nothing was swapped." >&2
+    abandon_side_database
+    exit 1
+fi
+[ "$REPLAY_RC" -eq 0 ] || exit "$REPLAY_RC"
 STAGE="side_replayed"
 
 # ── 4. migrate + stamp, privileged, against the side database ─────────
@@ -235,17 +283,33 @@ STAGE="side_replayed"
 # report a green night every night.
 
 echo "Migrating and stamping '$SIDE_DB'..."
-if ! $COMPOSE run --rm --no-deps \
+MIGRATE_RC=0
+bounded "$MIGRATE_TIMEOUT" $COMPOSE run --rm --no-deps --name "$MIGRATE_CONTAINER" \
         -e DB_USER="$OWNER_USER" -e DB_PASSWORD="$OWNER_PASSWORD" \
         -e DB_NAME="$SIDE_DB" \
-        "$APP_SERVICE" sh -c "python -m alembic upgrade head && python -m app.schema_guard"; then
+        "$APP_SERVICE" sh -c "python -m alembic upgrade head && python -m app.schema_guard" \
+    || MIGRATE_RC=$?
+if [ "$MIGRATE_RC" -eq "$TIMED_OUT" ]; then
+    echo "MIGRATE TIMED OUT: the migrate timed out after ${MIGRATE_TIMEOUT}s (RESTORE_MIGRATE_TIMEOUT); nothing was swapped." >&2
+    abandon_side_database
+    exit 1
+fi
+if [ "$MIGRATE_RC" -ne 0 ]; then
     STAMPED="$(psql_owner -d "$SIDE_DB" -At \
         -c "SELECT value->>'sha' FROM config WHERE key = 'schema_baseline_sha'" \
         | tr -d '\r' | tail -n 1 || true)"
-    IMAGE_SHA="$($COMPOSE run --rm --no-deps "$APP_SERVICE" \
-        python -c "from app.schema_guard import baseline_sha; print(baseline_sha())" \
-        | tr -d '\r' | tail -n 1 || true)"
+    PROBE_RC=0
+    PROBE_OUT="$(bounded "$PROBE_TIMEOUT" $COMPOSE run --rm --no-deps "$APP_SERVICE" \
+        python -c "from app.schema_guard import baseline_sha; print(baseline_sha())")" \
+        || PROBE_RC=$?
     psql_owner -d postgres -c "DROP DATABASE IF EXISTS \"$SIDE_DB\";" || true
+    if [ "$PROBE_RC" -eq "$TIMED_OUT" ]; then
+        STAGE="none"
+        echo "IMAGE PROBE TIMED OUT: the image probe timed out after ${PROBE_TIMEOUT}s (RESTORE_PROBE_TIMEOUT)" >&2
+        echo "after a failed migrate on $NEWEST; nothing was swapped." >&2
+        exit 1
+    fi
+    IMAGE_SHA="$(printf '%s\n' "$PROBE_OUT" | tr -d '\r' | tail -n 1)"
     STAGE="none"
     echo >&2
     if [ -n "$STAMPED" ] && [ -n "$IMAGE_SHA" ] && [ "$STAMPED" != "$IMAGE_SHA" ]; then
