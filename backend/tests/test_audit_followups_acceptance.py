@@ -802,6 +802,7 @@ async def test_a12_cancelling_a_refresh_while_it_waits_to_close_sockets_leaves_t
                 if jti in websocket.session_revocations._renewed:
                     break
                 await asyncio.sleep(0.01)
+            assert jti in websocket.session_revocations._renewed, "the refresh never marked the token renewed"
             answer.cancel()
             await asyncio.gather(answer, return_exceptions=True)
         assert jti not in websocket.session_revocations._renewed
@@ -1162,7 +1163,9 @@ _REGISTER_3 = (
 
 
 @pytest.mark.asyncio
-async def test_a19_a_register_edit_with_no_orchestrator_carries_every_unchanged_vector_under_both_fingerprints(session):
+async def test_a19_a_register_edit_with_no_orchestrator_carries_every_unchanged_vector_under_both_fingerprints(
+    session, monkeypatch
+):
     fingerprints = ("a19-carry-a|3", "a19-carry-b|3")
     for fp in fingerprints:
         embedder_registry.forget(fp)
@@ -1188,11 +1191,17 @@ async def test_a19_a_register_edit_with_no_orchestrator_carries_every_unchanged_
                 )
 
         embed_calls = []
+        from app.services.llm import LLMOrchestrator
 
-        class _NoEmbed:
-            def __getattr__(self, name):
+        def _refuse(name):
+            async def refused(*args, **kwargs):
                 embed_calls.append(name)
                 raise AssertionError("an embed call was made")
+            return refused
+
+        for name in dir(LLMOrchestrator):
+            if name.startswith("embed") and callable(getattr(LLMOrchestrator, name)):
+                monkeypatch.setattr(LLMOrchestrator, name, _refuse(name))
 
         await edit_register_row(
             session, document_id=filed.document_id, number=2, expected_hash=filed.content_hash,
@@ -1306,6 +1315,7 @@ LEAK_CANDIDATES = [
     "tests/test_relation_gating.py",
     "tests/test_repo_entity_anchoring.py",
     "tests/test_repo_entity_merge.py",
+    "tests/test_usage_attribution.py",
 ]
 
 

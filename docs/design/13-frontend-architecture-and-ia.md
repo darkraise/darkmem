@@ -48,7 +48,7 @@ flowchart TD
     ROOT --> AUTH
     AUTH --> SCREEN
     SCREEN -->|"useQuery / useMutation"| QC
-    SCREEN -->|"read scope + context"| ZS
+    SCREEN -->|"read scope"| ZS
     QC --> API
     API -->|"REST, scoped by project + status pushdown"| BE
     WS -->|"invalidate query keys / setQueryData"| QC
