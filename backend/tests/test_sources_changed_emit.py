@@ -823,6 +823,30 @@ async def test_a_withdrawal_lock_timeout_keeps_the_strip(setup_database, monkeyp
 
 
 @pytest.mark.asyncio
+async def test_a_strip_defect_is_logged_with_its_traceback(setup_database, monkeypatch, caplog):
+    """Only contention is the heal's to cover quietly; a defect must be seen."""
+    import logging
+
+    async with savepoint_bed(["pgvector replaces faiss"], "delete-defect|4") as bed:
+        async def broken_strip(self, memory_id):
+            raise RuntimeError("strip defect")
+
+        monkeypatch.setattr(PostgresGraphRepository, "delete_by_memory_id", broken_strip)
+        caplog.set_level(logging.WARNING, logger="app.services.pipeline")
+
+        await bed.pipe.delete_memory(bed.memory_id, broadcast=False)
+
+        errors = [
+            r for r in caplog.records
+            if r.name == "app.services.pipeline" and r.levelno == logging.ERROR
+            and "Graph strip failed" in r.getMessage()
+        ]
+        assert len(errors) == 1
+        assert errors[0].exc_info is not None
+        assert await bed.embedding_rows() == 0
+
+
+@pytest.mark.asyncio
 async def test_withdrawal_restores_the_callers_lock_timeout(setup_database):
     async with savepoint_bed(["pgvector replaces faiss"], "delete-timeout|4") as bed:
         async with bed.factory() as s:

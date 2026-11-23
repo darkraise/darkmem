@@ -156,6 +156,19 @@ def _sqlstate(exc: BaseException) -> str | None:
     return None
 
 
+LOCK_NOT_AVAILABLE_SQLSTATE = "55P03"
+
+
+def _log_cleanup_failure(step: str, memory_id: UUID, exc: BaseException) -> None:
+    """A lost deadlock or a lock wait past its bound is contention the hourly
+    heal covers; anything else is a defect and keeps its traceback."""
+    state = _sqlstate(exc)
+    if state in (DEADLOCK_SQLSTATE, LOCK_NOT_AVAILABLE_SQLSTATE):
+        logger.warning("%s failed for %s (SQLSTATE %s): %s", step, memory_id, state, exc)
+    else:
+        logger.exception("%s failed for %s", step, memory_id)
+
+
 def _is_deadlock(exc: BaseException) -> bool:
     return _sqlstate(exc) == DEADLOCK_SQLSTATE
 
@@ -1481,10 +1494,7 @@ class ProcessingPipeline:
                                 memory_id, attempt, DEADLOCK_ATTEMPTS,
                             )
                             continue
-                        logger.warning(
-                            "Graph strip failed for %s (SQLSTATE %s): %s",
-                            memory_id, _sqlstate(e), e,
-                        )
+                        _log_cleanup_failure("Graph strip", memory_id, e)
                         break
                 # A deleted memory sources nothing, so the whole set goes
                 # (doc 05 §8.4).
@@ -1492,10 +1502,7 @@ class ProcessingPipeline:
                     async with session.begin_nested():
                         await withdraw_memory_sources(session, memory_id=memory_id)
                 except Exception as e:
-                    logger.warning(
-                        "Fact-source withdrawal failed for %s (SQLSTATE %s): %s",
-                        memory_id, _sqlstate(e), e,
-                    )
+                    _log_cleanup_failure("Fact-source withdrawal", memory_id, e)
                 await session.commit()
             if broadcast and self._broadcast:
                 try:
