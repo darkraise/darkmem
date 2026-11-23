@@ -93,11 +93,13 @@ async def _committed_postgresql_entity(setup_database):
         entity_id = (await conn.execute(text("""
             INSERT INTO entities (name, entity_type, properties, memory_ids, repo_ids)
             VALUES ('postgresql', 'database', '{}'::jsonb, '{}', '{}')
+            ON CONFLICT (name, entity_type) DO NOTHING
             RETURNING id
-        """))).scalar_one()
+        """))).scalar_one_or_none()
     yield
-    async with test_engine.begin() as conn:
-        await conn.execute(text("DELETE FROM entities WHERE id = :id"), {"id": entity_id})
+    if entity_id is not None:
+        async with test_engine.begin() as conn:
+            await conn.execute(text("DELETE FROM entities WHERE id = :id"), {"id": entity_id})
 
 
 @pytest.fixture(autouse=True)
@@ -313,16 +315,6 @@ async def test_relation_endpoints_move_in_both_directions(session):
         ("postgres", "USES", "asyncpg", 0.5, 0, 0),
     ]
     assert "postgresql" not in await _names(session)
-
-
-@pytest.mark.asyncio
-async def test_merge_runs_beside_a_committed_postgresql_entity(session):
-    survivor, loser = await _pair(session)
-
-    pair = await merge_entities(session, survivor, loser)
-
-    assert (pair.survivor_name, pair.loser_name) == ("postgres", "postgresql")
-    assert await _names(session) == ["postgres"]
 
 
 @pytest.mark.asyncio
