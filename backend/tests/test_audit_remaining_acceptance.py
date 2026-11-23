@@ -1396,7 +1396,7 @@ async def test_a29_change_password_and_a_config_save_are_durable_before_the_resp
         assert seen["flag"] == 0.123, "the config save was not committed when the response head was sent"
     finally:
         async with factory() as s:
-            await s.execute(delete(Config).where(Config.key.in_(["admin_password_hash", "password_changed_at", "feature_flags"])))
+            await s.execute(delete(Config).where(Config.key.in_(["admin_password_hash", "admin_password_changed_at", "feature_flags"])))
             if saved_before is not None:
                 s.add(Config(key="admin_password_hash", value=saved_before))
             if flags_saved is not None:
