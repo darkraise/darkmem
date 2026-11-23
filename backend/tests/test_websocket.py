@@ -107,7 +107,14 @@ def _statements():
 
 
 @pytest.fixture
-def manager(monkeypatch, setup_database):
+async def manager(monkeypatch, setup_database):
+    from app.services import access_stats
+
+    # An earlier test's access-count flush, still sleeping off its delay,
+    # would otherwise land inside a test's statement-counting window.
+    pending = access_stats._flush_task
+    if pending is not None and not pending.done():
+        await pending
     fresh = websocket.EventManager()
     monkeypatch.setattr(websocket, "event_manager", fresh)
     monkeypatch.setattr(websocket, "AUTH_CHECK_INTERVAL_SECONDS", INTERVAL)
