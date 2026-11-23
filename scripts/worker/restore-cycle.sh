@@ -40,10 +40,14 @@ DOCKER="${DOCKER_CMD:-docker}"
 PROBE_TIMEOUT="${RESTORE_PROBE_TIMEOUT:-120}"
 REPLAY_TIMEOUT="${RESTORE_REPLAY_TIMEOUT:-3600}"
 MIGRATE_TIMEOUT="${RESTORE_MIGRATE_TIMEOUT:-3600}"
+# A step usually overruns because Docker or Postgres is wedged, and the same
+# wedge would hang the cleanup after it.
+CLEANUP_TIMEOUT="${RESTORE_CLEANUP_TIMEOUT:-60}"
 TIMED_OUT=124
 
 SIDE_DB="${DB}_restore_$$"
 MIGRATE_CONTAINER="darkmem-restore-migrate-$$"
+PROBE_CONTAINER="darkmem-restore-probe-$$"
 STAGE="none"
 PLAIN=""
 
@@ -108,14 +112,22 @@ bounded() {
     return "$rc"
 }
 
+# psql_owner under a bound of `seconds`.
+psql_owner_bounded() {
+    local seconds=$1
+    shift
+    PGPASSWORD="$OWNER_PASSWORD" bounded "$seconds" $COMPOSE exec -T "$SERVICE" \
+        psql -U "$OWNER_USER" -v ON_ERROR_STOP=1 "$@"
+}
+
 # A timeout kills only the local compose client: the replay's psql keeps
 # running inside the Postgres container, and the migrate's run container can
 # outlive its client. Each step tolerates having nothing to do.
 abandon_side_database() {
     echo "Removing the migrate container and dropping '$SIDE_DB'..." >&2
-    $DOCKER rm -f "$MIGRATE_CONTAINER" >/dev/null || true
-    psql_owner -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$SIDE_DB' AND pid <> pg_backend_pid();" >/dev/null || true
-    if psql_owner -d postgres -c "DROP DATABASE IF EXISTS \"$SIDE_DB\";"; then
+    bounded "$CLEANUP_TIMEOUT" $DOCKER rm -f "$MIGRATE_CONTAINER" >/dev/null || true
+    psql_owner_bounded "$CLEANUP_TIMEOUT" -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$SIDE_DB' AND pid <> pg_backend_pid();" >/dev/null || true
+    if psql_owner_bounded "$CLEANUP_TIMEOUT" -d postgres -c "DROP DATABASE IF EXISTS \"$SIDE_DB\";"; then
         STAGE="none"
     fi
 }
@@ -297,14 +309,17 @@ if [ "$MIGRATE_RC" -eq "$TIMED_OUT" ]; then
     exit 1
 fi
 if [ "$MIGRATE_RC" -ne 0 ]; then
-    STAMPED="$(psql_owner -d "$SIDE_DB" -At \
+    STAMPED="$(psql_owner_bounded "$CLEANUP_TIMEOUT" -d "$SIDE_DB" -At \
         -c "SELECT value->>'sha' FROM config WHERE key = 'schema_baseline_sha'" \
         | tr -d '\r' | tail -n 1 || true)"
     PROBE_RC=0
-    PROBE_OUT="$(bounded "$PROBE_TIMEOUT" $COMPOSE run --rm --no-deps "$APP_SERVICE" \
+    PROBE_OUT="$(bounded "$PROBE_TIMEOUT" $COMPOSE run --rm --no-deps --name "$PROBE_CONTAINER" "$APP_SERVICE" \
         python -c "from app.schema_guard import baseline_sha; print(baseline_sha())")" \
         || PROBE_RC=$?
-    psql_owner -d postgres -c "DROP DATABASE IF EXISTS \"$SIDE_DB\";" || true
+    if [ "$PROBE_RC" -eq "$TIMED_OUT" ]; then
+        bounded "$CLEANUP_TIMEOUT" $DOCKER rm -f "$PROBE_CONTAINER" >/dev/null || true
+    fi
+    psql_owner_bounded "$CLEANUP_TIMEOUT" -d postgres -c "DROP DATABASE IF EXISTS \"$SIDE_DB\";" || true
     if [ "$PROBE_RC" -eq "$TIMED_OUT" ]; then
         STAGE="none"
         echo "IMAGE PROBE TIMED OUT: the image probe timed out after ${PROBE_TIMEOUT}s (RESTORE_PROBE_TIMEOUT)" >&2

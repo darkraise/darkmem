@@ -32,6 +32,7 @@ _STUB = """#!/usr/bin/env bash
 case "$*" in
   *alembic*) __MIGRATE__ ;;
   *"baseline_sha()"*) __PROBE__ ;;
+  *pg_terminate_backend*) __CLEANUP__ ;;
   *viewer_password*|*" -c "*) ;;
   *" -d darkmem_restore_"*) __REPLAY__ ;;
 esac
@@ -42,7 +43,7 @@ exit 0
 
 def _run(
     tmp_path: Path, *, migrate: str = "exit 0", probe: str = "exit 0",
-    replay: str | None = None, env: dict[str, str],
+    replay: str | None = None, cleanup: str = ":", env: dict[str, str],
 ):
     dumps = tmp_path / "dumps"
     dumps.mkdir()
@@ -55,6 +56,7 @@ def _run(
         _STUB.replace("__LOG_PATH__", str(log_path))
         .replace("__MIGRATE__", migrate)
         .replace("__PROBE__", probe)
+        .replace("__CLEANUP__", cleanup)
         .replace("__REPLAY__", replay or f'cat > "{replayed}"; exit 0')
     )
     stub.chmod(0o755)
@@ -127,6 +129,30 @@ def test_an_overrunning_image_probe_exits_non_zero(tmp_path):
     assert elapsed < 20
     assert not _calls(records, "RENAME")
     assert "image probe timed out" in result.stderr
+
+
+def test_a_cleanup_that_hangs_after_a_timeout_still_exits_non_zero(tmp_path):
+    result, records, elapsed = _run(
+        tmp_path, migrate="exec sleep 60", cleanup="exec sleep 60",
+        env={"RESTORE_MIGRATE_TIMEOUT": "2", "RESTORE_CLEANUP_TIMEOUT": "2"},
+    )
+
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert elapsed < 20
+    assert not _calls(records, "RENAME")
+    assert _calls(records, "pg_terminate_backend")
+
+
+def test_a_timed_out_image_probe_removes_its_container(tmp_path):
+    result, records, _ = _run(
+        tmp_path, migrate="exit 1", probe="exec sleep 60",
+        env={"RESTORE_PROBE_TIMEOUT": "2"},
+    )
+
+    assert result.returncode != 0, result.stdout + result.stderr
+    (probe,) = _calls(records, "baseline_sha()")
+    container = records[probe][records[probe].index("--name") + 1]
+    assert [i for i, fields in enumerate(records) if fields[:3] == ["rm", "-f", container]]
 
 
 def test_the_replay_reaches_psql_with_the_whole_dump(tmp_path):

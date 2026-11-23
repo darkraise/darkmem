@@ -310,7 +310,9 @@ A replay, migrate or image probe that overruns its bound (`RESTORE_REPLAY_TIMEOU
 `RESTORE_MIGRATE_TIMEOUT`, default 3600 s each; `RESTORE_PROBE_TIMEOUT`, default
 120 s) exits non-zero with a `TIMED OUT` line naming the step and swaps nothing.
 A timed-out replay or migrate also removes the migrate container, ends the side
-database's sessions and drops it. To check for a leftover one, run
+database's sessions and drops it, and a timed-out probe removes its own
+container; each of those cleanup calls is bounded by `RESTORE_CLEANUP_TIMEOUT`
+(default 60 s), so a wedged Docker or Postgres cannot hang the exit. To check for a leftover one, run
 `docker compose -f docker-compose.worker.yml exec -T postgres psql -U darkmem -d postgres -Atc "SELECT datname FROM pg_database WHERE datname LIKE 'darkmem_restore_%'"`.
 
 ---
