@@ -197,7 +197,6 @@ export function useCreateRepo() {
       apiFetch<Repo>("/repos", { method: "POST", body: JSON.stringify(data) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["repos"] })
-      qc.invalidateQueries({ queryKey: ["repoStats"] })
     },
   })
 }
@@ -212,7 +211,6 @@ export function useUpdateRepo() {
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["repos"] })
-      qc.invalidateQueries({ queryKey: ["repoStats"] })
     },
   })
 }
@@ -223,7 +221,6 @@ export function useDeleteRepo() {
     mutationFn: (id: string) => apiFetch(`/repos/${id}`, { method: "DELETE" }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["repos"] })
-      qc.invalidateQueries({ queryKey: ["repoStats"] })
     },
   })
 }
@@ -244,11 +241,9 @@ export function useReindexRepo() {
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["repos"] })
-      qc.invalidateQueries({ queryKey: ["repoStats"] })
       // Reindexing rewrites the code graph; without these the cached graph
       // serves stale data indefinitely (no window-focus refetch either).
       qc.invalidateQueries({ queryKey: ["codeGraph"] })
-      qc.invalidateQueries({ queryKey: ["codeSymbols"] })
       qc.invalidateQueries({ queryKey: ["codeSymbol"] })
     },
   })

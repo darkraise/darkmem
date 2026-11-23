@@ -37,7 +37,6 @@ export type QueryKeyScope =
 
 export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
   // ── auto: routed through projectScopedKey / useProjectScopedKey ──
-  memories: { kind: "auto" },
   // The pipeline journals each run under its memory's project.
   pipelineLogs: { kind: "auto" },
   unifiedGraph: { kind: "auto" },
@@ -237,12 +236,10 @@ export const QUERY_KEY_SCOPE: Record<string, QueryKeyScope> = {
       "the failed-capture triage queue spans every project, and each row names its own",
   },
   obsoleteCounts: { kind: "global" },
-  repoStats: { kind: "global" },
   repos: { kind: "global" },
   repoTasks: { kind: "global" },
   codeGraph: { kind: "global" },
   codeFiles: { kind: "global" },
-  codeSymbols: { kind: "global" },
   codeSymbol: { kind: "global" },
   fs: { kind: "global" },
   setupProbe: { kind: "global" },

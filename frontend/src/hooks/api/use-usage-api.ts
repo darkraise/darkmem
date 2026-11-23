@@ -202,11 +202,12 @@ export function useSubjectTotals(subjectType: string, subjectIds: string[]) {
   return useQuery<Map<string, SubjectTotalRow>>({
     queryKey: ["usage", "subjectTotals", subjectType, ids],
     enabled: LIVE && ids.length > 0,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const body = await apiFetch<{ totals: SubjectTotalRow[] }>(
         "/usage/subject-totals",
         {
           method: "POST",
+          signal,
           // The route caps the list; slicing here keeps a long page from
           // getting a 422 instead of the rows it can have.
           body: JSON.stringify({

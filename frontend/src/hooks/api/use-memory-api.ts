@@ -130,7 +130,6 @@ export function useCreateMemory() {
       })
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["memories"] })
       qc.invalidateQueries({ queryKey: ["memoriesPaginated"] })
     },
   })
@@ -154,7 +153,6 @@ export function useUpdateMemory() {
       }),
     onSuccess: (_memory, { id }) => {
       qc.invalidateQueries({ queryKey: ["memory", id] })
-      qc.invalidateQueries({ queryKey: ["memories"] })
       qc.invalidateQueries({ queryKey: ["memoriesPaginated"] })
       // The detail page's timeline reads the journal; without this it kept
       // showing the pre-edit history until a reload.
@@ -168,10 +166,9 @@ export function useDeleteMemory() {
   return useMutation({
     mutationFn: (id: string) =>
       apiFetch(`/memories/${id}`, { method: "DELETE" }),
-    // Invalidate both keys here so callers never need a second manual
-    // invalidate (a duplicate invalidate of the same key = a duplicate refetch).
+    // Invalidate here so callers never need a second manual invalidate
+    // (a duplicate invalidate of the same key = a duplicate refetch).
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["memories"] })
       qc.invalidateQueries({ queryKey: ["memoriesPaginated"] })
     },
   })
@@ -210,9 +207,10 @@ export function usePaginatedSearch(
   return useQuery<PaginatedMemories>({
     enabled: options?.enabled ?? true,
     queryKey: ["memoriesPaginated", params],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       apiFetch("/memories/search/paginated", {
         method: "POST",
+        signal,
         body: JSON.stringify({
           query: params.query || undefined,
           project: params.project || undefined,

@@ -137,9 +137,10 @@ export function useSetupProviderModels(
       provider?.base_url,
       provider?.api_key ?? null,
     ],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       rawFetch<ProbeModelsResponse>("/setup/probe-models", {
         method: "POST",
+        signal,
         body: JSON.stringify(provider),
       }),
     enabled: Boolean(provider?.base_url),

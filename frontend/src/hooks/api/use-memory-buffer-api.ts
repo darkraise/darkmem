@@ -68,7 +68,6 @@ export function useDiscardBufferItem() {
       apiFetch<void>(`/memory-buffer/${id}`, { method: "DELETE" }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["memoryBuffer"] })
-      qc.invalidateQueries({ queryKey: ["memories"] })
     },
   })
 }

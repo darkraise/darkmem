@@ -76,7 +76,6 @@ describe("the memory buffer hooks", () => {
       method: "DELETE",
     })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["memoryBuffer"] })
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["memories"] })
 
     invalidate.mockClear()
     await act(() => requeue.result.current.mutateAsync("b2"))
@@ -85,6 +84,5 @@ describe("the memory buffer hooks", () => {
       method: "POST",
     })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["memoryBuffer"] })
-    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ["memories"] })
   })
 })
