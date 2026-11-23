@@ -110,3 +110,31 @@ async def test_usage_row_survives_a_client_disconnect(session, session_factory):
     ))).all()
     assert [(r.ok, r.error_kind) for r in rows] == [(False, "cancelled")]
     await orchestrator.close()
+
+
+async def test_a_stream_closed_early_records_not_ok(session, session_factory):
+    async def _body():
+        yield b'data: {"choices":[{"delta":{"content":"he"}}]}\n'
+        yield b'data: {"choices":[{"delta":{"content":"llo"}}]}\n'
+
+    recorder = _SignallingRecorder(session_factory)
+    orchestrator = LLMOrchestrator(
+        {"reasoning": LLMPurposeConfig(
+            base_url="http://mock/v1", model="closed-early-model", dimensions=3,
+        )},
+        recorder=recorder,
+    )
+    orchestrator._client = httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, content=_body()))
+    )
+
+    stream = orchestrator.chat_completion_stream("reasoning", [{"role": "user", "content": "q"}])
+    assert await stream.__anext__() == "he"
+    await stream.aclose()
+
+    await asyncio.wait_for(recorder.recorded.wait(), timeout=5)
+    rows = (await session.execute(text(
+        "SELECT ok, error_kind FROM llm_usage WHERE model = 'closed-early-model'"
+    ))).all()
+    assert [(r.ok, r.error_kind) for r in rows] == [(False, "closed")]
+    await orchestrator.close()

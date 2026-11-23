@@ -1056,6 +1056,9 @@ class LLMOrchestrator:
         except asyncio.CancelledError:
             ok, error_kind = False, "cancelled"
             raise
+        except GeneratorExit:
+            ok, error_kind = False, "closed"
+            raise
         except Exception as exc:
             ok, error_kind = False, type(exc).__name__
             raise

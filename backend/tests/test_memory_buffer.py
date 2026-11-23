@@ -237,12 +237,14 @@ async def test_buffered_memory_id_reports_a_row_it_cannot_read(session):
 async def test_status_is_check_constrained(session):
     row = await enqueue(session, content="body", project="default")
     await session.flush()
+    # A savepoint, so the violation never rolls back the fixture's own
+    # transaction under it.
     with pytest.raises(IntegrityError):
-        await session.execute(
-            text("UPDATE memory_buffer SET status = 'elsewhere' WHERE id = CAST(:id AS uuid)"),
-            {"id": str(row.id)},
-        )
-    await session.rollback()
+        async with session.begin_nested():
+            await session.execute(
+                text("UPDATE memory_buffer SET status = 'elsewhere' WHERE id = CAST(:id AS uuid)"),
+                {"id": str(row.id)},
+            )
 
 
 @pytest.mark.asyncio
