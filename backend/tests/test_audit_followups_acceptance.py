@@ -1312,3 +1312,88 @@ def test_a42_running_a_file_that_names_postgresql_leaves_no_committed_entity(tmp
     out, leaked = _run_file_with_probe(tmp_path, test_file, seed=False)
     assert out.returncode == 0, out.stdout[-3000:]
     assert leaked == [], leaked
+
+
+# ------------------------------------------------------------------ A39
+
+from tests.test_document_revisions import (  # noqa: E402
+    StubEmbedder,
+    _history,
+    _pruned_events,
+    _put,
+    _revision_ids,
+)
+
+
+@pytest.mark.asyncio
+async def test_a39_a_block_verb_prunes_ten_revisions_and_journals_one_row(session):
+    from app.services.block_verbs import update_block
+
+    filed = await _put(session, "# A\n\nFirst.\n", uri="a39.md")
+    # 60 revisions: 10 oldest are past the newest 50 and older than 90 days; the next 10 are old but inside the 50.
+    await _history(session, filed.document_id, [200] * 10 + [100] * 10 + [10] * 40)
+    before = await _revision_ids(session, filed.document_id)
+    assert len(before) == 60
+    block_id = (await session.execute(
+        text(
+            "SELECT CAST(id AS text) FROM blocks WHERE document_id = CAST(:d AS uuid) "
+            "ORDER BY order_index LIMIT 1"
+        ),
+        {"d": filed.document_id},
+    )).scalar_one()
+
+    await update_block(session, StubEmbedder(), block_id=block_id, text="Edited")
+
+    after = await _revision_ids(session, filed.document_id)
+    assert after == before[10:]
+    events = await _pruned_events(session, filed.document_id)
+    assert len(events) == 1
+    assert events[0][1] == {"pruned": 10}
+
+
+# ------------------------------------------------------------------ A41
+
+import httpx  # noqa: E402
+
+from app.config import LLMPurposeConfig  # noqa: E402
+from app.services.llm import LLMOrchestrator  # noqa: E402
+from app.services.usage_recorder import UsageRecorder  # noqa: E402
+
+
+class _SignallingRecorder(UsageRecorder):
+    def __init__(self, session_factory):
+        super().__init__(session_factory, price_overrides={})
+        self.recorded = asyncio.Event()
+
+    async def record(self, **kwargs) -> None:
+        await super().record(**kwargs)
+        self.recorded.set()
+
+
+@pytest.mark.asyncio
+async def test_a41_a_stream_closed_before_its_end_records_ok_false(session, session_factory):
+    model = f"a41-model-{uuid.uuid4().hex[:6]}"
+
+    async def body():
+        yield b'data: {"choices":[{"delta":{"content":"he"}}]}\n'
+        yield b'data: {"choices":[{"delta":{"content":"llo"}}]}\n'
+
+    recorder = _SignallingRecorder(session_factory)
+    orchestrator = LLMOrchestrator(
+        {"reasoning": LLMPurposeConfig(base_url="http://mock/v1", model=model, dimensions=3)},
+        recorder=recorder,
+    )
+    orchestrator._client = httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, content=body()))
+    )
+    try:
+        stream = orchestrator.chat_completion_stream("reasoning", [{"role": "user", "content": "q"}])
+        assert await stream.__anext__() == "he"
+        await stream.aclose()
+        await asyncio.wait_for(recorder.recorded.wait(), timeout=5)
+        rows = (await session.execute(
+            text("SELECT ok FROM llm_usage WHERE model = :m"), {"m": model}
+        )).scalars().all()
+        assert rows == [False]
+    finally:
+        await orchestrator.close()
