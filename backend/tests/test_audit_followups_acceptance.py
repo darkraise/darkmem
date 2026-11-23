@@ -1088,3 +1088,227 @@ async def test_a17_a_deriver_tick_that_derived_nothing_triggers_no_code_reconcil
     await fact_lift_module.run_code_lift(session)
     await fact_lift_module.run_code_lift(session)
     assert reconciles == []
+
+
+# ------------------------------------------------------------------ A18
+
+from uuid import UUID  # noqa: E402
+
+from app.services import fact_lift  # noqa: E402
+from app.services.fact_lift import run_lift  # noqa: E402
+from tests.conftest import test_engine as _engine  # noqa: E402
+from tests.test_fact_lift import assert_relation, facts, seed_memory  # noqa: E402
+
+
+@pytest.mark.asyncio
+async def test_a18_a_lift_meeting_a_fact_lock_held_past_its_deadline_defers_and_finishes(
+    setup_database, monkeypatch
+):
+    monkeypatch.setattr(fact_lift, "MEMORY_LOCK_WAIT_SECONDS", 0.3)
+    factory = async_sessionmaker(_engine, expire_on_commit=False)
+    project = f"a18-{uuid.uuid4()}"
+    memory_ids = []
+    for origin in ("first", "second"):
+        async with factory() as seed:
+            mid = await seed_memory(seed, project=project, origin_key=origin)
+            await assert_relation(seed, memory_id=mid, subject=project, rel_type="USES", obj="postgres")
+            await seed.commit()
+        memory_ids.append(mid)
+        if origin == "first":
+            async with factory() as lifter:
+                await run_lift(lifter)
+                await lifter.commit()
+
+    async with factory() as holder, factory() as lifting, factory() as observer:
+        try:
+            fact_id = (await facts(observer, project))[0]["id"]
+            await holder.execute(
+                text("SELECT id FROM knowledge_triples WHERE id = CAST(:id AS uuid) FOR UPDATE"),
+                {"id": str(fact_id)},
+            )
+            loop = asyncio.get_running_loop()
+            started = loop.time()
+            outcome = await asyncio.wait_for(run_lift(lifting), 0.3 + 3)
+            elapsed = loop.time() - started
+            await lifting.commit()
+            assert outcome.deferred == 1
+            assert outcome.failed == 0
+            assert elapsed < 0.3 + 2
+        finally:
+            await holder.rollback()
+            await lifting.rollback()
+            await observer.rollback()
+            async with factory() as cleanup:
+                graph = PostgresGraphRepository(cleanup)
+                for mid in memory_ids:
+                    await graph.delete_by_memory_id(UUID(mid))
+                await cleanup.execute(text("DELETE FROM knowledge_triples WHERE project = :p"), {"p": project})
+                await cleanup.execute(text("DELETE FROM memories WHERE project = :p"), {"p": project})
+                await cleanup.commit()
+
+
+# ------------------------------------------------------------------ A19
+
+from app.services import board_edit  # noqa: E402
+from app.services.block_embeddings import PARENT_TABLE  # noqa: E402
+from app.services.board_edit import edit_register_row  # noqa: E402
+from app.services.document_door import put_document  # noqa: E402
+from app.services.embedder_registry import embedder_registry, ensure_registered  # noqa: E402
+
+_REGISTER_3 = (
+    "# Register - a19\n\n| # | Item | Assigned | Acceptance | State | Note |\n|---|---|---|---|---|---|\n"
+    "| 1 | first | - | - | open | - |\n| 2 | second | - | - | open | - |\n| 3 | third | - | - | open | - |\n"
+)
+
+
+@pytest.mark.asyncio
+async def test_a19_a_register_edit_with_no_orchestrator_carries_every_unchanged_vector_under_both_fingerprints(session):
+    fingerprints = ("a19-carry-a|3", "a19-carry-b|3")
+    for fp in fingerprints:
+        embedder_registry.forget(fp)
+        await ensure_registered(session, fp)
+    try:
+        filed = await put_document(
+            session, None, project="p", uri="superpowers/registers/a19.md", content=_REGISTER_3, embed_inline=False,
+        )
+        rows = await session.execute(
+            text("SELECT CAST(id AS text) AS id, text FROM blocks WHERE document_id = CAST(:d AS uuid)"),
+            {"d": filed.document_id},
+        )
+        before = {r.id: r.text for r in rows}
+        for fp in fingerprints:
+            table = child_table(PARENT_TABLE, fp)
+            for block_id in before:
+                await session.execute(
+                    text(
+                        f"INSERT INTO {table} (block_id, fingerprint, embedding) "
+                        "VALUES (CAST(:b AS uuid), CAST(:fp AS text), CAST('[1,2,3]' AS vector))"
+                    ),
+                    {"b": block_id, "fp": fp},
+                )
+
+        embed_calls = []
+
+        class _NoEmbed:
+            def __getattr__(self, name):
+                embed_calls.append(name)
+                raise AssertionError("an embed call was made")
+
+        await edit_register_row(
+            session, document_id=filed.document_id, number=2, expected_hash=filed.content_hash,
+            changes={"state": "done"}, actor="admin",
+        )
+
+        rows = await session.execute(
+            text("SELECT CAST(id AS text) AS id, text FROM blocks WHERE document_id = CAST(:d AS uuid)"),
+            {"d": filed.document_id},
+        )
+        after = {r.id: r.text for r in rows}
+        unchanged = set(after.values()) & set(before.values())
+        assert unchanged and len(set(after.values()) - set(before.values())) == 1
+        for fp in fingerprints:
+            table = child_table(PARENT_TABLE, fp)
+            texts = (await session.execute(
+                text(
+                    f"SELECT b.text FROM blocks b JOIN {table} e ON e.block_id = b.id "
+                    "WHERE b.document_id = CAST(:d AS uuid)"
+                ),
+                {"d": filed.document_id},
+            )).scalars().all()
+            assert set(texts) == unchanged
+        assert embed_calls == []
+    finally:
+        for fp in fingerprints:
+            embedder_registry.forget(fp)
+
+
+# ------------------------------------------------------------------ A20
+
+from tests.test_page_attachment_routes import PNG, V1, _upload, page, root  # noqa: E402,F401
+
+
+@pytest.mark.asyncio
+async def test_a20_an_upload_whose_part_was_collected_mid_stream_answers_408(
+    client, auth_headers, root, page, monkeypatch
+):
+    from app.api.routes import page_attachments as route
+
+    real = route.stage_upload
+
+    async def stage_then_collect(*args, **kwargs):
+        staged = await real(*args, **kwargs)
+        staged.part.unlink()
+        return staged
+
+    monkeypatch.setattr(route, "stage_upload", stage_then_collect)
+    response = await _upload(client, auth_headers, page, PNG)
+    assert response.status_code == 408, response.text
+
+
+# ------------------------------------------------------------------ A21 / A42
+
+PROBE_PLUGIN = '''
+import os
+
+import pytest_asyncio
+from sqlalchemy import text
+
+
+@pytest_asyncio.fixture(scope="session", autouse=True)
+async def _followups_probe(setup_database):
+    from tests.conftest import test_engine
+
+    if os.environ.get("FOLLOWUPS_SEED_ENTITY") == "1":
+        async with test_engine.begin() as conn:
+            await conn.execute(text(
+                "INSERT INTO entities (name, entity_type, properties, memory_ids, repo_ids) "
+                "VALUES ('postgresql', 'database', '{}'::jsonb, '{}', '{}')"
+            ))
+    yield
+    out = os.environ.get("FOLLOWUPS_LEAK_FILE")
+    if out:
+        async with test_engine.connect() as conn:
+            rows = (await conn.execute(text("SELECT name || '/' || entity_type FROM entities ORDER BY 1"))).scalars().all()
+        with open(out, "w") as fh:
+            fh.write("\\n".join(rows))
+'''
+
+
+def _run_file_with_probe(tmp_path, test_file: str, *, seed: bool):
+    (tmp_path / "followups_probe.py").write_text(PROBE_PLUGIN)
+    leak = tmp_path / f"leak-{Path(test_file).stem}.txt"
+    env = {
+        **os.environ,
+        "PYTHONPATH": f"{tmp_path}{os.pathsep}{os.environ.get('PYTHONPATH', '')}",
+        "FOLLOWUPS_LEAK_FILE": str(leak),
+        "FOLLOWUPS_SEED_ENTITY": "1" if seed else "0",
+    }
+    out = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "-p", "followups_probe", test_file],
+        cwd=BACKEND, env=env, capture_output=True, text=True, timeout=300,
+    )
+    return out, (leak.read_text().splitlines() if leak.exists() else None)
+
+
+def test_a21_repo_entity_merge_passes_on_a_database_already_holding_a_committed_postgresql_entity(tmp_path):
+    out, _ = _run_file_with_probe(tmp_path, "tests/test_repo_entity_merge.py", seed=True)
+    assert out.returncode == 0, out.stdout[-3000:] + out.stderr[-1000:]
+
+
+LEAK_CANDIDATES = [
+    "tests/test_communities.py",
+    "tests/test_dedup_discriminator.py",
+    "tests/test_contradiction_scan.py",
+    "tests/test_drop_triple_embeddings.py",
+    "tests/test_pipeline_savepoints.py",
+    "tests/test_relation_gating.py",
+    "tests/test_repo_entity_anchoring.py",
+    "tests/test_repo_entity_merge.py",
+]
+
+
+@pytest.mark.parametrize("test_file", LEAK_CANDIDATES)
+def test_a42_running_a_file_that_names_postgresql_leaves_no_committed_entity(tmp_path, test_file):
+    out, leaked = _run_file_with_probe(tmp_path, test_file, seed=False)
+    assert out.returncode == 0, out.stdout[-3000:]
+    assert leaked == [], leaked
