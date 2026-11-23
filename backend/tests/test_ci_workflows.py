@@ -132,11 +132,6 @@ def test_the_ci_image_tag_is_per_run():
             assert "${{" in tags, f"fixed image tag {tags!r}"
 
 
-
-TRUSTED_HEAD = (
-    "github.event_name != 'pull_request' || "
-    "github.event.pull_request.head.repo.full_name == github.repository"
-)
 SELF_HOSTED_LABELS = {"self-hosted", "darkmem-linux"}
 
 
@@ -222,6 +217,7 @@ def test_third_party_actions_are_pinned_to_shas():
     uses = _third_party_uses()
     assert uses
     for workflow, action, rest in uses:
+        assert "@" in action, f"{workflow}: {action} is not pinned to a commit sha"
         ref = action.rsplit("@", 1)[1]
         assert re.fullmatch(r"[0-9a-f]{40}", ref), f"{workflow}: {action} is not pinned to a commit sha"
         assert re.fullmatch(r"\s*#\s*v\d[\w.-]*\s*", rest), f"{workflow}: {action} names no tag comment"
