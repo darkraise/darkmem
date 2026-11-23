@@ -276,7 +276,7 @@ async-accepted, POST `.../search` for complex queries),
 
 Two distribution clients sit **outside** the box and speak REST or MCP into
 the one instance: `extension/` (the browser capture shell) and `sdks/` (the
-minimal client, three verbs). **`sdks/ts/src/client.ts` and
+minimal client, two verbs: `capture` and `search`). **`sdks/ts/src/client.ts` and
 `sdks/python/darkmem_sdk/client.py` are generated**: edit `sdks/generate.py`
 and run `make generate` in `sdks/`. The generator reads the live OpenAPI
 document off the app object and refuses to generate when a verb names a

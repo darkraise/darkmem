@@ -17,8 +17,7 @@ is tested here.
 guard passed while both emitted clients posted an ``applies_when`` key that no
 request schema in the contract has: every door ignored it, so a declared
 context reached nothing and nothing said so. Route existence cannot see that,
-which is why ``_require_contract`` checks the request-body fields and the
-``X-Darkmem-Context`` header too.
+which is why ``_require_contract`` checks the request-body fields too.
 
 A review then defeated the widened version twice more. The **field tuple** was
 checked while the *emitted body* was not, so an extra key added to a template
@@ -106,7 +105,6 @@ class TestTheContractBinding:
                 "method": "post",
                 "path": "/api/v1/route-that-does-not-exist",
                 "fields": ("content",),
-                "carries_context": False,
             },
         )
 
@@ -126,93 +124,42 @@ class TestTheContractBinding:
                 "method": "post",
                 "path": "/api/v1/memories",
                 "fields": ("content", "applies_when"),
-                "carries_context": False,
             },
         )
 
         with pytest.raises(SystemExit, match="has no field 'applies_when'"):
             sdk_generate._require_contract(_schema_copy())
 
-    async def test_generation_refuses_when_the_context_header_drifts(
-        self, monkeypatch
-    ):
-        """Doc 12 §5 settles per-session context as a header because a
-        stateful declare tool "would be a lie on a stateless_http=True
-        server". There is therefore no route to bind, and an unchecked
-        literal would let a rename silently point the SDK at a header nothing
-        reads — the same failure as a missing route, given the same refusal."""
-        monkeypatch.setitem(
-            sdk_generate.VERBS, "declareContext", {"header": "X-Darkmem-Ctx"}
-        )
-
-        with pytest.raises(SystemExit, match="X-Darkmem-Ctx"):
-            sdk_generate._require_contract(_schema_copy())
-
-    async def test_the_pinned_header_is_the_one_the_app_resolves(self):
-        from app.api.context_resolution import DECLARED_CONTEXT_HEADER
-
-        assert (
-            sdk_generate.CONTEXT_HEADER.lower() == DECLARED_CONTEXT_HEADER.lower()
-        )
-
-    async def test_generation_refuses_a_context_verb_on_a_door_without_the_field(
-        self, monkeypatch
-    ):
-        """The refusal a review had to find by driving the app. `carries_context`
-        means the SDK puts `X-Darkmem-Context` on that request; a door with no
-        rank-1 `context` argument is not in doc 12 §5's chain at all, and the
-        header dies there in silence.
-
-        `POST /api/v1/memories` is the real case: it is the capture door, it
-        exists, its fields all check out, and it resolves no context on either
-        rank."""
-        monkeypatch.setitem(
-            sdk_generate.VERBS,
-            "search",
-            {
-                "method": "post",
-                "path": "/api/v1/memories",
-                "fields": ("content",),
-                "carries_context": True,
-            },
-        )
-
-        with pytest.raises(SystemExit, match="not in doc 12 §5's declared-context chain"):
-            sdk_generate._require_contract(_schema_copy())
-
-    async def test_generation_refuses_when_no_verb_carries_the_header(
-        self, monkeypatch
-    ):
-        """The other half, and the one that makes the first un-evadable: the
-        header binds a mechanism rather than a door, so turning every verb's
-        `carries_context` off satisfies the per-verb check by having no verbs
-        to check. That is precisely the state the SDK shipped in."""
-        monkeypatch.setitem(
-            sdk_generate.VERBS,
-            "search",
-            {**sdk_generate.VERBS["search"], "carries_context": False},
-        )
-
-        with pytest.raises(SystemExit, match="would reach no door at all"):
-            sdk_generate._require_contract(_schema_copy())
-
-    async def test_the_surface_is_three_verbs(self):
+    async def test_the_surface_is_two_verbs(self):
         """Doc 15 §6 is explicit that darkmem is not building a client
-        platform: `capture`, `search`, `declareContext` and nothing else. A
-        fourth verb is a design decision, not a generator change."""
-        assert set(sdk_generate.VERBS) == {"capture", "search", "declareContext"}
+        platform: `capture`, `search` and nothing else. A third verb is a
+        design decision, not a generator change."""
+        assert set(sdk_generate.VERBS) == {"capture", "search"}
 
-    async def test_search_binds_the_door_that_serves_the_context_chain(self):
+    async def test_neither_client_declares_a_context(self):
+        """Declared context is gone from both doors, so no SDK may send it."""
+        for path in (
+            SDKS / "ts/src/client.ts",
+            SDKS / "python/darkmem_sdk/client.py",
+        ):
+            source = path.read_text()
+            for name in (
+                "declareContext",
+                "declare_context",
+                "CONTEXT_HEADER",
+                "X-Darkmem-Context",
+            ):
+                assert name not in source, f"{path.name} still names {name}"
+        for verb in sdk_generate.VERBS.values():
+            assert "context" not in verb["fields"]
+
+    async def test_search_binds_the_memory_read(self):
         """Doc 01 F3 is the memory retrieval flow returning "ranked results
         with a 'why retrieved' trace", and doc 15 §6's own mermaid names the
-        memories twin. An earlier round bound the composed read on the strength
-        of doc 15 §6's `fused?` argument; that door serves neither rank of doc
-        12 §5's context chain, which is how `declareContext` came to reach
-        nothing. `fused` is the cost, recorded rather than faked."""
+        memories twin. `fused` is served only by the composed read, so it is
+        the cost, recorded rather than faked."""
         verb = sdk_generate.VERBS["search"]
         assert verb["path"] == "/api/v1/memories/search/paginated"
-        assert verb["carries_context"] is True
-        assert sdk_generate.CONTEXT_FIELD in verb["fields"]
         assert "with_trace" in verb["fields"]
         assert not any(
             "fuse" in v.get("fields", ()) for v in sdk_generate.VERBS.values()
@@ -224,11 +171,10 @@ class TestTheContractBinding:
         argument the contract does not serve. Doc 15 §6 defers the wire shape
         to doc 12, so the contract wins and the argument is absent."""
         verb = sdk_generate.VERBS["capture"]
-        assert verb["carries_context"] is False
-        assert sdk_generate.CONTEXT_FIELD not in verb["fields"]
+        assert "context" not in verb["fields"]
 
         properties = sdk_generate._request_properties(_schema_copy(), verb)
-        assert sdk_generate.CONTEXT_FIELD not in properties
+        assert "context" not in properties
 
 
 class TestTheEmittedBodyIsTheDeclaredFields:
@@ -327,16 +273,6 @@ class TestDeterminism:
 
         assert sdk_generate._hash(schema) != before
 
-    async def test_the_hash_moves_when_the_header_is_renamed(self, monkeypatch):
-        schema = _schema_copy()
-        before = sdk_generate._hash(schema)
-
-        monkeypatch.setitem(
-            sdk_generate.VERBS, "declareContext", {"header": "X-Darkmem-Ctx"}
-        )
-
-        assert sdk_generate._hash(schema) != before
-
     async def test_rendering_is_a_pure_function_of_the_digest(self):
         """No clock, no environment, no ordering by dict insertion — the
         task's own Verify is `git diff --exit-code`, which a generator with
@@ -379,8 +315,8 @@ class TestTheEmittedFilesMatchTheGenerator:
 # Escape 8: a member conditioned on a constructor argument (I-1, round 4)
 # ---------------------------------------------------------------------------
 
-PY_SELF_ATTRIBUTES = {"base_url", "token", "project", "_context"}
-TS_THIS_FIELDS = {"#baseUrl", "#token", "#project", "#context"}
+PY_SELF_ATTRIBUTES = {"base_url", "token", "project"}
+TS_THIS_FIELDS = {"#baseUrl", "#token", "#project"}
 
 
 def _python_self_assignments(source: str) -> set[str]:

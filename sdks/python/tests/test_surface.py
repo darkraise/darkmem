@@ -69,7 +69,7 @@ SDKS = Path(__file__).resolve().parents[2]
 PYTHON_CLIENT = SDKS / "python/darkmem_sdk/client.py"
 TYPESCRIPT_CLIENT = SDKS / "ts/src/client.ts"
 
-THE_THREE_VERBS_PY = {"capture", "search", "declare_context"}
+THE_TWO_VERBS_PY = {"capture", "search"}
 
 # `vars(Darkmem)` in full, dunders included. Not "public names" — a whitelist
 # that filters on a leading underscore can never see a `__call__`, and an
@@ -85,24 +85,20 @@ PY_CLASS_MEMBERS = {
     "__weakref__",
     "_post",
     "capture",
-    "declare_context",
     "search",
 }
-THE_THREE_VERBS_TS = {"capture", "search", "declareContext"}
+THE_TWO_VERBS_TS = {"capture", "search"}
 BOUND_PATHS = {CAPTURE_PATH, SEARCH_PATH}
 
 # Everything the Python client module is allowed to expose at module level:
-# its three constants, the client, and the imports it needs. A new public name
+# its two constants, the client, and the imports it needs. A new public name
 # of any kind — a helper function, a second class — fails this.
 PY_MODULE_PUBLIC = {
-    "Any",
     "CAPTURE_PATH",
-    "CONTEXT_HEADER",
     "Darkmem",
     "SEARCH_PATH",
     "annotations",
     "httpx",
-    "json",
 }
 
 # Value exports of the TypeScript client. Types are erased at run time and are
@@ -111,7 +107,6 @@ TS_VALUE_EXPORTS = {"Darkmem"}
 TS_TYPE_EXPORTS = {
     "CaptureAck",
     "DarkmemOptions",
-    "DeclaredContext",
     "MemoryRow",
     "RetrievalEnvelope",
     "SearchResult",
@@ -248,10 +243,10 @@ def _typescript_without_comments(source: str) -> str:
 # Everything a constructed client is allowed to carry. `vars(Darkmem)` is the
 # class dict and cannot see an attribute assigned in `__init__`, which is where
 # a fourth verb sat through a green suite.
-PY_INSTANCE_ATTRIBUTES = {"base_url", "token", "project", "_context"}
+PY_INSTANCE_ATTRIBUTES = {"base_url", "token", "project"}
 
 
-class TestThePublicSurfaceIsTheThreeVerbs:
+class TestThePublicSurfaceIsTheTwoVerbs:
     def test_a_constructed_client_carries_only_its_configuration(self):
         """The Python instance probe, matching the one the TypeScript suite has
         had since the class-field escape. `self.send = lambda ...` in
@@ -268,7 +263,7 @@ class TestThePublicSurfaceIsTheThreeVerbs:
         stays because it is the cheap one that fails first.
         """
         assert set(vars(Darkmem())) == PY_INSTANCE_ATTRIBUTES
-        assert set(vars(Darkmem(token="t", project="p", context={"env": "x"}))) == (
+        assert set(vars(Darkmem(token="t", project="p"))) == (
             PY_INSTANCE_ATTRIBUTES
         )
 
@@ -282,9 +277,9 @@ class TestThePublicSurfaceIsTheThreeVerbs:
         door. Neither kind nor name shape decides membership now.
         """
         assert set(vars(Darkmem)) == PY_CLASS_MEMBERS
-        # The three verbs are in there, so the whitelist cannot be satisfied by
+        # The two verbs are in there, so the whitelist cannot be satisfied by
         # a client that lost them.
-        assert THE_THREE_VERBS_PY <= PY_CLASS_MEMBERS
+        assert THE_TWO_VERBS_PY <= PY_CLASS_MEMBERS
 
     def test_the_python_module_exposes_no_other_public_name(self):
         """A module-level `async def send(client, path, body)` is on no class
@@ -309,10 +304,10 @@ class TestThePublicSurfaceIsTheThreeVerbs:
         exported = {name for name in vars(darkmem_sdk) if not name.startswith("_")}
         assert exported == {"Darkmem", "client"}
 
-    def test_the_typescript_class_exposes_exactly_three_members(self):
+    def test_the_typescript_class_exposes_exactly_two_verbs(self):
         members = _typescript_class_members(TYPESCRIPT_CLIENT.read_text())
         public = {name for name in members if not name.startswith("#")}
-        assert public == THE_THREE_VERBS_TS | {"constructor"}
+        assert public == THE_TWO_VERBS_TS | {"constructor"}
 
     def test_the_typescript_module_exports_only_the_client(self):
         values, types = _typescript_exports(TYPESCRIPT_CLIENT.read_text())

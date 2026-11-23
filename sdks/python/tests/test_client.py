@@ -1,4 +1,4 @@
-"""T3.14 — the three verbs' behaviour on the wire (doc 15 §6).
+"""T3.14 — the two verbs' behaviour on the wire (doc 15 §6).
 
 The client builds its own ``httpx.AsyncClient``, so the transport is swapped by
 patching the module's ``httpx`` binding. Kept in the test rather than added as
@@ -10,10 +10,9 @@ needs no pytest plugin beyond pytest itself — ``cd sdks/python && python -m
 pytest -q`` is the task's Verify and it should hold on a bare interpreter.
 
 **What this file cannot tell you**, and ``backend/tests/test_sdk_contract_conformance.py``
-can: whether the door on the other end honours any of it. A review found this
-client sending a declared context to two doors that both discarded it, with
-every test here green, because a mock transport answers whatever it is told to.
-The two files are one claim in two halves.
+can: whether the door on the other end honours any of it, because a mock
+transport answers whatever it is told to. The two files are one claim in two
+halves.
 """
 
 from __future__ import annotations
@@ -25,7 +24,7 @@ import httpx
 import pytest
 
 from darkmem_sdk import Darkmem
-from darkmem_sdk.client import CAPTURE_PATH, CONTEXT_HEADER, SEARCH_PATH
+from darkmem_sdk.client import CAPTURE_PATH, SEARCH_PATH
 
 
 class Recorder:
@@ -120,29 +119,23 @@ class TestCapture:
 class TestSearch:
     def test_it_posts_the_query_to_the_bound_read(self, recorder):
         rec = recorder({"items": [], "total": 0, "limit": 20, "offset": 0,
-                        "envelope": {"context": None}})
+                        "envelope": {"channels": {}}})
         client = Darkmem()
 
         result = asyncio.run(client.search("what replaced redis"))
 
         assert str(rec.only.url).endswith(SEARCH_PATH)
         assert rec.body() == {"query": "what replaced redis", "with_trace": True}
-        assert result["envelope"]["context"] is None
+        assert result["envelope"] == {"channels": {}}
 
     def test_the_trace_is_always_asked_for(self, recorder):
-        """Not a preference, and not an argument. The door resolves a declared
-        context only on the traced branch — an untraced search answers 200 with
-        a null envelope and discards the declaration on both ranks — so an
-        option to turn the trace off would be an option to silently drop the
-        declaration, which is the defect this binding exists to close."""
+        """Doc 15 §6 defines the verb as returning the labelled results with
+        their trace, so there is no argument to turn it off."""
         rec = recorder()
-        client = Darkmem()
-        client.declare_context({"env": "prod"})
 
-        asyncio.run(client.search("q"))
+        asyncio.run(Darkmem().search("q"))
 
         assert rec.body()["with_trace"] is True
-        assert CONTEXT_HEADER in rec.only.headers
         with pytest.raises(TypeError):
             asyncio.run(Darkmem().search("q", with_trace=False))
 
@@ -154,68 +147,21 @@ class TestSearch:
         assert rec.body()["limit"] == 5
 
 
-class TestDeclaredContext:
-    def test_no_context_sends_no_header(self, recorder):
-        rec = recorder()
-
-        asyncio.run(Darkmem().search("undeclared"))
-
-        assert CONTEXT_HEADER not in rec.only.headers
-
-    def test_an_empty_declaration_is_not_a_declaration(self, recorder):
-        """`{}` resolves to undeclared server-side, so a header carrying it
-        says nothing. Pinned on both clients because the two languages disagree
-        about `{}`'s truthiness and a generated pair should not (M-1)."""
-        rec = recorder()
-        client = Darkmem(context={})
-
-        asyncio.run(client.search("q"))
-
-        assert CONTEXT_HEADER not in rec.only.headers
-
-    def test_a_declaration_rides_the_search_door(self, recorder):
+class TestNoDeclaredContext:
+    def test_neither_verb_sends_a_context(self, recorder):
+        """Declared context is gone from both doors, so neither verb sends the
+        old header or a `context` body key, and the client takes none."""
         rec = recorder()
         client = Darkmem()
 
-        client.declare_context({"env": "prod"})
         asyncio.run(client.search("q"))
-
-        assert json.loads(rec.only.headers[CONTEXT_HEADER]) == {"env": "prod"}
-
-    def test_capture_never_carries_a_declaration(self, recorder):
-        """The capture door serves no context on either rank — `MemoryCreate`
-        has no `context` field and the route reads no header — so sending one
-        would be a value discarded in silence, which is the defect this whole
-        task exists to close. Generation refuses if a context-carrying verb
-        ever binds such a door."""
-        rec = recorder()
-        client = Darkmem(context={"env": "prod"})
-
         asyncio.run(client.capture("one"))
 
-        assert CONTEXT_HEADER not in rec.only.headers
-        assert "context" not in rec.body()
-
-    def test_a_per_call_context_rides_the_body_at_rank_one(self, recorder):
-        """Doc 12 §5's two forms used as two forms: the argument is rank 1 in
-        the body, the declaration is rank 2 in the header, and the *server*
-        decides between them. The SDK may send both."""
-        rec = recorder()
-        client = Darkmem(context={"env": "dev"})
-
-        asyncio.run(client.search("q", context={"env": "prod"}))
-
-        assert rec.body()["context"] == {"env": "prod"}
-        assert json.loads(rec.only.headers[CONTEXT_HEADER]) == {"env": "dev"}
-
-    def test_a_declaration_can_be_withdrawn(self, recorder):
-        rec = recorder()
-        client = Darkmem(context={"env": "prod"})
-
-        client.declare_context(None)
-        asyncio.run(client.search("undeclared again"))
-
-        assert CONTEXT_HEADER not in rec.only.headers
+        for request in rec.requests:
+            assert "x-darkmem-context" not in request.headers
+            assert "context" not in json.loads(request.content)
+        with pytest.raises(TypeError):
+            Darkmem(context={"env": "prod"})
 
 
 class TestTransport:
