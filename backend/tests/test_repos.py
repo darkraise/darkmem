@@ -44,6 +44,68 @@ def test_url_sanitizer_removes_all_userinfo(url):
     assert sanitized == "failed: " + url.split("://")[0] + "://***@forge.example/repo.git"
 
 
+async def test_a_background_failure_is_sanitised(
+    session, session_factory, tmp_path, monkeypatch, caplog,
+):
+    import logging
+    import uuid
+
+    from sqlalchemy import select
+
+    from app.api.routes import repos as repos_route
+    from app.api.websocket import event_manager
+    from app.models.code import Repository
+    from app.services.code_pipeline import CodePipeline
+
+    secret = "tok-5e1f0a"
+    repo = Repository(
+        name=f"bg-{uuid.uuid4().hex[:6]}", local_path=str(tmp_path), status="indexing",
+    )
+    session.add(repo)
+    await session.flush()
+
+    async def failing(self, repo_id, **kwargs):
+        raise RuntimeError(f"fetch https://u:{secret}@git.lan/o/r.git failed")
+
+    broadcasts: list = []
+
+    async def record(event_type, data):
+        broadcasts.append((event_type, data))
+
+    monkeypatch.setattr(CodePipeline, "run", failing)
+    monkeypatch.setattr(event_manager, "broadcast", record)
+    caplog.set_level(logging.INFO)
+
+    await repos_route._spawn_repo_index(
+        repo.id, CodePipeline(session, None, None, RepoManager(session)),
+        session_factory, kind="reindex",
+    )
+
+    status_message = (await session.execute(
+        select(Repository.status_message).where(Repository.id == repo.id)
+    )).scalar_one()
+    assert [event for event, _ in broadcasts] == ["repo.indexing_failed"]
+    assert secret not in repr(broadcasts)
+    assert "https://***@git.lan" in broadcasts[0][1]["error"]
+    assert status_message is not None and "https://***@git.lan" in status_message
+    assert secret not in status_message
+    assert caplog.records and secret not in caplog.text
+
+
+@pytest.mark.parametrize("url, key", [
+    ("https://git.lan:8443/o/r.git", "http.https://git.lan:8443/.extraHeader"),
+    ("https://github.com/o/r.git", "http.https://github.com/.extraHeader"),
+    ("https://u:p@git.lan:8443/o/r.git", "http.https://git.lan:8443/.extraHeader"),
+])
+def test_the_auth_header_is_scoped_to_the_origin(url, key):
+    env = RepoManager._auth_env("T", "github", url=url)
+
+    keys = [value for name, value in env.items() if name.startswith("GIT_CONFIG_KEY_")]
+    assert keys == [key]
+    assert "http.extraHeader" not in keys
+    assert all("@" not in k for k in keys)
+
+
 async def test_create_repo_local(client, session, auth_headers, tmp_path):
     repo_dir = tmp_path / "test-repo"
     repo_dir.mkdir()

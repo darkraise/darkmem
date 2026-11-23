@@ -596,7 +596,9 @@ class CodePipeline:
                 # bookkeeping failure must not send a successful run down the
                 # failure path and label the graph stale; the batch simply stays
                 # queued and the next run re-traces it again.
-                logger.warning("Failed to settle index debt for repo %s: %s", repo.id, exc)
+                logger.warning(
+                    "Failed to settle index debt for repo %s: %s", repo.id, _sanitize_url(str(exc)),
+                )
                 await self.session.rollback()
 
             await event_manager.broadcast(
@@ -638,7 +640,7 @@ class CodePipeline:
                     )
                 await self.session.commit()
             except Exception as e:
-                logger.warning("Failed to record code indexing failure state: %s", e)
+                logger.warning("Failed to record code indexing failure state: %s", _sanitize_url(str(e)))
 
             return self._stats
 
@@ -687,7 +689,7 @@ class CodePipeline:
                     logger.warning(
                         "Repo %s indexing failed after commit %s; keeping prior "
                         "graph and marking stale instead of wiping: %s",
-                        repo.name, repo.last_indexed_commit, exc,
+                        repo.name, repo.last_indexed_commit, cause,
                     )
                 else:
                     repo.status = "error"
@@ -713,7 +715,9 @@ class CodePipeline:
                 )
                 await self.session.commit()
             except Exception as e2:
-                logger.warning("Failed to record pipeline exception as failure: %s", e2)
+                logger.warning(
+                    "Failed to record pipeline exception as failure: %s", _sanitize_url(str(e2)),
+                )
 
             raise
 

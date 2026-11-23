@@ -6,7 +6,7 @@ import re
 import shutil
 from collections.abc import Callable
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlsplit
 from uuid import UUID
 
 from sqlalchemy import case, func, select, update
@@ -23,6 +23,16 @@ REPOS_BASE_DIR = Path(os.environ.get("DARKMEM_REPOS_DIR", "./data/repositories")
 
 def _sanitize_url(text: str) -> str:
     return re.sub(r'([a-z][a-z0-9+.-]*://)[^\s/]*@', r'\1***@', text, flags=re.IGNORECASE)
+
+
+def _http_origin(url: str) -> str:
+    """`scheme://host[:port]` of ``url``, without its userinfo."""
+    parts = urlsplit(url)
+    host = parts.hostname or ""
+    if ":" in host:
+        host = f"[{host}]"
+    port = f":{parts.port}" if parts.port is not None else ""
+    return f"{parts.scheme.lower()}://{host}{port}"
 
 
 # Common system / credential trees we never want the indexer to walk into,
@@ -516,7 +526,7 @@ class RepoManager:
                 fetch_env = env
                 if token and repo.url:
                     fetch_target = repo.url
-                    fetch_env = self._auth_env(token, credential[1])
+                    fetch_env = self._auth_env(token, credential[1], url=repo.url)
 
                 await self._run_git(cwd, ["git", "fetch", fetch_target, repo.default_branch], env=fetch_env)
                 if is_local:
@@ -576,11 +586,14 @@ class RepoManager:
         if not take_claim:
             return await self._replace_clone(repo, cwd)
 
+        # Read before the re-clone: a rollback below expires `repo`, and an
+        # expired attribute cannot be loaded from inside the `finally`.
+        repo_id = repo.id
         prior_status, prior_message = repo.status, repo.status_message
         claimed = (await self.session.execute(
             update(Repository)
             .where(
-                Repository.id == repo.id,
+                Repository.id == repo_id,
                 Repository.status.notin_(self.BUSY_STATUSES),
             )
             .values(status="cloning", status_message="Re-cloning an unreadable checkout")
@@ -590,8 +603,15 @@ class RepoManager:
         if claimed is None:
             logger.info("Re-clone of %s skipped: another run holds the repository", repo.name)
             return None
+        # A failed re-clone has already deleted the tree, so the prior status
+        # (normally `ready`) would advertise a checkout that is not there.
+        release_status, release_message = prior_status, prior_message
         try:
             return await self._replace_clone(repo, cwd)
+        except Exception as exc:
+            await self.session.rollback()
+            release_status, release_message = "error", _sanitize_url(str(exc))[:500]
+            raise
         except BaseException:
             await self.session.rollback()
             raise
@@ -600,8 +620,8 @@ class RepoManager:
             # re-clone that took it.
             await self.session.execute(
                 update(Repository)
-                .where(Repository.id == repo.id, Repository.status == "cloning")
-                .values(status=prior_status, status_message=prior_message)
+                .where(Repository.id == repo_id, Repository.status == "cloning")
+                .values(status=release_status, status_message=release_message)
             )
             await self.session.commit()
 
@@ -638,7 +658,7 @@ class RepoManager:
 
         credential = await self.get_credential(repo)
         token = credential[0] if credential else None
-        env = self._auth_env(token, credential[1]) if token else None
+        env = self._auth_env(token, credential[1], url=repo.url) if token else None
 
         abs_dest = str(dest.resolve())
         cmd = ["git", "clone", "--branch", repo.default_branch, "--single-branch", repo.url, abs_dest]
@@ -652,11 +672,13 @@ class RepoManager:
                 logger.warning("Failed to scrub auth token from %s remote URL", repo.name)
 
     @staticmethod
-    def _auth_env(token: str, provider: str = "github") -> dict[str, str]:
+    def _auth_env(token: str, provider: str = "github", *, url: str) -> dict[str, str]:
         """The child environment that authenticates one git network command.
 
         An `http.extraHeader` through `GIT_CONFIG_*` keeps the token out of the
-        argv (visible in the process table) and out of `.git/config`.
+        argv (visible in the process table) and out of `.git/config`. The key
+        is scoped to the repository's origin, so a request git or git-lfs
+        makes to any other host (LFS storage, a submodule) carries no token.
         """
         from app.services.git_forges import FORGES
         # GitHub takes any username and reads the token as the password, but
@@ -667,7 +689,7 @@ class RepoManager:
         basic = base64.b64encode(f"{git_username}:{token}".encode()).decode()
         return {
             "GIT_CONFIG_COUNT": "1",
-            "GIT_CONFIG_KEY_0": "http.extraHeader",
+            "GIT_CONFIG_KEY_0": f"http.{_http_origin(url)}/.extraHeader",
             "GIT_CONFIG_VALUE_0": f"Authorization: Basic {basic}",
             # Fail fast instead of hanging on an interactive credential prompt
             # if the token is rejected.

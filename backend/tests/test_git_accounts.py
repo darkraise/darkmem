@@ -416,7 +416,9 @@ async def test_get_credential_reports_the_accounts_provider(session):
 
 def test_auth_env_uses_the_forges_own_git_username():
     def basic_user(provider):
-        value = RepoManager._auth_env("T", provider)["GIT_CONFIG_VALUE_0"]
+        value = RepoManager._auth_env(
+            "T", provider, url="https://forge.example/o/r.git",
+        )["GIT_CONFIG_VALUE_0"]
         return base64.b64decode(value.removeprefix("Authorization: Basic ")).decode()
 
     assert basic_user("github") == "x-access-token:T"

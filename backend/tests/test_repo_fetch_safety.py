@@ -8,13 +8,15 @@ import uuid
 from pathlib import Path
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 import app.services.repo_manager as repo_manager_module
 from app.models.code import Repository
 from app.services.code_pipeline import CodePipeline
 from app.services.repo_manager import RepoManager
 from app.services.task_registry import TaskRegistry
+from tests.conftest import test_engine
 
 
 def _git(cwd: Path, *args: str) -> str:
@@ -112,17 +114,56 @@ async def test_reindex_surfaces_a_failed_fetch(session, tmp_path, monkeypatch):
     assert (clone / ".git").is_dir()
 
 
-async def test_a_failed_reclone_releases_its_claim(session, tmp_path, monkeypatch):
+async def test_a_failed_reclone_releases_its_claim(setup_database, tmp_path, monkeypatch):
+    # Its own committed session: the re-clone rolls back after reading the
+    # database, which would end the `session` fixture's isolation boundary.
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    async with factory() as own:
+        repo, clone = await _managed_clone(own, tmp_path, monkeypatch)
+        await own.commit()
+        repo_id = repo.id
+        try:
+            (clone / ".git" / "HEAD").unlink()
+
+            async def _failing_clone(self, _repo):
+                # The real clone reads its credential before git runs.
+                await self.session.execute(select(Repository.id).where(Repository.id == _repo.id))
+                raise RuntimeError("clone of https://u:tok-77c1@example.invalid/o/r.git failed")
+
+            monkeypatch.setattr(RepoManager, "_clone_repo", _failing_clone)
+
+            with pytest.raises(RuntimeError, match="failed"):
+                await RepoManager(own).pull_repo(repo, take_claim=True)
+
+            status, message = (await own.execute(
+                select(Repository.status, Repository.status_message)
+                .where(Repository.id == repo_id)
+            )).one()
+            assert status == "error"
+            assert "https://***@example.invalid" in message and "tok-77c1" not in message
+            assert await RepoManager(own).claim_for_indexing(repo_id, message="next run")
+        finally:
+            await own.rollback()
+            await own.execute(delete(Repository).where(Repository.id == repo_id))
+            await own.commit()
+
+
+async def test_a_cancelled_reclone_restores_its_prior_status(session, tmp_path, monkeypatch):
     repo, clone = await _managed_clone(session, tmp_path, monkeypatch)
     (clone / ".git" / "HEAD").unlink()
+    cloning = asyncio.Event()
 
-    async def _failing_clone(self, _repo):
-        raise RuntimeError("clone failed")
+    async def _hanging_clone(self, _repo):
+        cloning.set()
+        await asyncio.Event().wait()
 
-    monkeypatch.setattr(RepoManager, "_clone_repo", _failing_clone)
+    monkeypatch.setattr(RepoManager, "_clone_repo", _hanging_clone)
 
-    with pytest.raises(RuntimeError, match="clone failed"):
-        await RepoManager(session).pull_repo(repo, take_claim=True)
+    task = asyncio.create_task(RepoManager(session).pull_repo(repo, take_claim=True))
+    await asyncio.wait_for(cloning.wait(), timeout=10)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
 
     assert await _status(session, repo.id) == "ready"
 

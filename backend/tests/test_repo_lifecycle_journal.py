@@ -7,6 +7,7 @@ outcome journalled nothing. And reindex progress was a bare phase label
 """
 from __future__ import annotations
 
+import logging
 import uuid
 
 import pytest
@@ -139,6 +140,39 @@ async def test_a_failed_run_journals_one_line_of_its_cause_and_still_raises(
     assert row["event_type"] == "repo_index_failed"
     cause = row["payload"]["cause"]
     assert cause == "RuntimeError: clone https://***@forge.example/r.git failed"
+
+
+@pytest.mark.asyncio
+async def test_a_credentialed_failure_never_logs_the_token(
+    session, tmp_path, monkeypatch, caplog,
+):
+    secret = "tok-9d2b7e"
+    (tmp_path / "a.py").write_text("def a():\n    return 1\n")
+    repo = await _repo(session, tmp_path)
+    manager = RepoManager(session)
+    shas = iter(["sha-good-1", "sha-2"])
+
+    async def _pull(_repo):
+        return next(shas)
+
+    manager.pull_repo = _pull
+    first = await CodePipeline(session, None, None, manager).run(repo.id, full=True)
+    assert first["status"] == "indexed"
+
+    failing = CodePipeline(session, None, None, manager)
+
+    async def credentialed_failure():
+        raise RuntimeError(f"fetch https://u:{secret}@host/r.git failed")
+
+    monkeypatch.setattr(failing, "phase_06_call_tracing", credentialed_failure)
+    caplog.set_level(logging.DEBUG, logger="app")
+    with pytest.raises(RuntimeError):
+        await failing.run(repo.id, full=True)
+
+    await session.refresh(repo)
+    assert repo.status == "stale"
+    assert any("https://***@host" in r.getMessage() for r in caplog.records)
+    assert secret not in caplog.text
 
 
 @pytest.mark.asyncio
