@@ -25,13 +25,15 @@ in this file already makes (`code_reconcile`, `ppr_snapshot`).
 (`app/services/dream_jobs.py`); this job registers directly in `app/main.py`,
 the same way `ppr_snapshot` and `code_reconcile` do.
 
-**Why a repository is re-derived only when its HEAD moved.** Derivation
+**Why a repository is re-derived only when its HEAD or the deriver moved.** Derivation
 reads the code graph an index run wrote, and `last_indexed_commit` already
 says when that graph moved. Each successful derivation stamps the commit it
-read into the `config` row `CODE_DERIVER_STATE_KEY` (repository id to
-commit), in the same transaction as its write, and a tick skips every
-repository whose `last_indexed_commit` equals its stamp, the way the
-citation re-verification job scopes by `reverified_at_sha`. A failed derivation
+read, with `CODE_DERIVER_VERSION`, into the `config` row
+`CODE_DERIVER_STATE_KEY` (repository id to `{head, version}`), in the same
+transaction as its write, and a tick skips every repository whose
+`last_indexed_commit` equals its stamp's head under the current version, the
+way the citation re-verification job scopes by `reverified_at_sha`. Raising
+the version re-derives every repository once, HEAD moved or not. A failed derivation
 stamps nothing, so the next tick retries it. A drift-forced index of
 uncommitted changes leaves `last_indexed_commit` where it was, so its
 import changes reach the derivation at the next commit.
@@ -48,6 +50,9 @@ CODE_DERIVER_PIPELINE_NAME = "code_deriver"
 # Internal bookkeeping, not a job config field: an operator-editable stamp
 # would let a PUT silence derivation for a repository.
 CODE_DERIVER_STATE_KEY = "code_deriver_state"
+
+# Raise when a deriver change alters what it asserts for an unchanged graph.
+CODE_DERIVER_VERSION = 1
 
 # Minute-precision, five-field: hourly, staggered off the top-of-hour
 # cleanup jobs (`0 * * * *`) and `ppr_snapshot` (`30 * * * *`) so they don't

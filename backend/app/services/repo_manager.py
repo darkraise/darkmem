@@ -9,7 +9,7 @@ from pathlib import Path
 from urllib.parse import urlparse, urlsplit
 from uuid import UUID
 
-from sqlalchemy import case, func, select, update
+from sqlalchemy import case, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.code import CodeFile, CodeSymbol, Repository
@@ -419,6 +419,12 @@ class RepoManager:
         clone_dir = self._clone_path(repo)
         if clone_dir.exists():
             shutil.rmtree(clone_dir, onexc=_force_remove)
+
+        from app.services.code_deriver_job import CODE_DERIVER_STATE_KEY
+        await self.session.execute(
+            text("UPDATE config SET value = value - CAST(:repo_id AS text) WHERE key = :key"),
+            {"repo_id": str(repo_id), "key": CODE_DERIVER_STATE_KEY},
+        )
 
         await self.session.delete(repo)
         await self.session.commit()

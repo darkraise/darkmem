@@ -26,6 +26,7 @@ naive test passes without proving:
 from __future__ import annotations
 
 import ast
+import json
 import re
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -1817,3 +1818,55 @@ async def test_delete_repo_route_spares_an_entity_a_second_repo_still_asserts(
     )).mappings().first()
     assert row_after is not None, "the second repo's assertion must survive"
     assert [str(r) for r in row_after["repo_ids"]] == [str(second)]
+
+
+async def test_a_raised_deriver_version_rederives_an_unmoved_head(
+    session, session_factory, monkeypatch,
+):
+    import uuid
+
+    from app.models.code import Repository
+    from app.services import code_deriver
+    from app.services.code_deriver_job import CODE_DERIVER_STATE_KEY, CODE_DERIVER_VERSION
+    from app.services.job_runners import make_code_deriver_runner
+
+    older = Repository(
+        name=f"older-{uuid.uuid4().hex[:8]}", status="ready", last_indexed_commit="sha-older",
+    )
+    legacy = Repository(
+        name=f"legacy-{uuid.uuid4().hex[:8]}", status="ready", last_indexed_commit="sha-legacy",
+    )
+    session.add_all([older, legacy])
+    await session.flush()
+    await session.execute(
+        text("""
+            INSERT INTO config (key, value) VALUES (:key, CAST(:value AS jsonb))
+            ON CONFLICT (key) DO UPDATE SET value = config.value || EXCLUDED.value
+        """),
+        {"key": CODE_DERIVER_STATE_KEY, "value": json.dumps({
+            str(older.id): {"head": "sha-older", "version": CODE_DERIVER_VERSION - 1},
+            str(legacy.id): "sha-legacy",
+        })},
+    )
+    derived: list = []
+
+    async def _spy(repo_session, repo_id):
+        derived.append(repo_id)
+        return {"entities": 0, "relations": 0}
+
+    monkeypatch.setattr(code_deriver, "assert_repo_graph", _spy)
+    runner = make_code_deriver_runner(session_factory)
+
+    await runner()
+    assert derived.count(older.id) == 1
+    assert derived.count(legacy.id) == 1
+    state = (await session.execute(
+        text("SELECT value FROM config WHERE key = :key"), {"key": CODE_DERIVER_STATE_KEY},
+    )).scalar_one()
+    assert state[str(older.id)] == {"head": "sha-older", "version": CODE_DERIVER_VERSION}
+    assert state[str(legacy.id)] == {"head": "sha-legacy", "version": CODE_DERIVER_VERSION}
+
+    await runner()
+    assert derived.count(older.id) == 1
+    assert derived.count(legacy.id) == 1
+

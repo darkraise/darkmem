@@ -241,3 +241,32 @@ async def test_embedding_reports_chunks_embedded_of_total(session, tmp_path, mon
 
     embedding = [m for m in labels if m.startswith("Generating embeddings")]
     assert embedding[-1] == f"Generating embeddings... {total}/{total} chunks"
+
+
+@pytest.mark.asyncio
+async def test_deleting_a_repo_drops_its_deriver_state_key(session, tmp_path):
+    import json
+
+    from app.services.code_deriver_job import CODE_DERIVER_STATE_KEY
+
+    repo = await _repo(session, tmp_path)
+    other = str(uuid.uuid4())
+    await session.execute(
+        text("""
+            INSERT INTO config (key, value) VALUES (:key, CAST(:value AS jsonb))
+            ON CONFLICT (key) DO UPDATE SET value = config.value || EXCLUDED.value
+        """),
+        {"key": CODE_DERIVER_STATE_KEY, "value": json.dumps({
+            str(repo.id): {"head": "sha-1", "version": 1}, other: {"head": "sha-2", "version": 1},
+        })},
+    )
+    repo_id = repo.id
+
+    assert await RepoManager(session).delete(repo_id)
+
+    state = (await session.execute(
+        text("SELECT value FROM config WHERE key = :key"), {"key": CODE_DERIVER_STATE_KEY},
+    )).scalar_one()
+    assert str(repo_id) not in state
+    assert other in state
+

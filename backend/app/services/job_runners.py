@@ -240,6 +240,7 @@ def make_code_deriver_runner(session_factory: async_sessionmaker[AsyncSession]):
         from app.services.code_deriver_job import (
             CODE_DERIVER_PIPELINE_NAME,
             CODE_DERIVER_STATE_KEY,
+            CODE_DERIVER_VERSION,
         )
         from app.services.pipeline_failures import PipelineFailureService
 
@@ -255,7 +256,9 @@ def make_code_deriver_runner(session_factory: async_sessionmaker[AsyncSession]):
         derived_at = state if isinstance(state, dict) else {}
 
         for repo_id, head in repos:
-            if derived_at.get(str(repo_id)) == head:
+            # Any other shape, a bare head from before the version included,
+            # reads as stale and re-derives once.
+            if derived_at.get(str(repo_id)) == {"head": head, "version": CODE_DERIVER_VERSION}:
                 continue
             async with session_factory() as repo_session:
                 failure_svc = PipelineFailureService(repo_session)
@@ -272,11 +275,20 @@ def make_code_deriver_runner(session_factory: async_sessionmaker[AsyncSession]):
                     await repo_session.execute(
                         text("""
                             INSERT INTO config (key, value)
-                            VALUES (:key, jsonb_build_object(CAST(:repo_id AS text), CAST(:head AS text)))
+                            VALUES (:key, jsonb_build_object(
+                                CAST(:repo_id AS text),
+                                jsonb_build_object(
+                                    'head', CAST(:head AS text),
+                                    'version', CAST(:version AS integer)
+                                )
+                            ))
                             ON CONFLICT (key) DO UPDATE
                                 SET value = config.value || EXCLUDED.value
                         """),
-                        {"key": CODE_DERIVER_STATE_KEY, "repo_id": str(repo_id), "head": head},
+                        {
+                            "key": CODE_DERIVER_STATE_KEY, "repo_id": str(repo_id),
+                            "head": head, "version": CODE_DERIVER_VERSION,
+                        },
                     )
                     await repo_session.commit()
                     logger.info(

@@ -784,7 +784,8 @@ per job rather than once per tick; every run still gets its `job_runs` row.
 - `code_deriver` is the production trigger for
   `code_deriver.assert_repo_graph`: hourly over every repo whose
   `last_indexed_commit` differs from the commit its last successful
-  derivation read (the `config` row `code_deriver_state`), journalling
+  derivation read, or whose derivation ran under an older
+  `CODE_DERIVER_VERSION` (the `config` row `code_deriver_state`), journalling
   failures to `pipeline_failures` with
   `pipeline_name="code_deriver"` so a derivation failure never fails an
   index run. Withdrawal: `RepoManager.delete` calls

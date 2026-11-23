@@ -158,7 +158,7 @@ from app.services.code_deriver import (
     dependency_name,
     is_internal_import,
 )
-from app.services.code_deriver_job import CODE_DERIVER_JOB_KEY
+from app.services.code_deriver_job import CODE_DERIVER_STATE_KEY
 from app.services.events import record_event
 from app.services.fact_provenance import MEMORY_SOURCE_KIND, lock_facts_for_withdrawal, memory_source_ref
 from app.services.job_registry import FieldDescriptor
@@ -1259,28 +1259,24 @@ async def _withdraw_code_sources(
 # What the code reconcile compares against moves only when a repository's
 # indexed commit moves, a repository comes or goes, or the deriver rewrites
 # the repositories' assertions (it runs on its own cadence, after the index).
-# Its job run row lands after its writes commit, so a stamp that has not moved
-# means the stored provenance was last reconciled against the current graph.
+# Its state row is written in the same transaction as its assertions, and only
+# when it derived something, so a stamp that has not moved means the stored
+# provenance was last reconciled against the current graph.
 _LIFT_STATE_CONFIG_KEY = "fact_lift_state"
 _CODE_GRAPH_STAMP = "code_graph_stamp"
 _REPOSITORY_COMMITS = text(
     "SELECT CAST(id AS text), last_indexed_commit FROM repositories ORDER BY id"
 )
-_LAST_DERIVATION = text("""
-    SELECT CAST(id AS text) FROM job_runs
-    WHERE job_key = CAST(:key AS text)
-    ORDER BY started_at DESC, id DESC
-    LIMIT 1
-""")
+_DERIVER_STATE = text("SELECT value FROM config WHERE key = CAST(:key AS text)")
 
 
 async def _code_graph_stamp(session: AsyncSession) -> str:
     repositories = [list(row) for row in (await session.execute(_REPOSITORY_COMMITS)).all()]
     derivation = (
-        await session.execute(_LAST_DERIVATION, {"key": CODE_DERIVER_JOB_KEY})
+        await session.execute(_DERIVER_STATE, {"key": CODE_DERIVER_STATE_KEY})
     ).scalar_one_or_none()
     return hashlib.sha256(
-        json.dumps([repositories, derivation]).encode("utf-8")
+        json.dumps([repositories, derivation], sort_keys=True).encode("utf-8")
     ).hexdigest()
 
 

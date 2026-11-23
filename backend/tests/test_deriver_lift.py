@@ -662,12 +662,43 @@ async def _verified_outcomes(session, fact_id) -> list[str]:
 
 
 async def _next_parse(session) -> None:
-    """The deriver's next run: its job-run row is what moves the lift's
-    code-graph stamp, so the next lift tick reconciles again."""
+    """The deriver's next run that derived something: its state row is what
+    moves the lift's code-graph stamp, so the next lift tick reconciles again."""
+    await session.execute(
+        text("""
+            INSERT INTO config (key, value)
+            VALUES ('code_deriver_state', jsonb_build_object(CAST(:k AS text), CAST(:k AS text)))
+            ON CONFLICT (key) DO UPDATE SET value = config.value || EXCLUDED.value
+        """),
+        {"k": str(uuid4())},
+    )
+
+
+async def test_an_idle_deriver_tick_triggers_no_code_reconcile(session, monkeypatch):
+    import app.services.fact_lift as fact_lift_module
+
+    reconciles: list = []
+    real = fact_lift_module.reconcile_code_sources
+
+    async def counting(s):
+        reconciles.append(1)
+        return await real(s)
+
+    monkeypatch.setattr(fact_lift_module, "reconcile_code_sources", counting)
+    await run_code_lift(session)
+    reconciles.clear()
+
+    # What a code_deriver tick that derived nothing leaves behind: its run row.
     await session.execute(text(
         "INSERT INTO job_runs (job_key, outcome, started_at, duration_seconds) "
         "VALUES ('code_deriver', 'ok', clock_timestamp(), 0)"
     ))
+    await run_code_lift(session)
+    assert reconciles == []
+
+    await _next_parse(session)
+    await run_code_lift(session)
+    assert reconciles == [1]
 
 
 async def _born_fact(session, *, name: str) -> str:
