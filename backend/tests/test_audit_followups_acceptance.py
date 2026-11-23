@@ -15,12 +15,36 @@ import pytest
 REPO = Path(__file__).resolve().parents[2]
 BACKEND = REPO / "backend"
 BASE = "cee4bf42"
+# The plan's last commit before this file's range-bound rewrite: A36 and A37
+# state facts about the plan's own commits, so they read BASE..END, not HEAD.
+END = "72bc4e5536d0f947f939f773fd51ce3a2adb0853"
 REGISTER = REPO / "docs/dforge/registers/2026-11-20-audit-remaining.md"
 REGISTER_TOOL = Path("/root/.claude-alt/plugins/cache/darkraise/dforge/5.1.1/scripts/register")
 
 
 def _git(*args: str) -> str:
     return subprocess.run(["git", *args], cwd=REPO, capture_output=True, text=True, check=True).stdout
+
+
+def _has_commit(sha: str) -> bool:
+    return subprocess.run(
+        ["git", "cat-file", "-e", f"{sha}^{{commit}}"], cwd=REPO, capture_output=True, check=False,
+    ).returncode == 0
+
+
+def _require_plan_history() -> None:
+    if not (_has_commit(BASE) and _has_commit(END)):
+        pytest.skip(
+            "the audit-followups plan's history (cee4bf42..END) is not in this checkout; "
+            "a shallow CI clone cannot check it"
+        )
+
+
+def _tools_at(rev: str) -> set[str]:
+    source = _git("show", f"{rev}:backend/app/api/mcp/scopes.py")
+    namespace = {"__name__": "app.api.mcp._scopes_at_rev", "__package__": "app.api.mcp"}
+    exec(compile(source, f"scopes_{rev[:8]}.py", "exec"), namespace)
+    return set(namespace["TOOL_SCOPES"])
 
 
 # ------------------------------------------------------------------ A22
@@ -144,48 +168,42 @@ def test_a35_declared_context_is_gone_from_both_doors_and_both_sdks():
 
 
 def test_a36_no_revision_route_or_mcp_tool_is_added():
-    out = subprocess.run(
-        [sys.executable, "-m", "alembic", "heads", "--verbose"], cwd=BACKEND, capture_output=True, text=True, timeout=120
-    )
-    assert out.returncode == 0, out.stderr
-    heads = re.findall(r"^Rev: (\S+) \(head\)", out.stdout, re.M)
-    assert heads == ["0006"]
-    assert "0006_drop_blocks_search_vector.py" in out.stdout
+    _require_plan_history()
 
-    added = _git("diff", "--diff-filter=A", "--name-only", BASE, "HEAD", "--", "backend/migrations/versions").split()
+    def versions(rev: str) -> list[str]:
+        return _git("ls-tree", "--name-only", rev, "backend/migrations/versions/").split()
+
+    end_versions = versions(END)
+    assert end_versions == versions(BASE)
+    assert "backend/migrations/versions/0006_drop_blocks_search_vector.py" in end_versions
+
+    added = _git("diff", "--diff-filter=A", "--name-only", BASE, END, "--", "backend/migrations/versions").split()
     assert added == []
 
     # no route or tool decorator is added anywhere under the doors
-    diff = _git("diff", "-U0", BASE, "HEAD", "--", "backend/app/api", "backend/app/main.py")
+    diff = _git("diff", "-U0", BASE, END, "--", "backend/app/api", "backend/app/main.py")
     added_decorators = [
         line for line in diff.splitlines()
         if re.match(r"^\+\s*@(router|app|mcp|server)\.(get|post|put|patch|delete|tool|websocket)\b", line)
     ]
     assert added_decorators == []
 
-    from app.api.mcp.scopes import TOOL_SCOPES
-
-    base_src = _git("show", f"{BASE}:backend/app/api/mcp/scopes.py")
-    namespace = {"__name__": "app.api.mcp._base_scopes", "__package__": "app.api.mcp"}
-    exec(compile(base_src, "base_scopes.py", "exec"), namespace)
-    base_tools = set(namespace["TOOL_SCOPES"])
-    assert set(TOOL_SCOPES) == base_tools
-    assert len(TOOL_SCOPES) == 46
+    end_tools = _tools_at(END)
+    assert end_tools == _tools_at(BASE)
+    assert len(end_tools) == 46
 
 
 # ------------------------------------------------------------------ A37
 
 
-def test_a37_register_check_passes_and_no_row_is_open_planned_or_doing():
-    out = subprocess.run(
-        ["bash", str(REGISTER_TOOL), "check", str(REGISTER)], cwd=REPO, capture_output=True, text=True, timeout=120
-    )
-    assert out.returncode == 0, out.stdout + out.stderr
-    assert " 0 errors" in out.stdout
+def test_a37_register_check_passes_and_no_row_is_open_planned_or_doing(tmp_path):
+    _require_plan_history()
+    register = tmp_path / REGISTER.name
+    register.write_text(_git("show", f"{END}:{REGISTER.relative_to(REPO).as_posix()}"))
 
     header = None
     states = []
-    for line in REGISTER.read_text().splitlines():
+    for line in register.read_text().splitlines():
         if not line.startswith("|") or set(line) <= set("|- "):
             continue
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
@@ -196,6 +214,14 @@ def test_a37_register_check_passes_and_no_row_is_open_planned_or_doing():
             states.append((cells[0], cells[header.index("State")]))
     assert len(states) >= 413 - 1
     assert [row for row, state in states if state in {"open", "planned", "doing"}] == []
+
+    if not REGISTER_TOOL.exists():
+        pytest.skip("dforge register tool not installed on this host")
+    out = subprocess.run(
+        ["bash", str(REGISTER_TOOL), "check", str(register)], cwd=REPO, capture_output=True, text=True, timeout=120
+    )
+    assert out.returncode == 0, out.stdout + out.stderr
+    assert " 0 errors" in out.stdout
 
 
 # ================================================================== backend DB groups
