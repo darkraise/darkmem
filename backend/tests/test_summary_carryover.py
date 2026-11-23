@@ -338,3 +338,41 @@ async def test_reindex_leaves_the_untouched_files_symbols_uncharged(
         async with factory() as session:
             await session.execute(delete(Repository).where(Repository.id == repo_id))
             await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_carry_over_holds_across_snapshot_chunks(setup_database, tmp_path, monkeypatch):
+    """The snapshot reads its files in chunks; a file in a later chunk keeps
+    its summaries as one in the first does."""
+    from app.services import code_pipeline
+
+    factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    llm = _CountingLLM()
+    repo_id = await _index(
+        factory, tmp_path,
+        {"svc.py": "def start():\n    return 1\n", "other.py": "def run():\n    return 9\n"},
+        llm,
+    )
+    try:
+        before = await _symbol_rows(factory, repo_id)
+        (tmp_path / "svc.py").write_text(
+            "def start():\n    return 1\n\n\ndef stop():\n    return 0\n", encoding="utf-8",
+        )
+        (tmp_path / "other.py").write_text(
+            "def run():\n    return 9\n\n\ndef walk():\n    return 8\n", encoding="utf-8",
+        )
+        _git_commit_all(tmp_path, "add one function to each file")
+        monkeypatch.setattr(code_pipeline, "_SNAPSHOT_CHUNK", 1)
+        calls = llm.calls
+
+        result = await _reindex(factory, repo_id, tmp_path, llm)
+
+        assert result["status"] == "indexed"
+        assert llm.calls == calls + 2
+        after = await _symbol_rows(factory, repo_id)
+        assert after["start"] == before["start"]
+        assert after["run"] == before["run"]
+    finally:
+        async with factory() as session:
+            await session.execute(delete(Repository).where(Repository.id == repo_id))
+            await session.commit()

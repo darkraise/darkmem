@@ -216,6 +216,11 @@ class PostgresVectorRepository:
             }
             for row in result
         ]
+        if filters is None:
+            return rows
+        # The over-fetch is cut here, so its ties are broken by id first, as
+        # the fusion orders them; the query keeps its one ANN ORDER BY key.
+        rows.sort(key=lambda row: (-row["score"], str(row["memory_id"])))
         return rows[:limit]
 
     async def delete(self, memory_id: UUID):

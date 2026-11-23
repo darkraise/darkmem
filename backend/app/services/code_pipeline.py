@@ -52,6 +52,8 @@ IGNORED_EXTENSIONS = {
     ".pyc", ".pyo", ".exe", ".dll", ".so", ".dylib",
 }
 MAX_FILE_SIZE = 500_000
+# Files per enrichment-snapshot query (asyncpg binds at most 32,767 values).
+_SNAPSHOT_CHUNK = 5_000
 #: How far into a file the binary sniff reads. git's own heuristic: a NUL byte
 #: in the first 8000 bytes means binary.
 BINARY_SNIFF_BYTES = 8000
@@ -1055,13 +1057,17 @@ class CodePipeline:
         """
         if not file_ids:
             return {}
-        rows = (await self.session.execute(
-            select(
-                CodeSymbol.file_id, CodeSymbol.id, CodeSymbol.name, CodeSymbol.kind,
-                CodeSymbol.parent_symbol_id, CodeSymbol.source_code,
-                CodeSymbol.summary, CodeSymbol.enrichment_status,
-            ).where(CodeSymbol.file_id.in_(file_ids))
-        )).all()
+        # An IN list binds one parameter per id, and asyncpg refuses a
+        # statement past 32,767; a file's symbols all land in one chunk.
+        rows = []
+        for start in range(0, len(file_ids), _SNAPSHOT_CHUNK):
+            rows.extend((await self.session.execute(
+                select(
+                    CodeSymbol.file_id, CodeSymbol.id, CodeSymbol.name, CodeSymbol.kind,
+                    CodeSymbol.parent_symbol_id, CodeSymbol.source_code,
+                    CodeSymbol.summary, CodeSymbol.enrichment_status,
+                ).where(CodeSymbol.file_id.in_(file_ids[start:start + _SNAPSHOT_CHUNK]))
+            )).all())
         id_to_name = {row.id: row.name for row in rows}
 
         snapshots: dict[UUID, dict[tuple[str, str, str | None, str], tuple[str | None, str]]] = {}

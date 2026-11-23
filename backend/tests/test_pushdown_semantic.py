@@ -249,6 +249,19 @@ async def test_scoped_vector_search_overfetches_then_slices(session):
 
 
 @pytest.mark.asyncio
+async def test_scoped_vector_search_breaks_ties_by_id_before_slicing(session):
+    await _seed_partition(session)
+    added = [await _add_memory(session) for _ in range(8)]
+
+    rows = await PostgresVectorRepository(session).search(
+        QUERY_VECTOR, fingerprint=FINGERPRINT, limit=3, filters=MemoryFilter(),
+    )
+
+    assert len({row["score"] for row in rows}) == 1
+    assert [str(row["memory_id"]) for row in rows] == sorted(str(m.id) for m in added)[:3]
+
+
+@pytest.mark.asyncio
 async def test_unscoped_vector_search_does_not_overfetch(session):
     await _seed_partition(session)
     for _ in range(8):

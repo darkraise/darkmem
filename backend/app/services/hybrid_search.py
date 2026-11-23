@@ -546,7 +546,7 @@ class HybridSearchService:
                     JOIN memories m ON m.id = u.mid
                     WHERE {where_sql}
                     GROUP BY m.id
-                    ORDER BY score DESC
+                    ORDER BY score DESC, m.id
                     LIMIT :limit
                 """),
                     params,
