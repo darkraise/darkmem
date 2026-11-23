@@ -625,16 +625,14 @@ def test_an_html_block_containing_markdown_characters_stays_opaque():
 
 # ── PDF: a designed 422, no parser ──────────────────────────────────────
 
-from tests.test_document_routes import stub_llm  # noqa: E402,F401 — fixture
-
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("declared", [
-    {"uri": "docs/report.pdf"},
-    {"uri": "docs/report.md", "source_type": "pdf"},
+@pytest.mark.parametrize("declared, refusal", [
+    ({"uri": "docs/report.pdf"}, "cannot infer a source_type"),
+    ({"uri": "docs/report.md", "source_type": "pdf"}, "no parser serves"),
 ], ids=["suffix", "source_type"])
 async def test_pdf_filing_is_a_designed_422(
-    client, auth_headers, stub_llm, session, monkeypatch, declared
+    client, auth_headers, stub_llm, session, monkeypatch, declared, refusal
 ):
     import json
     from contextlib import asynccontextmanager
@@ -648,7 +646,7 @@ async def test_pdf_filing_is_a_designed_422(
         headers=auth_headers,
     )
     assert response.status_code == 422
-    assert "no parser serves" in response.text or "cannot infer a source_type" in response.text
+    assert refusal in response.text
 
     @asynccontextmanager
     async def _on_the_test_session():

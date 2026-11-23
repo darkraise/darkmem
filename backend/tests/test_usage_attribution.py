@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from app.config import LLMPurposeConfig
 from app.models.llm_usage import LLMUsage
 from app.models.memory import Memory
+from app.repositories.graph import PostgresGraphRepository
 from app.services.job_registry import Job, JobRegistry
 from app.services.llm import LLMOrchestrator
 from app.services.pipeline import ProcessingPipeline, _flag_cache_reset
@@ -74,6 +75,9 @@ async def _seed(factory, ids, project):
 
 async def _cleanup(factory, ids):
     async with factory() as s:
+        graph = PostgresGraphRepository(s)
+        for mem_id in ids:
+            await graph.delete_by_memory_id(mem_id)
         await s.execute(text("DELETE FROM llm_usage"))
         await s.execute(
             text("DELETE FROM memories WHERE id = ANY(CAST(:ids AS uuid[]))"),

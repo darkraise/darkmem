@@ -16,23 +16,6 @@ def _forget_probe_fingerprint():
 
 
 @pytest.fixture
-def stub_llm():
-    """Point the app at a stub embedder for the write door.
-
-    The test app has no orchestrator configured, and `get_llm` reads
-    `request.app.state.llm`, so the route under test needs one — the same
-    way `test_documents_api.py`'s `scripted_llm` wires the Q&A door.
-    """
-    from app.main import app
-
-    llm = StubEmbedder()
-    previous = getattr(app.state, "llm", None)
-    app.state.llm = llm
-    yield llm
-    app.state.llm = previous
-
-
-@pytest.fixture
 def filed(client, auth_headers, stub_llm):
     """File a document over the route; return its id."""
 

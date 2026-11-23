@@ -298,6 +298,23 @@ async def auth_headers(session):
     return {"Authorization": f"Bearer {token}"}
 
 
+@pytest.fixture
+def stub_llm():
+    """Point the app at a stub embedder for the document write door.
+
+    The test app has no orchestrator configured, and `get_llm` reads
+    `request.app.state.llm`, so the route under test needs one — the same
+    way `test_documents_api.py`'s `scripted_llm` wires the Q&A door.
+    """
+    from tests.test_document_door import StubEmbedder
+
+    llm = StubEmbedder()
+    previous = getattr(app.state, "llm", None)
+    app.state.llm = llm
+    yield llm
+    app.state.llm = previous
+
+
 @pytest_asyncio.fixture
 async def mcp_streamable_app():
     """Fresh streamable-HTTP app with its lifespan entered.

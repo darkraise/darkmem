@@ -44,6 +44,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+import pytest_asyncio
 from sqlalchemy import text
 
 from app.services import entity_merge as merge_mod
@@ -58,12 +59,14 @@ from app.services.entity_merge import (
     repo_entity_merge_candidates,
 )
 from app.services.triple_key import compute_triple_key
+from tests.conftest import test_engine
 
 BACKEND = Path(__file__).resolve().parent.parent
 MODULE_PATH = BACKEND / "app" / "services" / "entity_merge.py"
 PIPELINE_PATH = BACKEND / "app" / "services" / "pipeline.py"
 
 DIMS = 8
+_SEEDED = "repo_entity_merge_seeded"
 FINGERPRINT = "merge-unit|8"
 
 
@@ -76,6 +79,25 @@ class FingerprintOnly:
 
     def llm_fingerprint(self) -> str:
         return self._fingerprint
+
+
+@pytest_asyncio.fixture(scope="module", autouse=True)
+async def _committed_postgresql_entity(setup_database):
+    """A committed ``postgresql`` row another file could have left behind.
+
+    Under ``--dist loadfile`` this module shares its worker database with
+    whatever files ran before it, so its seeds must survive a row they did not
+    write; carrying one for the whole module keeps that property tested.
+    """
+    async with test_engine.begin() as conn:
+        entity_id = (await conn.execute(text("""
+            INSERT INTO entities (name, entity_type, properties, memory_ids, repo_ids)
+            VALUES ('postgresql', 'database', '{}'::jsonb, '{}', '{}')
+            RETURNING id
+        """))).scalar_one()
+    yield
+    async with test_engine.begin() as conn:
+        await conn.execute(text("DELETE FROM entities WHERE id = :id"), {"id": entity_id})
 
 
 @pytest.fixture(autouse=True)
@@ -109,6 +131,9 @@ async def _entity(
     # test share a timestamp — which would leave the survivor rule's age arm
     # decided by the random id tie-break. Any test that means to exercise age
     # states the timestamps.
+    # A row another file committed under the same key is taken over for this
+    # test's rolled-back transaction rather than refusing the seed.
+    session.info.setdefault(_SEEDED, set()).add((name, entity_type))
     return (await session.execute(
         text("""
             INSERT INTO entities (name, entity_type, properties, memory_ids,
@@ -116,6 +141,11 @@ async def _entity(
             VALUES (:name, :etype, CAST(:props AS jsonb),
                     CAST(:mids AS uuid[]), CAST(:rids AS uuid[]),
                     COALESCE(CAST(:created AS timestamptz), now()))
+            ON CONFLICT (name, entity_type) DO UPDATE SET
+                properties = EXCLUDED.properties,
+                memory_ids = EXCLUDED.memory_ids,
+                repo_ids = EXCLUDED.repo_ids,
+                created_at = EXCLUDED.created_at
             RETURNING CAST(id AS text)
         """),
         {
@@ -174,8 +204,15 @@ async def _edges(session) -> list[tuple]:
 
 
 async def _names(session) -> list[str]:
+    seeded = sorted(session.info.get(_SEEDED, ()))
     return list((await session.execute(
-        text("SELECT name FROM entities ORDER BY name")
+        text("""
+            SELECT e.name FROM entities e
+            JOIN unnest(CAST(:names AS text[]), CAST(:types AS text[])) AS s(name, etype)
+              ON s.name = e.name AND s.etype = e.entity_type
+            ORDER BY e.name
+        """),
+        {"names": [n for n, _ in seeded], "types": [t for _, t in seeded]},
     )).scalars().all())
 
 
@@ -276,6 +313,16 @@ async def test_relation_endpoints_move_in_both_directions(session):
         ("postgres", "USES", "asyncpg", 0.5, 0, 0),
     ]
     assert "postgresql" not in await _names(session)
+
+
+@pytest.mark.asyncio
+async def test_merge_runs_beside_a_committed_postgresql_entity(session):
+    survivor, loser = await _pair(session)
+
+    pair = await merge_entities(session, survivor, loser)
+
+    assert (pair.survivor_name, pair.loser_name) == ("postgres", "postgresql")
+    assert await _names(session) == ["postgres"]
 
 
 @pytest.mark.asyncio
