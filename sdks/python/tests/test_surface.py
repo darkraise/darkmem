@@ -75,14 +75,14 @@ THE_TWO_VERBS_PY = {"capture", "search"}
 # that filters on a leading underscore can never see a `__call__`, and an
 # instance you can call is a verb. The interpreter-supplied entries are listed
 # rather than subtracted so a new one is a visible, deliberate edit.
-PY_CLASS_MEMBERS = {
-    "__dict__",
-    "__doc__",
-    "__firstlineno__",
+class _EmptyClass:
+    """Docstring, so `__doc__` is set as it is on the client."""
+
+
+# What the interpreter itself puts on any class statement: 3.13 adds
+# `__firstlineno__` and `__static_attributes__`, and the SDK supports 3.11.
+PY_CLASS_MEMBERS = set(vars(_EmptyClass)) | {
     "__init__",
-    "__module__",
-    "__static_attributes__",
-    "__weakref__",
     "_post",
     "capture",
     "search",
