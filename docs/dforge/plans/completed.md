@@ -1,3 +1,4 @@
+- 2026-11-18 `docs/dforge/plans/2026-11-18-constellation-graphs.md` — landed on `master` at 6042f0d7 (linear commits, no merge); indexed 2026-11-24
 - 2026-11-19 `docs/dforge/plans/2026-11-18-constellation-real-data.md` — merged into `master` at 1c485f1a
 - 2026-11-20 `docs/dforge/plans/2026-11-20-graph-cluster-quality.md` — merged into `master` at 8dfb9f0d
 - 2026-11-21 `docs/dforge/plans/2026-11-20-audit-remaining.md` — merged into `master` at 5ee451b2
