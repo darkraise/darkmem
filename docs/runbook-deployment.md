@@ -27,7 +27,15 @@ DARKMEM_VERSION=<version> docker compose up -d
 
 Two named volumes ride with the stack: `repo_data` at `/app/data/repositories`
 (the indexed clones) and `attachment_data` at `/app/data/attachments` (page
-attachment files; the app reads `ATTACHMENTS_DIR`). **`pg_dump` carries
+attachment files; the app reads `ATTACHMENTS_DIR`). The app runs as the
+unprivileged `app` user, and Docker gives a volume the image directory's
+ownership only while the volume is empty, at each container creation. A
+`repo_data` volume created before the image made `/app/data/repositories`
+(2026-11-21) is root-owned, and every repository add fails with `could not
+create work tree dir ... Permission denied`. Redeploying the current image
+repairs it while it is still empty; one that already holds clones needs
+`docker run --rm -u 0 -v <project>_repo_data:/r darkraise/darkmem:latest
+chown -R app:app /r`. **`pg_dump` carries
 neither.** Until the attachment tarball family ships, a dump is a complete
 backup of the rows and no backup at all of the files, so a restored dump can
 serve `page_attachments` rows whose bytes are gone.
