@@ -972,8 +972,38 @@ def _run_backup(tmp_path, dump_text: str, keep: int):
     shim = tmp_path / "shim.sh"
     dump = tmp_path / "dump.sql"
     dump.write_text(dump_text)
-    shim.write_text(f"#!/usr/bin/env bash\ncat {dump}\n")
-    env = {**os.environ, "COMPOSE_CMD": f"bash {shim}", "BACKUP_KEEP": str(keep)}
+    shim.write_text(
+        "#!/usr/bin/env bash\n"
+        'for a in "$@"; do\n'
+        '  case "$a" in\n'
+        "    *'count(*)'*) echo 1; exit 0 ;;\n"
+        f"    *string_agg*) echo {'a' * 64}; exit 0 ;;\n"
+        "  esac\n"
+        "done\n"
+        f"cat {dump}\n"
+    )
+    # Never the host's docker: the default ATTACHMENT_VOLUME is the live
+    # production volume, and a CI container has no docker at all.
+    volume = tmp_path / "volume" / "ab"
+    volume.mkdir(parents=True)
+    (volume / "file0").write_bytes(b"payload")
+    docker = tmp_path / "docker-stub.sh"
+    docker.write_text(
+        "#!/usr/bin/env bash\n"
+        'case "$1" in\n'
+        "  volume) exit 0 ;;\n"
+        f"  run) exec tar -czvf - -C '{volume.parent}' . ;;\n"
+        "esac\n"
+        "exit 0\n"
+    )
+    env = {
+        **os.environ,
+        "COMPOSE_CMD": f"bash {shim}",
+        "DOCKER_CMD": f"bash {docker}",
+        "ATTACHMENT_VOLUME": "test_attachment_data",
+        "DARKMEM_IMAGE": "darkraise/darkmem:test",
+        "BACKUP_KEEP": str(keep),
+    }
     r = subprocess.run(["bash", str(REPO / "scripts/backup.sh"), str(dest)], env=env, capture_output=True, text=True, timeout=60)
     return r, dest, old
 
