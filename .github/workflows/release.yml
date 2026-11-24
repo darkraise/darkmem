@@ -23,10 +23,10 @@ on:
   workflow_dispatch:
     inputs:
       runner:
-        description: "Verification runner (e2e always uses darkmem-linux); image builds/publishing stay hosted"
+        description: "Verification runner (e2e always self-hosted); image builds/publishing stay hosted"
         type: choice
-        options: [fallback, self-hosted, hosted, auto]
-        default: fallback
+        options: [self-hosted, hosted]
+        default: self-hosted
 
 # Never cancel a publish midway: a half-pushed multi-registry release is worse
 # than a slow one. Serialising on the branch also keeps two master pushes from
@@ -40,7 +40,7 @@ permissions:
 
 jobs:
   # Pick only the verification runner. Builds and release writes stay hosted.
-  # Pass the choice into ci.yml rather than consulting the runner API twice.
+  # Pass the choice into ci.yml so both workflows route the same way.
   pick-runner:
     name: Pick runner
     runs-on: ubuntu-latest
@@ -54,8 +54,7 @@ jobs:
       - name: Pick
         id: pick
         env:
-          REQUESTED: ${{ inputs.runner || 'fallback' }}
-          GH_TOKEN: ${{ secrets.RUNNER_PICKER_TOKEN }}
+          REQUESTED: ${{ inputs.runner || 'self-hosted' }}
         run: python3 scripts/pick_runner.py
 
   # Decides whether this push is a release at all, and as what version. Runs

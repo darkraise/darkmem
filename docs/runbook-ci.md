@@ -47,39 +47,40 @@ Splitting jobs trades extra runner setup and potentially more billed runner
 minutes for shorter elapsed time. Compare the slowest shard and total workflow
 runtime after deployment; runner queue time and registry uploads remain variable.
 
-## Self-hosted runner
+## Self-hosted runners (ghr)
 
-The default splits verification from image production:
+Self-hosted capacity comes from [ghr](https://github.com/darkraise/ghr) on a
+dedicated LAN host. ghr polls GitHub for queued jobs and starts a single-use
+runner for each one, so no runner is registered while no job is queued and
+nothing is registered by hand.
 
 | Jobs | Runner |
 | --- | --- |
-| Backend application/harness tests, frontend checks/unit tests, image boot check | `[self-hosted, linux, x64, darkmem-linux]` while one is online, else `ubuntu-latest` |
-| API and Playwright e2e | Always `[self-hosted, linux, x64, darkmem-linux]` |
+| Backend application/harness tests, frontend checks/unit tests, extension and SDK suites | `[self-hosted, linux, x64]` by default; `ubuntu-latest` on request |
+| API and Playwright e2e | Always `[self-hosted, linux, x64]` |
 | Image build/scan, release planning/version sync, image publishing, tag/GitHub release | Always `ubuntu-latest` |
 | Short runner-picker jobs | `ubuntu-latest` |
 
 `pick-runner` (`scripts/pick_runner.py`) selects only the first row's runner.
-The default is `fallback`: those checks go to `darkmem-linux` whenever a
-runner with that label is online, queuing behind its current job when busy,
-and to `ubuntu-latest` only when none is online, none is registered or the
-runner listing fails. Before choosing hosted it lists the runners once more
-after 20 seconds, because ephemeral runners briefly disappear between jobs.
-Listing runners needs `RUNNER_PICKER_TOKEN` (below);
-without it the picker cannot tell whether the runner is up, so it queues on
-self-hosted exactly as an explicit `self-hosted` request would. The release
-passes its choice into the
-reusable CI workflow. Every master push still runs verification, including
-non-release pushes. A release cannot publish until the whole reusable CI
-workflow succeeds, including both e2e jobs.
+It asks for the three labels every ghr runner carries, whatever labels ghr
+adds besides. It cannot check whether the ghr host is up, because there is no
+runner to list before a job queues, so a self-hosted job waits in the queue
+until ghr starts its runner. The release passes its choice into the reusable
+CI workflow. Every master push still runs verification, including non-release
+pushes. A release cannot publish until the whole reusable CI workflow
+succeeds, including both e2e jobs.
 
-**Machine.** A dedicated Ubuntu 22.04/24.04 x64 Linux box, never this host or
-192.168.0.199 (both run production). Install Docker Engine, git, curl and
-python3; put the runner user in the `docker` group. Frontend host jobs use
-`actions/setup-node` for their toolchain. Backend jobs run in a
-`python:3.12-bookworm` job container with a per-job virtualenv, because
-`actions/setup-python` found no Python 3.12 build for the runners' OS. The
-runner no longer needs `gh` or registry login credentials: publishing and
-release writes happen on GitHub-hosted.
+**ghr settings for this repository.** The repository is public, so ghr serves
+it only with `allow_public: true` on its `repos` entry
+(`ghr repo add darkmem --allow-public`). Its `max` caps concurrent jobs; a
+release run queues up to seven self-hosted jobs at once. Container jobs need
+nothing extra: ghr runs jobs natively on its host, where Docker is installed.
+
+**Jobs.** Backend jobs run in a `python:3.12-bookworm` job container with a
+per-job virtualenv, because `actions/setup-python` found no Python 3.12 build
+for the host's OS. Frontend host jobs use `actions/setup-node` with Node 22,
+the version the image builds the SPA with. Publishing and release writes
+happen on GitHub-hosted, so the ghr host needs no registry credentials.
 
 Backend jobs each get a private Docker network and Postgres service (no
 published host port) with separate app and harness databases. Smoke
@@ -87,13 +88,13 @@ verification uses a per-run container name and random loopback HTTP port.
 API and Playwright jobs use `python:3.12-bookworm` containers, each with its
 own Docker network and Postgres service (`darkmem_e2e`, no published host
 port). The harness's API ports 8321/8322 and Vite ports 3636/3637 stay inside
-those containers, so multiple runners on one machine do not collide.
+those containers, so concurrent jobs on one host do not collide.
 Playwright installs the lockfile's browser and system dependencies inside
 its job container; its failure traces are retained as artifacts for 7 days.
 An always-run step returns workspace/temp ownership to the runner user after
-container jobs, allowing subsequent host jobs to clean the checkout.
+container jobs, allowing ghr to clean the checkout.
 
-**Models.** The runner's Docker containers must reach the LAN Ollama service.
+**Models.** The job containers must reach the LAN Ollama service.
 Set Repository Settings → Secrets and variables → Actions → Variables →
 `DARKMEM_OLLAMA_BASE_URL` to its OpenAI-compatible URL; the default is
 `http://192.168.0.196:11434/v1`, matching the local gate. It must serve the
@@ -103,48 +104,32 @@ a blocked suite fails CI instead of being ignored. Both e2e jobs always stay
 self-hosted, even for a manual `runner: hosted` dispatch, because GitHub-hosted
 runners cannot reach this LAN endpoint.
 
-**Trust.** Docker access is root-equivalent; use a dedicated trusted machine
-and separate OS users per runner. Firewall it off from untrusted networks:
-the image smoke check publishes a random loopback port while it runs. The
-repository is private, so only collaborators' code runs here. A pull request
-whose head repository is not this one never reaches the runner through these
-workflows: both e2e jobs skip it and the picker sends its checks to
-`ubuntu-latest` in every mode, token or not. Before making
-it public, remove the runner or require approval for all outside contributors'
-workflow runs: a fork can name `[self-hosted, darkmem-linux]` directly.
-Prune Docker resources only when all runners on that host are idle; Docker
-pruning does not clear tool caches on disk.
-
-**Register.** Repository Settings → Actions → Runners → New self-hosted runner;
-run the printed `config.sh` with `--labels darkmem-linux`, then install it as a
-service (`sudo ./svc.sh install && sudo ./svc.sh start`). For an existing
-runner, add `darkmem-linux` through its labels settings. It must also have the
-standard `self-hosted`, `linux` and `x64` labels.
+**Trust.** A job on the ghr host effectively has root there, and every
+repository ghr serves shares that trust domain; keep the host dedicated and
+never this host or 192.168.0.199 (both run production). A pull request whose
+head repository is not this one never reaches ghr through these workflows:
+both e2e jobs skip it and the picker sends its checks to `ubuntu-latest`
+whatever the request. Because the repository is public, a fork can still name
+the self-hosted labels in its own copy of a workflow. ghr refuses any job
+whose event comes from a fork, and requiring approval for all outside
+contributors' workflow runs (Settings → Actions → General) stops such a run
+before it queues.
 
 **Manual choices.** Both workflows' dispatch input `runner` accepts:
 
-- `fallback` (default, and what every pull request and master push uses):
-  `darkmem-linux` while one is online, otherwise hosted.
-- `self-hosted`: always queue backend/frontend checks on `darkmem-linux`.
-- `hosted`: send those checks to `ubuntu-latest`.
-- `auto`: use an idle `darkmem-linux` runner, otherwise fall back to hosted
-  (a busy runner also falls back).
+- `self-hosted` (default, and what every pull request and master push uses):
+  queue backend/frontend checks for ghr.
+- `hosted`: send those checks to `ubuntu-latest`, for when the ghr host is
+  down. E2e stays self-hosted in every mode, so a release still waits for
+  ghr before it can publish. The run summary records the selected check
+  runner and why.
 
-`fallback` and `auto` read the runner list through `RUNNER_PICKER_TOKEN`, a
-repository secret holding a fine-grained PAT scoped to this repository with
-Administration: Read-only (the runners API needs it, and the workflow's own
-`GITHUB_TOKEN` cannot be granted that permission). Without the token
-`fallback` queues on self-hosted and `auto` goes hosted; an API error sends
-both to hosted. E2e stays self-hosted in every mode, so while the runner is
-offline a run's e2e jobs (and therefore a release's publish) still wait for
-it. The run summary records the selected check runner and why.
-
-**A run stuck in the queue.** The picker decides once, when the run starts:
-a runner that goes offline after that leaves the checks it was given queued.
-Restore the `darkmem-linux` runner or wait for its current job. To move the
-non-e2e checks to hosted, cancel and re-dispatch with `runner: hosted`; e2e
-still requires the self-hosted runner. With one
-runner, its jobs execute sequentially.
+**A run stuck in the queue.** A queued self-hosted job means ghr has not
+started a runner for it: the ghr host is down, the repository is paused or
+not served (check `allow_public`), its `max` is reached, or the job asks for
+a label ghr does not give. `ghr status` and its web UI show which. To move
+the non-e2e checks to hosted, cancel and re-dispatch with `runner: hosted`;
+e2e still requires ghr. GitHub cancels a job left queued for 24 hours.
 
 **No image artifact.** The image is built, scanned and booted in the same
 hosted job, so CI uploads no artifact (the buildx build record upload is off

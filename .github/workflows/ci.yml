@@ -8,10 +8,10 @@ on:
   workflow_dispatch:
     inputs:
       runner:
-        description: "Verification runner (e2e always uses darkmem-linux); image builds/publishing stay hosted"
+        description: "Verification runner (e2e always self-hosted); image builds/publishing stay hosted"
         type: choice
-        options: [fallback, self-hosted, hosted, auto]
-        default: fallback
+        options: [self-hosted, hosted]
+        default: self-hosted
   # Callable so release.yml can gate publishing on this exact pipeline rather
   # than a copy of it: a release can never publish an image whose tests did not
   # run.
@@ -30,10 +30,10 @@ permissions:
   contents: read
 
 jobs:
-  # Default (`fallback`): verification on darkmem-linux while a runner is
-  # online, queuing when busy, and hosted only when none is online (needs
-  # RUNNER_PICKER_TOKEN; without it, queue on self-hosted). Under release.yml
-  # the choice passes through.
+  # Default (`self-hosted`): verification queues on the self-hosted labels,
+  # and ghr starts a single-use runner for each queued job; `hosted` is the
+  # manual choice while the ghr host is down. Under release.yml the choice
+  # passes through.
   # Image builds stay hosted and LAN-dependent e2e stays self-hosted.
   # A pull request from a fork is routed hosted before any of that, so code
   # from outside the repository never runs on the LAN runner.
@@ -53,8 +53,7 @@ jobs:
         env:
           CALLER_PICK: ${{ inputs.runs-on }}
           FORK_PULL_REQUEST: ${{ !(github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
-          REQUESTED: ${{ inputs.runner || 'fallback' }}
-          GH_TOKEN: ${{ secrets.RUNNER_PICKER_TOKEN }}
+          REQUESTED: ${{ inputs.runner || 'self-hosted' }}
         run: |
           if [ -n "$CALLER_PICK" ]; then
             echo "runs-on=$CALLER_PICK" >> "$GITHUB_OUTPUT"
@@ -68,7 +67,7 @@ jobs:
     needs: pick-runner
     runs-on: ${{ fromJSON(needs.pick-runner.outputs.runs-on) }}
     # A job container, like the e2e jobs: actions/setup-python has no build
-    # for the darkmem-linux runners' OS, so a host job died before any test
+    # for the self-hosted runners' OS, so a host job died before any test
     # ran. The container also gives each job a private network, so Postgres
     # publishes no host port at all. The harness suite refuses to share a
     # database with the app tests, so it gets its own (benchlib/bench_db.py),
@@ -204,7 +203,7 @@ jobs:
   # The two distribution clients: the browser extension's suite, both SDK
   # suites and the SDK build. They need Node and the backend interpreter, so
   # the job runs in the backend's container (setup-python has no build for
-  # the darkmem-linux runners' OS) and brings Node into it.
+  # the self-hosted runners' OS) and brings Node into it.
   clients:
     name: Extension and SDK suites
     needs: pick-runner
@@ -349,7 +348,7 @@ jobs:
   e2e:
     name: E2E (${{ matrix.suite }})
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, linux, x64, darkmem-linux]
+    runs-on: [self-hosted, linux, x64]
     timeout-minutes: 35
     strategy:
       fail-fast: false

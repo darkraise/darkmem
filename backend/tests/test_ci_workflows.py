@@ -41,7 +41,7 @@ def test_builds_and_releases_stay_hosted_while_checks_use_the_picker(workflow, h
 
 def test_e2e_suites_have_private_networks_and_databases_on_self_hosted():
     job = _jobs("ci.yml")["e2e"]
-    assert job["runs-on"] == ["self-hosted", "linux", "x64", "darkmem-linux"]
+    assert job["runs-on"] == ["self-hosted", "linux", "x64"]
     assert set(job["strategy"]["matrix"]["suite"]) == {"api", "playwright"}
     assert job["container"]
     assert not job["services"]["postgres"].get("ports")
@@ -50,7 +50,7 @@ def test_e2e_suites_have_private_networks_and_databases_on_self_hosted():
 
 
 def test_backend_suites_run_in_a_container_with_private_databases():
-    # setup-python has no build for the darkmem-linux runners' OS, so the
+    # setup-python has no build for the self-hosted runners' OS, so the
     # backend suites bring their interpreter in a job container instead.
     job = _jobs("ci.yml")["backend"]
     assert job["container"] == "python:3.12-bookworm"
@@ -132,7 +132,7 @@ def test_the_ci_image_tag_is_per_run():
             assert "${{" in tags, f"fixed image tag {tags!r}"
 
 
-SELF_HOSTED_LABELS = {"self-hosted", "darkmem-linux"}
+SELF_HOSTED_LABELS = {"self-hosted"}
 
 
 def _evaluate(expression: str, context: dict) -> bool:

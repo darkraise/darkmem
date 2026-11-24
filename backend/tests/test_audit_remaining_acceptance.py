@@ -56,13 +56,7 @@ def test_a6_fork_pull_request_never_routed_to_self_hosted():
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
 
-    idle = {
-        "total_count": 1,
-        "runners": [
-            {"status": "online", "busy": False, "labels": [{"name": "self-hosted"}, {"name": "darkmem-linux"}]}
-        ],
-    }
-    for requested in ("fallback", "auto", "self-hosted", "hosted"):
+    for requested in ("self-hosted", "hosted", ""):
         out: list[str] = []
 
         class _Env(dict):
@@ -74,12 +68,10 @@ def test_a6_fork_pull_request_never_routed_to_self_hosted():
         with tempfile.NamedTemporaryFile("r+", delete=False) as gh_out:
             env = {
                 "REQUESTED": requested,
-                "GH_TOKEN": "x",
-                "GITHUB_REPOSITORY": "darkraise/darkmem",
                 "FORK_PULL_REQUEST": "true",
                 "GITHUB_OUTPUT": gh_out.name,
             }
-            rc = mod.main(env=env, fetch=lambda url, token: idle, sleep=lambda s: None)
+            rc = mod.main(env=env)
             gh_out.seek(0)
             text = gh_out.read()
         os.unlink(gh_out.name)
@@ -96,7 +88,7 @@ def test_a6_fork_pull_request_never_routed_to_self_hosted():
     wf = yaml.safe_load((REPO / ".github/workflows/ci.yml").read_text())
     for name, job in wf["jobs"].items():
         runs_on = job.get("runs-on")
-        if isinstance(runs_on, list) and "darkmem-linux" in runs_on:
+        if isinstance(runs_on, list) and "self-hosted" in runs_on:
             cond = str(job.get("if", ""))
             assert "head.repo.full_name == github.repository" in cond, name
             assert "github.event_name != 'pull_request'" in cond, name
