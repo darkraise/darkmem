@@ -4,6 +4,68 @@ What changed, per release. One user, one dev environment — this is a "what got
 better" log, not release notes for strangers. The ladder is
 `docs/planning/RELEASES.md`.
 
+## v2.0.0 — 2026-11-24
+
+**The memory and code graphs become constellations, and the 2026-11-20
+codebase audit is resolved.** The major version is for one removal: memory
+search no longer takes a declared context, and both SDKs drop the verb that
+sent it. Three revisions upgrade a populated database in place: `0004`
+indexes code edges by file, `0005` drops the empty triple-embedding tables
+(a populated one is kept and logged), and `0006` drops the unread
+`blocks.search_vector` column and its index.
+
+### Breaking
+
+- **Declared search context is gone.** The memory search door ignores a body
+  `context` and the `X-Darkmem-Context` header, and a traced search envelope
+  has no `context` key. The SDKs lose `declareContext` / `declare_context`,
+  the `CONTEXT_HEADER` constant and the `context` options, leaving two verbs,
+  `capture` and `search`.
+
+### Added
+
+- **Constellation graphs.** The 2D memory graph draws on a glow canvas over a
+  nebula backdrop with ambient motion, and the code graph moves to a WebGL
+  constellation canvas. The 2D layout sliders are gone.
+- **Cluster islands.** Memories group into one island per cluster, found by
+  seeded Leiden clustering and packed into a round disc. Each island is
+  named from its tags and entities, and Regions is a toggle. The graph shows
+  1,000 memories by default.
+- **Sessions renew before they expire**, open sockets are told when a session
+  renews, and unsaved drafts survive the renewal.
+- **Failed captures can be triaged** in the UI (requeue or discard), and
+  Settings says when processing stopped at boot.
+- Document revisions past the newest fifty and older than 90 days are pruned;
+  the document editor warns before leaving an unsaved block.
+- The fact list serves its filter facets with the list.
+- The app font is Geist, and the current page is marked with a rule.
+
+### Changed
+
+- Faster paths throughout: one embed and one composition per search, API keys
+  verified once a minute, sockets revalidated from memory, cheaper block reads
+  and writes, batched code deletes, narrower vault locks, and graph-arm jobs
+  that skip their tick while their arm is off.
+- Code indexing lists files through git, so an ignored file (an `.env`, a
+  dump) is never indexed, and stale index claims are released at boot.
+- Removed with no reader left: the context-boost retrieval arm, the inject
+  trio, LLM cluster naming, the PDF parser, and Settings controls that
+  steered nothing. A `local` classifier that cannot load now fails loudly.
+
+### Fixed
+
+- About 150 fixes from the audit and its follow-ups, among them: a deadlocked
+  graph write is retried, a transient extraction failure is retried instead
+  of erroring, ranking ties break by id, search answers on its keyword arm
+  when the embedder fails, an incremental code run keeps paths and edges, a
+  healthy clone is never deleted, git credentials are scoped and redacted in
+  logs, chat keeps one stream per conversation and frees its database
+  connection while streaming, and dream actions journal strictly.
+- A repository volume created before the image made `/app/data/repositories`
+  is root-owned, so adding a repository failed with "Permission denied".
+  Deploying this image repairs an empty volume; the runbook covers one that
+  already holds clones.
+
 ## v1.17.0 — 2026-10-13
 
 **A Notion-style progress board.** The Progress tab shows dr-superpowers
